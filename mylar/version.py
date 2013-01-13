@@ -1,1 +1,1 @@
-MYLAR_VERSION = "development"
+MYLAR_VERSION = "master"
