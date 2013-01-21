@@ -1,5 +1,4 @@
-<%inherit file="base.html" />
-<%!
+<%inherit file="base.html" /> <%!
 	import mylar
 	from mylar.helpers import checked
 %>
@@ -13,29 +12,29 @@
 
 <%def name="body()">
 	<div id="paddingheader">
-		<h1 class="clearfix">Search Question</h1>
+		<h1 class="clearfix">Ultron Error-Checker</h1>
 	</div>
 	<div id="tabs">
 		<ul>
-			<li><a href="#tabs-1">More Information</a></li>
+			<li><a href="#tabs-1">Analysis Required</a></li>
 		</ul>
 		<div id="tabs-1" class="configtable">
+
                    <table>
                     <tr>
-                     <td width="200">
+                     <td width="250">
                      <fieldset>
                            <div>
                                <img src="${comicimage}" alt="" height="350" width="230" />
                            </div>
-                           <div class="row checkbox">
-                               <input type="checkbox" name="add_to_csv" value="1"/><label><small>Add the selected entry to the custom_exceptions.csv (default)</small></label>
-                           </div>
                      </fieldset>
                       </td>
-                       <td>
-		       <fieldset>
-					<legend>Error-Checking...</legend>
-					<p><strong>I can't add the requsted comic.</strong></p>
+                       <td width="100%">
+                       <span style="position:absolute">
+                           <img src="interfaces/default/images/ultron.png" style="float:right" height="125" width="125">
+		              <fieldset>
+                                        <center><legend>Error-Check.</legend></center>
+					<strong>I cannot add the requsted comic.</strong>
 					<p>I've figured out that the Comic that you've selected to watch isn't listed
 					correctly on the other databases I need to query. This is most likely due to  
                                         an incorrect spelling, but sometimes it could because the year is wrong, or even
@@ -46,8 +45,8 @@
                                         <legend>${comicname}  (${comicyear})</br> 
                                         ${comicissues} Issues</legend></center>
                                         <br/>
-                         </fieldset>
-                        </td>
+                              </fieldset>
+                        </span></td>
                      </tr>
                    </table>
         <table class="display" id="searchmanage_table">
@@ -69,7 +68,7 @@
                                         <td id="comicname"><a href="${result['ComicURL']}" title="${result['ComicName']}" target="_blank">${result['ComicName']}</td>
                                         <td id="comicissues"><title="${result['ComicYear']}">${result['ComicYear']}</td>
                                         <td id="comicissues">${result['ComicIssues']}</td>   
-                                        <td id="addcomic"><a href="from_Exceptions?comicid=${result['ComicID']}&comicname=${result['ComicName']}&comicyear=${result['ComicYear']}&comicissues=${result['ComicIssues']}&comicpublisher=${result['ComicPublisher']}&gcdid=${result['GCDID']}"><span class="ui-icon-plus"></span>Add Series</a></td>
+                                        <td id="addcomic"><a href="from_Exceptions?comicid=${result['ComicID']}&comicname=${result['ComicName'] |u}&comicyear=${result['ComicYear']}&comicissues=${result['ComicIssues']}&comicpublisher=${result['ComicPublisher']}&gcdid=${result['GCDID']}"><span class="ui-icon-plus"></span>Add Series</a></td>
                                         </tr>
                                            %endfor
                                         %else:
@@ -81,10 +80,9 @@
                             </div>
                           </tbody>
                           </table>
-                                 <form action="error_change" method="GET">
+                            <form action="error_change" method="GET">
                                  <input type="hidden" name="comicid" value=${comicid}>
-                                 <input type="hidden" name="comicyear" value=${comicyear}>
-                                 <input type="hidden" name="comicissues" value=${comicissues}>
+                                 <inptu type="hidden" name="comicname" value=${comicname}>
                                         <div><br/>
                                            <label><center><strong>Didn't get it right? Enter what it should be (or the GCD-ID) here:</strong></label></center>
                                            <center><input type="text" name="errorgcd" size="30"><input type="submit" value="Update"/></center>
@@ -99,7 +97,7 @@
 		function initThisPage() {
 			jQuery( "#tabs" ).tabs();
 			initActions();
-                        initConfigCheckbox("#add_to_csv");
+                        initConfigCheckbox("#addtocsv");
 		};
 		$(document).ready(function() {
 			initThisPage();

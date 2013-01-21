@@ -13,6 +13,8 @@
 #  You should have received a copy of the GNU General Public License
 #  along with Mylar.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import with_statement
+
 import os
 import cherrypy
 import datetime
@@ -67,9 +69,13 @@ class WebInterface(object):
         issues = myDB.select('SELECT * from issues WHERE ComicID=? order by Int_IssueNumber DESC', [ComicID])
         if comic is None:
             raise cherrypy.HTTPRedirect("home")
+        usethefuzzy = comic['UseFuzzy']
+        if usethefuzzy is None: usethefuzzy = "0"
         comicConfig = {
                     "comiclocation" : mylar.COMIC_LOCATION,
-                    "use_fuzzy" : comic['UseFuzzy']
+                    "fuzzy_year0" : helpers.radio(int(usethefuzzy), 0),
+                    "fuzzy_year1" : helpers.radio(int(usethefuzzy), 1),
+                    "fuzzy_year2" : helpers.radio(int(usethefuzzy), 2)
                }
         return serve_template(templatename="artistredone.html", title=comic['ComicName'], comic=comic, issues=issues, comicConfig=comicConfig)
     artistPage.exposed = True
@@ -99,11 +105,11 @@ class WebInterface(object):
         sresults = []
         cresults = []
         mismatch = "no"
-        print ("comicid: " + str(comicid))
-        print ("comicname: " + str(comicname))
-        print ("comicyear: " + str(comicyear))
-        print ("comicissues: " + str(comicissues))
-        print ("comicimage: " + str(comicimage))
+        #print ("comicid: " + str(comicid))
+        #print ("comicname: " + str(comicname))
+        #print ("comicyear: " + str(comicyear))
+        #print ("comicissues: " + str(comicissues))
+        #print ("comicimage: " + str(comicimage))
         #here we test for exception matches (ie. comics spanning more than one volume, known mismatches, etc).
         CV_EXcomicid = myDB.action("SELECT * from exceptions WHERE ComicID=?", [comicid]).fetchone()
         if CV_EXcomicid is None: # pass #
@@ -117,7 +123,7 @@ class WebInterface(object):
                 logger.info(u"I couldn't find an exact match for " + str(comicname) + " (" + str(comicyear) + ") - gathering data for Error-Checking screen (this could take a minute)..." )
                 i = 0
                 loopie, cnt = parseit.ComChk(comicname, comicyear, comicpublisher, comicissues, comicid)
-                print ("total count : " + str(cnt))
+                #print ("total count : " + str(cnt))
                 while (i < cnt):
                     try:
                         stoopie = loopie['comchkchoice'][i]
@@ -133,7 +139,7 @@ class WebInterface(object):
                            'GCDID' : stoopie['GCDID']
                            })
                     i+=1
-                return serve_template(templatename="searchfix.html", title="Error Check", comicname=comicname, comicid=comicid, comicyear=comicyear, comicimage=comicimage, comicissues=comicissues,cresults=cresults)
+                return serve_template(templatename="searchfix.html", title="Error Check", comicname=comicname, comicid=comicid, comicyear=comicyear, comicimage=comicimage, comicissues=comicissues, cresults=cresults)
             else:
                 nomatch = "false"
                 logger.info(u"Quick match success..continuing.")  
@@ -177,9 +183,17 @@ class WebInterface(object):
         #99, (comicid), (gcdid), none
         logger.info("saving new information into custom_exceptions.csv...")
         except_info = "none #" + str(comicname) + "-(" + str(comicyear) + ")"
-        with open('custom_exceptions.csv', 'a') as f:
+        except_file = os.path.join(mylar.DATA_DIR,"custom_exceptions.csv")
+        if not os.path.exists(except_file):
+            try:
+                 csvfile = open(str(except_file), 'rb')
+                 csvfile.close()
+            except (OSError,IOError):
+                logger.error("Could not locate " + str(except_file) + " file. Make sure it's in datadir: " + mylar.DATA_DIR + " with proper permissions.")
+                return
+
+        with open(str(except_file), 'a') as f:
             f.write('%s,%s,%s,%s\n' % ("99", str(comicid), str(gcdid), str(except_info)) )
-        
         logger.info("re-loading csv file so it's all nice and current.")
         mylar.csv_load()
        
@@ -404,7 +418,7 @@ class WebInterface(object):
     def upcoming(self):
         myDB = db.DBConnection()
         #upcoming = myDB.select("SELECT * from issues WHERE ReleaseDate > date('now') order by ReleaseDate DESC")
-        upcoming = myDB.select("SELECT * from upcoming WHERE IssueDate > date('now') order by IssueDate DESC")
+        upcoming = myDB.select("SELECT * from upcoming WHERE IssueDate > date('now') AND IssueID is NULL order by IssueDate DESC")
         issues = myDB.select("SELECT * from issues WHERE Status='Wanted'")
         #let's move any items from the upcoming table into the wanted table if the date has already passed.
         #gather the list...
@@ -541,6 +555,7 @@ class WebInterface(object):
                     "logverbose" : helpers.checked(mylar.LOGVERBOSE),
                     "download_scan_interval" : mylar.DOWNLOAD_SCAN_INTERVAL,
                     "nzb_search_interval" : mylar.SEARCH_INTERVAL,
+                    "nzb_startup_search" : helpers.checked(mylar.NZB_STARTUP_SEARCH),
                     "libraryscan_interval" : mylar.LIBRARYSCAN_INTERVAL,
                     "sab_host" : mylar.SAB_HOST,
                     "sab_user" : mylar.SAB_USERNAME,
@@ -565,9 +580,9 @@ class WebInterface(object):
                     "destination_dir" : mylar.DESTINATION_DIR,
                     "replace_spaces" : helpers.checked(mylar.REPLACE_SPACES),
                     "replace_char" : mylar.REPLACE_CHAR,
-                    "use_minsize" : mylar.USE_MINSIZE,
+                    "use_minsize" : helpers.checked(mylar.USE_MINSIZE),
                     "minsize" : mylar.MINSIZE,
-                    "use_maxsize" : mylar.USE_MAXSIZE,
+                    "use_maxsize" : helpers.checked(mylar.USE_MAXSIZE),
                     "maxsize" : mylar.MAXSIZE,
                     "interface_list" : interface_list,
                     "autowant_all" : helpers.checked(mylar.AUTOWANT_ALL),
@@ -583,6 +598,8 @@ class WebInterface(object):
                     "file_format" : mylar.FILE_FORMAT,
                     "zero_level" : helpers.checked(mylar.ZERO_LEVEL),
                     "zero_level_n" : mylar.ZERO_LEVEL_N,
+                    "add_to_csv" : helpers.checked(mylar.ADD_TO_CSV),
+                    "lowercase_filenames" : helpers.checked(mylar.LOWERCASE_FILENAMES),
                     "enable_extra_scripts" : helpers.checked(mylar.ENABLE_EXTRA_SCRIPTS),
                     "extra_scripts" : mylar.EXTRA_SCRIPTS,
                     "branch" : version.MYLAR_VERSION,
@@ -603,23 +620,19 @@ class WebInterface(object):
 
     def error_change(self, comicid, errorgcd):
         if errorgcd[:5].isdigit():
-            print ("GCD-ID detected : + str(errorgcd)[:5]")
+            print ("GCD-ID detected : " + str(errorgcd)[:5])
             print ("I'm assuming you know what you're doing - going to force-match.")
             self.from_Exceptions(comicid=comicid,gcdid=errorgcd)
         else:
             print ("Assuming rewording of Comic - adjusting to : " + str(errorgcd))
-            self.addComic(errorgcd)
+            Err_Info = mylar.cv.getComic(comicid,'comic')
+            self.addComic(comicid=comicid,comicname=str(errorgcd), comicyear=Err_Info['ComicYear'], comicissues=Err_Info['ComicIssues'], comicpublisher=Err_Info['ComicPublisher'])
 
     error_change.exposed = True
 
     
-    def comic_config(self, com_location, alt_search, fuzzy_year, ComicID):
+    def comic_config(self, com_location, ComicID, alt_search=None, fuzzy_year=None):
         myDB = db.DBConnection()
-        print ("fuzzy:" + fuzzy_year)
-        if fuzzy_year == '0': fuzzy_string = "None"
-        elif fuzzy_year == '1': fuzzy_string = "Remove Year"
-        elif fuzzy_year == '2': fuzzy_string = "Fuzzy Year"
-
 #--- this is for multipe search terms............
 #--- works, just need to redo search.py to accomodate multiple search terms
 #        ffs_alt = []
@@ -648,14 +661,22 @@ class WebInterface(object):
         asearch = str(alt_search)
 
         controlValueDict = {'ComicID': ComicID}
-        newValues = {"ComicLocation":        com_location,
-                     "AlternateSearch":      str(asearch),
-                     "UseFuzzy":             fuzzy_year }
+        newValues = {"ComicLocation":        com_location }
                      #"QUALalt_vers":         qual_altvers,
                      #"QUALScanner":          qual_scanner,
                      #"QUALtype":             qual_type,
                      #"QUALquality":          qual_quality
                      #}
+        if asearch is not None:
+            if asearch == '':
+                newValues['AlternateSearch'] = "None"
+            else:
+                newValues['AlternateSearch'] = str(asearch)
+
+        if fuzzy_year is None:
+            newValues['UseFuzzy'] = "0"
+        else:
+            newValues['UseFuzzy'] = str(fuzzy_year)
 
         #force the check/creation of directory com_location here
         if os.path.isdir(str(com_location)):
@@ -672,11 +693,11 @@ class WebInterface(object):
         raise cherrypy.HTTPRedirect("artistPage?ComicID=%s" % ComicID)
     comic_config.exposed = True
     
-    def configUpdate(self, http_host='0.0.0.0', http_username=None, http_port=8090, http_password=None, launch_browser=0, logverbose=0, download_scan_interval=None, nzb_search_interval=None, libraryscan_interval=None,
+    def configUpdate(self, http_host='0.0.0.0', http_username=None, http_port=8090, http_password=None, launch_browser=0, logverbose=0, download_scan_interval=None, nzb_search_interval=None, nzb_startup_search=0, libraryscan_interval=None,
         sab_host=None, sab_username=None, sab_apikey=None, sab_password=None, sab_category=None, sab_priority=None, log_dir=None, blackhole=0, blackhole_dir=None,
         usenet_retention=None, nzbsu=0, nzbsu_apikey=None, dognzb=0, dognzb_apikey=None, nzbx=0, newznab=0, newznab_host=None, newznab_apikey=None, newznab_enabled=0,
         raw=0, raw_provider=None, raw_username=None, raw_password=None, raw_groups=None, experimental=0, 
-        preferred_quality=0, move_files=0, rename_files=0, folder_format=None, file_format=None, enable_extra_scripts=0, extra_scripts=None, enable_pre_scripts=0, pre_scripts=None,
+        preferred_quality=0, move_files=0, rename_files=0, add_to_csv=1, lowercase_filenames=0, folder_format=None, file_format=None, enable_extra_scripts=0, extra_scripts=None, enable_pre_scripts=0, pre_scripts=None,
         destination_dir=None, replace_spaces=0, replace_char=None, use_minsize=0, minsize=None, use_maxsize=0, maxsize=None, autowant_all=0, autowant_upcoming=0, comic_cover_local=0, zero_level=0, zero_level_n=None, interface=None, **kwargs):
         mylar.HTTP_HOST = http_host
         mylar.HTTP_PORT = http_port
@@ -686,6 +707,7 @@ class WebInterface(object):
         mylar.LOGVERBOSE = logverbose
         mylar.DOWNLOAD_SCAN_INTERVAL = download_scan_interval
         mylar.SEARCH_INTERVAL = nzb_search_interval
+        mylar.NZB_STARTUP_SEARCH = nzb_startup_search
         mylar.LIBRARYSCAN_INTERVAL = libraryscan_interval
         mylar.SAB_HOST = sab_host
         mylar.SAB_USERNAME = sab_username
@@ -718,6 +740,8 @@ class WebInterface(object):
         mylar.REPLACE_CHAR = replace_char
         mylar.ZERO_LEVEL = zero_level
         mylar.ZERO_LEVEL_N = zero_level_n
+        mylar.ADD_TO_CSV = add_to_csv
+        mylar.LOWERCASE_FILENAMES = lowercase_filenames
         mylar.USE_MINSIZE = use_minsize
         mylar.MINSIZE = minsize
         mylar.USE_MAXSIZE = use_maxsize

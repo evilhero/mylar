@@ -93,6 +93,7 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate):
         logger.fdebug("Available to be marked for download - checking..." + str(issuechk['ComicName']) + " Issue: " + str(issuechk['Issue_Number']))
         logger.fdebug("...Existing status: " + str(issuechk['Status']))
         control = {"IssueID":   issuechk['IssueID']}
+        newValue['IssueID'] = issuechk['IssueID']
         if issuechk['Status'] == "Snatched":
             values = { "Status":   "Snatched"}
             newValue['Status'] = "Snatched"
@@ -106,7 +107,7 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate):
             values = { "Status":    "Skipped"}
             newValue['Status'] = "Skipped"
         #was in wrong place :(
-    if mylar.AUTOWANT_UPCOMING: 
+    if mylar.AUTOWANT_UPCOMING:
         #for issues not in db - to be added to Upcoming table.
         if issuechk is None:
             newValue['Status'] = "Wanted"
@@ -256,11 +257,11 @@ def forceRescan(ComicID):
                 while (som < fcn):
                     #counts get buggered up when the issue is the last field in the filename - ie. '50.cbr'
                     #logger.fdebug("checking word - " + str(fcnew[som]))
-                    if ".cbr" in fcnew[som]:
+                    if ".cbr" in fcnew[som].lower():
                         fcnew[som] = fcnew[som].replace(".cbr", "")
-                    elif ".cbz" in fcnew[som]:
+                    elif ".cbz" in fcnew[som].lower():
                         fcnew[som] = fcnew[som].replace(".cbz", "")
-                    if "(c2c)" in fcnew[som]:
+                    if "(c2c)" in fcnew[som].lower():
                         fcnew[som] = fcnew[som].replace("(c2c)", " ")
                         get_issue = shlex.split(str(fcnew[som]))
                         if fcnew[som] != " ":
@@ -272,7 +273,7 @@ def forceRescan(ComicID):
                         except ValueError, TypeError:
                             #not numeric
                             fcnew[som] = fcnew[som].replace(".", "")
-                            #logger.fdebug("new word: " + str(fcnew[som]))
+                            #logger.fdebug("NOT NUMERIC - new word: " + str(fcnew[som]))
                         else:
                             #numeric
                             pass
@@ -354,7 +355,6 @@ def forceRescan(ComicID):
                         #else:
                         # if the issue # matches, but there is no year present - still match.
                         # determine a way to match on year if present, or no year (currently).
-
                     som+=1
                 if haveissue == "yes": break
                 n+=1
@@ -378,13 +378,16 @@ def forceRescan(ComicID):
                 issStatus = "Wanted"
             else:
                 issStatus = "Skipped"
+            controlValueDict = {"IssueID": reiss['IssueID']}
+            newValueDict = {"Status":    issStatus }
+
         elif haveissue == "yes":
             issStatus = "Downloaded"
-        controlValueDict = {"IssueID":  reiss['IssueID']}
-        newValueDict = {"Location":           isslocation,
-                        "ComicSize":          issSize,
-                        "Status":             issStatus
-                        }
+            controlValueDict = {"IssueID":  reiss['IssueID']}
+            newValueDict = {"Location":           isslocation,
+                            "ComicSize":          issSize,
+                            "Status":             issStatus
+                            }
         myDB.upsert("issues", newValueDict, controlValueDict)
         fn+=1
 

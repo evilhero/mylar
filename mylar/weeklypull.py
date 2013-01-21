@@ -34,7 +34,9 @@ def pullit():
     popit = myDB.select("SELECT count(*) FROM sqlite_master WHERE name='weekly' and type='table'")
     if popit:
         try:
-            pulldate = myDB.action("SELECT SHIPDATE from weekly").fetchone()
+            pull_date = myDB.action("SELECT SHIPDATE from weekly").fetchone()
+            logger.info(u"Weekly pull list present - checking if it's up-to-date..")
+            pulldate = pull_date['SHIPDATE']
         except sqlite3.OperationalError, msg:
             conn=sqlite3.connect(mylar.DB_FILE)
             c=conn.cursor()
@@ -130,6 +132,8 @@ def pullit():
                         logger.info(u"No new pull-list available - will re-check again in 24 hours.")
                         pullitcheck()
                         return
+                    else:
+                        logger.info(u"Preparing to update to the new listing.")
                 break    
         else:
             for yesyes in checkit:
@@ -273,6 +277,7 @@ def pullit():
                     newtxtfile.write(str(shipdate) + '\t' + str(pub) + '\t' + str(issue) + '\t' + str(comicnm) + '\t' + str(comicrm) + '\tSkipped' + '\n')
                 prevcomic = str(comicnm)
                 previssue = str(issue)
+    logger.info(u"Populating the NEW Weekly Pull list into Mylar.")
     newtxtfile.close()
 
     mylardb = os.path.join(mylar.DATA_DIR, "mylar.db")
@@ -304,6 +309,7 @@ def pullit():
     csvfile.close()
     connection.commit()
     connection.close()
+    logger.info(u"Weekly Pull List successfully loaded.")
     #let's delete the files
     pullpath = str(mylar.CACHE_DIR) + "/"
     os.remove( str(pullpath) + "Clean-newreleases.txt" )
@@ -311,6 +317,7 @@ def pullit():
     pullitcheck()
 
 def pullitcheck(comic1off_name=None,comic1off_id=None):
+    logger.info(u"Checking the Weekly Releases list for comics I'm watching...")
     myDB = db.DBConnection()
 
     not_t = ['TP',
@@ -326,6 +333,7 @@ def pullitcheck(comic1off_name=None,comic1off_id=None):
     unlines = []
     llen = []
     ccname = []
+    pubdate = []
     w = 0
     tot = 0
     chkout = []
@@ -353,25 +361,28 @@ def pullitcheck(comic1off_name=None,comic1off_id=None):
             w = 1            
         else:
             #let's read in the comic.watchlist from the db here
-            cur.execute("SELECT ComicID, ComicName, ComicYear, ComicPublisher from comics")
+            cur.execute("SELECT ComicID, ComicName, ComicYear, ComicPublisher, ComicPublished from comics")
             while True:
                 watchd = cur.fetchone()
                 #print ("watchd: " + str(watchd))
                 if watchd is None:
                     break
-                a_list.append(watchd[1])
-                b_list.append(watchd[2])
-                comicid.append(watchd[0])
-                #print ( "Comic:" + str(a_list[w]) + " Year: " + str(b_list[w]) )
-                #if "WOLVERINE AND THE X-MEN" in str(a_list[w]): a_list[w] = "WOLVERINE AND X-MEN"
-                lines.append(a_list[w].strip())
-                unlines.append(a_list[w].strip())
-                llen.append(a_list[w].splitlines())
-                ccname.append(a_list[w].strip())
-                tmpwords = a_list[w].split(None)
-                ltmpwords = len(tmpwords)
-                ltmp = 1
-                w+=1
+                if 'Present' in watchd[4]:
+                 # let's not even bother with comics that are in the Present.
+                    a_list.append(watchd[1])
+                    b_list.append(watchd[2])
+                    comicid.append(watchd[0])
+                    pubdate.append(watchd[4])
+                    #print ( "Comic:" + str(a_list[w]) + " Year: " + str(b_list[w]) )
+                    #if "WOLVERINE AND THE X-MEN" in str(a_list[w]): a_list[w] = "WOLVERINE AND X-MEN"
+                    lines.append(a_list[w].strip())
+                    unlines.append(a_list[w].strip())
+                    llen.append(a_list[w].splitlines())
+                    ccname.append(a_list[w].strip())
+                    tmpwords = a_list[w].split(None)
+                    ltmpwords = len(tmpwords)
+                    ltmp = 1
+                    w+=1
         cnt = int(w-1)
         cntback = int(w-1)
         kp = []
@@ -473,6 +484,6 @@ def pullitcheck(comic1off_name=None,comic1off_id=None):
         logger.fdebug("There are " + str(otot) + " comics this week to get!")
         #print ("However I've already grabbed " + str(btotal) )
         #print ("I need to get " + str(tot) + " comic(s)!" )
-
+        logger.info(u"Finished checking for comics on my watchlist.")
     #con.close()
     return

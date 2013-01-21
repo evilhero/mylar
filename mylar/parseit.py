@@ -32,10 +32,10 @@ def GCDScraper(ComicName, ComicYear, Total, ComicID):
     comicyr = ComicYear
     comicis = Total
     comicid = ComicID
-    print ( "comicname: " + str(comicnm) )
-    print ( "comicyear: " + str(comicyr) )
-    print ( "comichave: " + str(comicis) )
-    print ( "comicid: " + str(comicid) )
+    #print ( "comicname: " + str(comicnm) )
+    #print ( "comicyear: " + str(comicyr) )
+    #print ( "comichave: " + str(comicis) )
+    #print ( "comicid: " + str(comicid) )
     comicnm = re.sub(' ', '+', comicnm)
     input = 'http://www.comics.org/search/advanced/process/?target=series&method=icontains&logic=False&order2=date&order3=&start_date=' + str(comicyr) + '-01-01&end_date=' + str(NOWyr) + '-12-31&series=' + str(comicnm) + '&is_indexed=None'
     response = urllib2.urlopen ( input )
@@ -331,7 +331,21 @@ def GCDdetails(comseries, resultURL, vari_loop, ComicID, TotalIssues, issvariati
                     gcdinfo['gcdchoice'] = gcdchoice
 
                 else:
-                    pass
+                    #--if 2 identical issue numbers legitimately exist, but have different
+                    #--publication dates, try to distinguish
+                    logger.fdebug("2 identical issue #'s have been found...determining if it's intentional.")
+                    #get current issue & publication date.
+                    logger.fdebug("Issue #:" + str(gcdinfo['ComicIssue']))
+                    logger.fdebug("IssueDate: " + str(gcdinfo['ComicDate']))
+                    #get conflicting issue from tuple
+                    for d in gcdchoice:
+                        if str(d['GCDIssue']) == str(gcdinfo['ComicIssue']):
+                            logger.fdebug("Issue # already in tuple - checking IssueDate:" + str(d['GCDDate']) )
+                            if str(d['GCDDate']) == str(gcdinfo['ComicDate']):
+                                logger.fdebug("Issue #'s and dates match...skipping.")
+                            else:
+                                logger.fdebug("Issue#'s match but different publication dates, not skipping.")
+                    #pass
                     #logger.fdebug("Duplicate issue detected in DB - ignoring subsequent issue # " + str(gcdinfo['ComicIssue']))
 
                 PI = ParseIssue
@@ -462,9 +476,9 @@ def ComChk(ComicName, ComicYear, ComicPublisher, Total, ComicID):
         if pb in comicpub:
             #keep publisher in url if a biggie.    
             uhuh = "yes"
-            print (" publisher match : " + str(comicpub))
+            #print (" publisher match : " + str(comicpub))
             conv_pub = comicpub.split()[0]
-            print (" converted publisher to : " + str(conv_pub))
+            #print (" converted publisher to : " + str(conv_pub))
     #1st run setup - leave it all as it is.
     comicrun.append(comicnm)
     cruncnt = 0
@@ -479,40 +493,27 @@ def ComChk(ComicName, ComicYear, ComicPublisher, Total, ComicID):
         cruncnt+=1
     totalcount = 0
     cr = 0
-    print ("cruncnt is " + str(cruncnt))
+    #print ("cruncnt is " + str(cruncnt))
     while (cr <= cruncnt):
-        print ("cr is " + str(cr))
+        #print ("cr is " + str(cr))
         comicnm = comicrun[cr]
         #leaving spaces in will screw up the search...let's take care of it
         comicnm = re.sub(' ', '+', comicnm)
-        print ("comicnm: " + str(comicnm))
-        #input = 'http://www.comics.org/series/name/' + str(comicnm) + '/sort/alpha'
+        #print ("comicnm: " + str(comicnm))
         if uhuh == "yes":
             publink = "&pub_name=" + str(conv_pub)
         if uhuh == "no":
             publink = "&pub_name="
-#        input = 'http://www.comics.org/search/advanced/process/?target=series&method=icontains&logic=False&order2=date&order3=&start_date=' + str(comicyr) + '-01-01&end_date=' + str(NOWyr) + '-12-31&series=' + str(comicnm) + str(publink) + '&is_indexed=None'
         input = 'http://www.comics.org/search/advanced/process/?target=series&method=icontains&logic=False&keywords=&order1=series&order2=date&order3=&start_date=' + str(comicyr) + '-01-01&end_date=' + str(NOWyr) + '-12-31' + '&title=&feature=&job_number=&pages=&script=&pencils=&inks=&colors=&letters=&story_editing=&genre=&characters=&synopsis=&reprint_notes=&story_reprinted=None&notes=' + str(publink) + '&pub_notes=&brand=&brand_notes=&indicia_publisher=&is_surrogate=None&ind_pub_notes=&series=' + str(comicnm) + '&series_year_began=&series_notes=&tracking_notes=&issue_count=&is_comics=None&format=&color=&dimensions=&paper_stock=&binding=&publishing_format=&issues=&volume=&issue_title=&variant_name=&issue_date=&indicia_frequency=&price=&issue_pages=&issue_editing=&isbn=&barcode=&issue_notes=&issue_reprinted=None&is_indexed=None'
-        print ("input: " + str(input))
         response = urllib2.urlopen ( input )
         soup = BeautifulSoup ( response)
         cnt1 = len(soup.findAll("tr", {"class" : "listing_even"}))
         cnt2 = len(soup.findAll("tr", {"class" : "listing_odd"}))
 
-        try:
-            cntit = soup.find("div", {"class" : "item_data"})
-#            catchit = pubst('a')[0]
-
-        except (IndexError, TypeError):
-            cntit = soup.findAll("div", {"class" : "left"})[1]
-#            catchit = pubst.find("a")
-
-        truecnt = cntit.findNext(text=True)
         cnt = int(cnt1 + cnt2)
-        print ("truecnt: " + str(truecnt))
-        print ("cnt1: " + str(cnt1))
-        print ("cnt2: " + str(cnt2))
-        print (str(cnt) + " results")
+#        print ("cnt1: " + str(cnt1))
+#        print ("cnt2: " + str(cnt2))
+#        print (str(cnt) + " results")
 
         resultName = []
         resultID = []
@@ -532,11 +533,11 @@ def ComChk(ComicName, ComicYear, ComicPublisher, Total, ComicID):
                 resultp = soup.findAll("tr", {"class" : "listing_odd"})[n_odd]
             rtp = resultp('a')[1]
             resultName.append(helpers.cleanName(rtp.findNext(text=True)))
-            print ( "Comic Name: " + str(resultName[n]) )
+#            print ( "Comic Name: " + str(resultName[n]) )
 
             pub = resultp('a')[0]
             resultPublisher.append(pub.findNext(text=True))
-            print ( "Publisher: " + str(resultPublisher[n]) )
+#            print ( "Publisher: " + str(resultPublisher[n]) )
 
             fip = resultp('a',href=True)[1]
             resultID.append(fip['href'])
@@ -553,19 +554,9 @@ def ComChk(ComicName, ComicYear, ComicPublisher, Total, ComicID):
             resultIssues[n] = resultIssues[n].replace(' ','')
 #            print ( "Year: " + str(resultYear[n]) )
 #            print ( "Issues: " + str(resultIssues[n]) )
-            print ("comchkchoice: " + str(comchkchoice))
-#            if (cr == 0 and n == 0) or (comchkchoice is None):
-#                print ("initial add.")
-#                comchkchoice.append({
-#                       "ComicID":         str(comicid),
-#                       "ComicName":       str(resultName[n]),
-#                       "GCDID":           str(resultID[n]),
-#                       "ComicYear" :      str(resultYear[n]),
-#                       "ComicPublisher" : str(resultPublisher[n]),
-#                       "ComicIssues" :    str(resultIssues[n])
-#                       })
+#            print ("comchkchoice: " + str(comchkchoice))
             if not any(d.get('GCDID', None) == str(resultID[n]) for d in comchkchoice):
-                print ( str(resultID[n]) + " not in DB...adding.")
+                #print ( str(resultID[n]) + " not in DB...adding.")
                 comchkchoice.append({
                        "ComicID":         str(comicid),
                        "ComicName":       str(resultName[n]),
@@ -575,8 +566,8 @@ def ComChk(ComicName, ComicYear, ComicPublisher, Total, ComicID):
                        "ComicURL" :       "http://www.comics.org" + str(resultID[n]),
                        "ComicIssues" :    str(resultIssues[n])
                       })
-            else:
-                print ( str(resultID[n]) + " already in DB...skipping" ) 
+            #else:
+                #print ( str(resultID[n]) + " already in DB...skipping" ) 
             n+=1
         cr+=1
     totalcount= totalcount + cnt

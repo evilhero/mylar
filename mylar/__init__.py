@@ -22,6 +22,7 @@ import webbrowser
 import sqlite3
 import itertools
 import csv
+import shutil
 
 from lib.apscheduler.scheduler import Scheduler
 from lib.configobj import ConfigObj
@@ -85,6 +86,7 @@ USENET_RETENTION = None
 ADD_COMICS = False
 
 SEARCH_INTERVAL = 360
+NZB_STARTUP_SEARCH = False
 LIBRARYSCAN_INTERVAL = 300
 DOWNLOAD_SCAN_INTERVAL = 5
 INTERFACE = None
@@ -104,6 +106,7 @@ REPLACE_SPACES = False
 REPLACE_CHAR = None
 ZERO_LEVEL = False
 ZERO_LEVEL_N = None
+LOWERCASE_FILENAME = False
 USE_MINSIZE = False
 MINSIZE = None
 USE_MAXSIZE = False
@@ -111,6 +114,7 @@ MAXSIZE = None
 AUTOWANT_UPCOMING = True
 AUTOWANT_ALL = False
 COMIC_COVER_LOCAL = False
+ADD_TO_CSV = True
 
 SAB_HOST = None
 SAB_USERNAME = None
@@ -206,12 +210,12 @@ def initialize():
         global __INITIALIZED__, FULL_PATH, PROG_DIR, VERBOSE, DAEMON, DATA_DIR, CONFIG_FILE, CFG, CONFIG_VERSION, LOG_DIR, CACHE_DIR, LOGVERBOSE, \
                 HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, LAUNCH_BROWSER, GIT_PATH, \
                 CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, MUSIC_DIR, DESTINATION_DIR, \
-                DOWNLOAD_DIR, USENET_RETENTION, SEARCH_INTERVAL, INTERFACE, AUTOWANT_ALL, AUTOWANT_UPCOMING, ZERO_LEVEL, ZERO_LEVEL_N, COMIC_COVER_LOCAL, \
+                DOWNLOAD_DIR, USENET_RETENTION, SEARCH_INTERVAL, NZB_STARTUP_SEARCH, INTERFACE, AUTOWANT_ALL, AUTOWANT_UPCOMING, ZERO_LEVEL, ZERO_LEVEL_N, COMIC_COVER_LOCAL, \
                 LIBRARYSCAN_INTERVAL, DOWNLOAD_SCAN_INTERVAL, SAB_HOST, SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_PRIORITY, BLACKHOLE, BLACKHOLE_DIR, \
                 NZBSU, NZBSU_APIKEY, DOGNZB, DOGNZB_APIKEY, NZBX,\
                 NEWZNAB, NEWZNAB_HOST, NEWZNAB_APIKEY, NEWZNAB_ENABLED, EXTRA_NEWZNABS,\
                 RAW, RAW_PROVIDER, RAW_USERNAME, RAW_PASSWORD, RAW_GROUPS, EXPERIMENTAL, \
-                PREFERRED_QUALITY, MOVE_FILES, RENAME_FILES, USE_MINSIZE, MINSIZE, USE_MAXSIZE, MAXSIZE, CORRECT_METADATA, FOLDER_FORMAT, FILE_FORMAT, REPLACE_CHAR, REPLACE_SPACES, \
+                PREFERRED_QUALITY, MOVE_FILES, RENAME_FILES, LOWERCASE_FILENAMES, USE_MINSIZE, MINSIZE, USE_MAXSIZE, MAXSIZE, CORRECT_METADATA, FOLDER_FORMAT, FILE_FORMAT, REPLACE_CHAR, REPLACE_SPACES, ADD_TO_CSV, \
                 COMIC_LOCATION, QUAL_ALTVERS, QUAL_SCANNER, QUAL_TYPE, QUAL_QUALITY, ENABLE_EXTRA_SCRIPTS, EXTRA_SCRIPTS, ENABLE_PRE_SCRIPTS, PRE_SCRIPTS
                 
         if __INITIALIZED__:
@@ -243,6 +247,8 @@ def initialize():
         LOGVERBOSE = bool(check_setting_int(CFG, 'General', 'logverbose', 1))
         GIT_PATH = check_setting_str(CFG, 'General', 'git_path', '')
         LOG_DIR = check_setting_str(CFG, 'General', 'log_dir', '')
+        if not CACHE_DIR:
+            CACHE_DIR = check_setting_str(CFG, 'General', 'cache_dir', '')
         
         CHECK_GITHUB = bool(check_setting_int(CFG, 'General', 'check_github', 1))
         CHECK_GITHUB_ON_STARTUP = bool(check_setting_int(CFG, 'General', 'check_github_on_startup', 1))
@@ -252,13 +258,14 @@ def initialize():
         USENET_RETENTION = check_setting_int(CFG, 'General', 'usenet_retention', '1500')
         
         SEARCH_INTERVAL = check_setting_int(CFG, 'General', 'search_interval', 360)
+        NZB_STARTUP_SEARCH = bool(check_setting_int(CFG, 'General', 'nzb_startup_search', 0))
         LIBRARYSCAN_INTERVAL = check_setting_int(CFG, 'General', 'libraryscan_interval', 300)
         DOWNLOAD_SCAN_INTERVAL = check_setting_int(CFG, 'General', 'download_scan_interval', 5)
         INTERFACE = check_setting_str(CFG, 'General', 'interface', 'default')
         AUTOWANT_ALL = bool(check_setting_int(CFG, 'General', 'autowant_all', 0))
         AUTOWANT_UPCOMING = bool(check_setting_int(CFG, 'General', 'autowant_upcoming', 1))
         COMIC_COVER_LOCAL = bool(check_setting_int(CFG, 'General', 'comic_cover_local', 0))
-        PREFERRED_QUALITY = check_setting_int(CFG, 'General', 'preferred_quality', 0)
+        PREFERRED_QUALITY = bool(check_setting_int(CFG, 'General', 'preferred_quality', 0))
         CORRECT_METADATA = bool(check_setting_int(CFG, 'General', 'correct_metadata', 0))
         MOVE_FILES = bool(check_setting_int(CFG, 'General', 'move_files', 0))
         RENAME_FILES = bool(check_setting_int(CFG, 'General', 'rename_files', 0))
@@ -270,10 +277,12 @@ def initialize():
         REPLACE_CHAR = check_setting_str(CFG, 'General', 'replace_char', '')
         ZERO_LEVEL = bool(check_setting_int(CFG, 'General', 'zero_level', 0))
         ZERO_LEVEL_N = check_setting_str(CFG, 'General', 'zero_level_n', '')
+        LOWERCASE_FILENAMES = bool(check_setting_int(CFG, 'General', 'lowercase_filenames', 0))
         USE_MINSIZE = bool(check_setting_int(CFG, 'General', 'use_minsize', 0))
         MINSIZE = check_setting_str(CFG, 'General', 'minsize', '')
         USE_MAXSIZE = bool(check_setting_int(CFG, 'General', 'use_maxsize', 0))
         MAXSIZE = check_setting_str(CFG, 'General', 'maxsize', '')
+        ADD_TO_CSV = bool(check_setting_int(CFG, 'General', 'add_to_csv', 1))
 
         ENABLE_EXTRA_SCRIPTS = bool(check_setting_int(CFG, 'General', 'enable_extra_scripts', 0))
         EXTRA_SCRIPTS = check_setting_str(CFG, 'General', 'extra_scripts', '')
@@ -374,7 +383,9 @@ def initialize():
         logger.mylar_log.initLogger(verbose=VERBOSE)
 
         # Put the cache dir in the data dir for now
-        CACHE_DIR = os.path.join(DATA_DIR, 'cache')
+        if not CACHE_DIR:
+            CACHE_DIR = os.path.join(str(DATA_DIR), 'cache')
+        logger.info("cache set to : " + str(CACHE_DIR))
         if not os.path.exists(CACHE_DIR):
             try:
                os.makedirs(CACHE_DIR)
@@ -473,8 +484,6 @@ def config_write():
     new_config = ConfigObj()
     new_config.filename = CONFIG_FILE
 
-    print ("falalal")
-
     new_config['General'] = {}
     new_config['General']['config_version'] = CONFIG_VERSION
     new_config['General']['http_port'] = HTTP_PORT
@@ -486,6 +495,7 @@ def config_write():
     new_config['General']['log_dir'] = LOG_DIR
     new_config['General']['logverbose'] = int(LOGVERBOSE)
     new_config['General']['git_path'] = GIT_PATH
+    new_config['General']['cache_dir'] = CACHE_DIR
     
     new_config['General']['check_github'] = int(CHECK_GITHUB)
     new_config['General']['check_github_on_startup'] = int(CHECK_GITHUB_ON_STARTUP)
@@ -495,13 +505,14 @@ def config_write():
     new_config['General']['usenet_retention'] = USENET_RETENTION
 
     new_config['General']['search_interval'] = SEARCH_INTERVAL
+    new_config['General']['nzb_startup_search'] = int(NZB_STARTUP_SEARCH)
     new_config['General']['libraryscan_interval'] = LIBRARYSCAN_INTERVAL
     new_config['General']['download_scan_interval'] = DOWNLOAD_SCAN_INTERVAL
     new_config['General']['interface'] = INTERFACE
-    new_config['General']['autowant_all'] = AUTOWANT_ALL
-    new_config['General']['autowant_upcoming'] = AUTOWANT_UPCOMING
-    new_config['General']['preferred_quality'] = PREFERRED_QUALITY
-    new_config['General']['comic_cover_local'] = COMIC_COVER_LOCAL
+    new_config['General']['autowant_all'] = int(AUTOWANT_ALL)
+    new_config['General']['autowant_upcoming'] = int(AUTOWANT_UPCOMING)
+    new_config['General']['preferred_quality'] = int(PREFERRED_QUALITY)
+    new_config['General']['comic_cover_local'] = int(COMIC_COVER_LOCAL)
     new_config['General']['correct_metadata'] = int(CORRECT_METADATA)
     new_config['General']['move_files'] = int(MOVE_FILES)
     new_config['General']['rename_files'] = int(RENAME_FILES)
@@ -513,10 +524,12 @@ def config_write():
     new_config['General']['replace_char'] = REPLACE_CHAR
     new_config['General']['zero_level'] = int(ZERO_LEVEL)
     new_config['General']['zero_level_n'] = ZERO_LEVEL_N
+    new_config['General']['lowercase_filenames'] = LOWERCASE_FILENAMES
     new_config['General']['use_minsize'] = int(USE_MINSIZE)
     new_config['General']['minsize'] = MINSIZE
     new_config['General']['use_maxsize'] = int(USE_MAXSIZE)
     new_config['General']['maxsize'] = MAXSIZE
+    new_config['General']['add_to_csv'] = int(ADD_TO_CSV)
 
     new_config['General']['enable_extra_scripts'] = int(ENABLE_EXTRA_SCRIPTS)
     new_config['General']['extra_scripts'] = EXTRA_SCRIPTS
@@ -588,8 +601,9 @@ def start():
         #now the scheduler (check every 24 hours)
         SCHED.add_interval_job(weeklypull.pullit, hours=24)
         
-        #let's do a run at the Wanted issues here (on startup).
-        threading.Thread(target=search.searchforissue).start()
+        #let's do a run at the Wanted issues here (on startup) if enabled.
+        if NZB_STARTUP_SEARCH:
+            threading.Thread(target=search.searchforissue).start()
 
         if CHECK_GITHUB:
             SCHED.add_interval_job(versioncheck.checkGithub, minutes=CHECK_GITHUB_INTERVAL)
@@ -690,7 +704,12 @@ def csv_load():
                 csvfile = open(str(EXCEPTIONS_FILE), "rb")
             except (OSError,IOError):
                 if i == 1:
-                    logger.error("No Custom Exceptions found. Using base exceptions only.")
+                    logger.info("No Custom Exceptions found - Using base exceptions only. Creating blank custom_exceptions for your personal use.")
+                    try:
+                        shutil.copy(os.path.join(DATA_DIR,"custom_exceptions_sample.csv"), EXCEPTIONS_FILE)
+                    except (OSError,IOError):
+                        logger.error("Cannot create custom_exceptions.csv in " + str(DATA_DIR) + ". Make sure _sample.csv is present and/or check permissions.")
+                        return  
                 else:
                     logger.error("Could not locate " + str(EXCEPTIONS[i]) + " file. Make sure it's in datadir: " + DATA_DIR)
                 break
