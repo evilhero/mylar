@@ -14,16 +14,17 @@
 #  along with Mylar.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from bs4 import BeautifulSoup 
+from bs4 import BeautifulSoup, UnicodeDammit 
 import urllib2 
 import re 
 import helpers 
 import logger 
 import datetime 
+import sys
 from decimal import Decimal 
 from HTMLParser import HTMLParseError
 
-def GCDScraper(ComicName, ComicYear, Total, ComicID):
+def GCDScraper(ComicName, ComicYear, Total, ComicID, quickmatch=None):
     NOWyr = datetime.date.today().year
     if datetime.date.today().month == 12:
         NOWyr = NOWyr + 1
@@ -148,8 +149,11 @@ def GCDScraper(ComicName, ComicYear, Total, ComicID):
         if 'and' in ComicName.lower():
             ComicName = ComicName.replace('and', '&')
             return GCDScraper(ComicName, ComicYear, Total, ComicID)        
-        return 'No Match'
+        if not quickmatch: return 'No Match'
     #vari_loop = 0
+    if quickmatch == "yes":
+        if resultURL is None: return 'No Match'
+        else: return 'Match'
     return GCDdetails(comseries=None, resultURL=resultURL, vari_loop=0, ComicID=ComicID, TotalIssues=TotalIssues, issvariation=issvariation, resultPublished=resultPublished)
 
 
@@ -179,8 +183,17 @@ def GCDdetails(comseries, resultURL, vari_loop, ComicID, TotalIssues, issvariati
             # let's pull down the publication date as it'll be blank otherwise
             inputMIS = 'http://www.comics.org' + str(resultURL)
             resp = urllib2.urlopen ( inputMIS )
-            soup = BeautifulSoup ( resp )
-
+#            soup = BeautifulSoup ( resp )
+            try:
+                soup = BeautifulSoup(urllib2.urlopen(inputMIS))
+            except UnicodeDecodeError:
+                logger.info("I've detected your system is using: " + sys.stdout.encoding)
+                logger.info("unable to parse properly due to utf-8 problem, ignoring wrong symbols")
+                try:
+                    soup = BeautifulSoup(urllib2.urlopen(inputMIS)).decode('utf-8', 'ignore')
+                except UnicodeDecodeError:
+                    logger.info("not working...aborting. Tell Evilhero.")
+                    return
             parsed = soup.find("div", {"id" : "series_data"})
             subtxt3 = parsed.find("dd", {"id" : "publication_dates"})
             resultPublished = subtxt3.findNext(text=True).rstrip()
@@ -195,8 +208,8 @@ def GCDdetails(comseries, resultURL, vari_loop, ComicID, TotalIssues, issvariati
         #print ("resultURL:" + str(resultURL))
         #print ("comicID:" + str(ComicID))
         input2 = 'http://www.comics.org' + str(resultURL) + 'details/'
-        resp = urllib2.urlopen ( input2 )
-        soup = BeautifulSoup ( resp )
+        resp = urllib2.urlopen(input2)
+        soup = BeautifulSoup(resp)
 
         #for newer comics, on-sale date has complete date...
         #for older comics, pub.date is to be used
@@ -239,11 +252,16 @@ def GCDdetails(comseries, resultURL, vari_loop, ComicID, TotalIssues, issvariati
             #print ( "ID: " + str(resultID) )
 
             if ',' in ParseIssue: ParseIssue = re.sub("\,", "", ParseIssue)
+            #print ("ParseIssue before : " + str(ParseIssue))
+            if 'Vol' in ParseIssue or '[' in ParseIssue: 
+                ParseIssue = re.sub("[^0-9]", "", ParseIssue)
             isslen = ParseIssue.find(' ')
             #if 'isslen' exists, it means that it's an alternative cover.
             #however, if ONLY alternate covers exist of an issue it won't work.
             #let's use the FIRST record, and ignore all other covers for the given issue.
             isschk = ParseIssue[:isslen]
+            #print ("Parse is now: " + str(isschk))
+
             #check if decimal or '1/2' exists or not, and store decimal results
             halfchk = "no"
             if '.' in isschk:
@@ -309,6 +327,7 @@ def GCDdetails(comseries, resultURL, vari_loop, ComicID, TotalIssues, issvariati
                         ParseDate = "0000-00-00"
                 #ParseDate = ParseDate.replace('?','')
                 ParseDate = ParseDate.replace(' ','')
+                #print "Parse date: " + str(ParseDate)
                 gcdinfo['ComicDate'] = ParseDate
                 #^^ will retrieve date #
                 if not any(d.get('GCDIssue', None) == str(gcdinfo['ComicIssue']) for d in gcdchoice):
@@ -455,11 +474,11 @@ def ComChk(ComicName, ComicYear, ComicPublisher, Total, ComicID):
     comicis = Total
     comicid = ComicID
     comicpub = ComicPublisher
-    print ( "comicname: " + str(comicnm) )
-    print ( "comicyear: " + str(comicyr) )
-    print ( "comichave: " + str(comicis) )
-    print ( "comicpub: " + str(comicpub) )
-    print ( "comicid: " + str(comicid) )
+    #print ( "comicname: " + str(comicnm) )
+    #print ( "comicyear: " + str(comicyr) )
+    #print ( "comichave: " + str(comicis) )
+    #print ( "comicpub: " + str(comicpub) )
+    #print ( "comicid: " + str(comicid) )
     # do 3 runs at the comics.org search to get the best results
     comicrun = []
     # &pub_name=DC
@@ -574,3 +593,11 @@ def ComChk(ComicName, ComicYear, ComicPublisher, Total, ComicID):
     comchoice['comchkchoice'] = comchkchoice
     return comchoice, totalcount 
 
+def decode_html(html_string):
+    converted = UnicodeDammit(html_string, isHTML=True)
+    if not converted.unicode:
+        raise UnicodeDecodeError(
+            "Failed to detect encoding, tried [%s]",
+            ', '.join(converted.triedEncodings))
+    # print converted.originalEncoding
+    return converted.unicode

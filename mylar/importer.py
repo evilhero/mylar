@@ -343,6 +343,8 @@ def addComictoDB(comicid,mismatch=None,pullupd=None):
             #print ("Existing status : " + str(iss_exists['Status']))
             newValueDict['Status'] = iss_exists['Status']     
 
+        #logger.fdebug("newValueDict:" + str(newValueDict))
+            
         myDB.upsert("issues", newValueDict, controlValueDict)
         n+=1
 
@@ -363,6 +365,11 @@ def addComictoDB(comicid,mismatch=None,pullupd=None):
                    }
 
     myDB.upsert("comics", newValueStat, controlValueStat)
+
+    if mylar.CVINFO:
+        if not os.path.exists(comlocation + "/cvinfo"):
+            with open(comlocation + "/cvinfo","w") as text_file:
+                text_file.write("http://www.comicvine.com/" + str(comic['ComicName']).replace(" ", "-") + "/49-" + str(comicid))
   
     logger.info(u"Updating complete for: " + comic['ComicName'])
     
@@ -656,6 +663,11 @@ def GCDimport(gcomicid, pullupd=None):
                    }
 
     myDB.upsert("comics", newValueStat, controlValueStat)
+
+    if mylar.CVINFO:
+        if not os.path.exists(comlocation + "/cvinfo"):
+            with open(comlocation + "/cvinfo","w") as text_file:
+                text_file.write("http://www.comicvine.com/" + str(comic['ComicName']).replace(" ", "-") + "/49-" + str(comicid))
 
     logger.info(u"Updating complete for: " + ComicName)
 

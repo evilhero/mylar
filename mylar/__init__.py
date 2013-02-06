@@ -84,6 +84,10 @@ DESTINATION_DIR = None
 USENET_RETENTION = None
 
 ADD_COMICS = False
+COMIC_DIR = None
+LIBRARYSCAN = False
+IMP_MOVE = False
+IMP_RENAME = False
 
 SEARCH_INTERVAL = 360
 NZB_STARTUP_SEARCH = False
@@ -115,6 +119,8 @@ AUTOWANT_UPCOMING = True
 AUTOWANT_ALL = False
 COMIC_COVER_LOCAL = False
 ADD_TO_CSV = True
+SKIPPED2WANTED = False
+CVINFO = False
 
 SAB_HOST = None
 SAB_USERNAME = None
@@ -211,11 +217,11 @@ def initialize():
                 HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, LAUNCH_BROWSER, GIT_PATH, \
                 CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, MUSIC_DIR, DESTINATION_DIR, \
                 DOWNLOAD_DIR, USENET_RETENTION, SEARCH_INTERVAL, NZB_STARTUP_SEARCH, INTERFACE, AUTOWANT_ALL, AUTOWANT_UPCOMING, ZERO_LEVEL, ZERO_LEVEL_N, COMIC_COVER_LOCAL, \
-                LIBRARYSCAN_INTERVAL, DOWNLOAD_SCAN_INTERVAL, SAB_HOST, SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_PRIORITY, BLACKHOLE, BLACKHOLE_DIR, \
+                LIBRARYSCAN, LIBRARYSCAN_INTERVAL, DOWNLOAD_SCAN_INTERVAL, SAB_HOST, SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_PRIORITY, BLACKHOLE, BLACKHOLE_DIR, ADD_COMICS, COMIC_DIR, IMP_MOVE, IMP_RENAME, \
                 NZBSU, NZBSU_APIKEY, DOGNZB, DOGNZB_APIKEY, NZBX,\
                 NEWZNAB, NEWZNAB_HOST, NEWZNAB_APIKEY, NEWZNAB_ENABLED, EXTRA_NEWZNABS,\
                 RAW, RAW_PROVIDER, RAW_USERNAME, RAW_PASSWORD, RAW_GROUPS, EXPERIMENTAL, \
-                PREFERRED_QUALITY, MOVE_FILES, RENAME_FILES, LOWERCASE_FILENAMES, USE_MINSIZE, MINSIZE, USE_MAXSIZE, MAXSIZE, CORRECT_METADATA, FOLDER_FORMAT, FILE_FORMAT, REPLACE_CHAR, REPLACE_SPACES, ADD_TO_CSV, \
+                PREFERRED_QUALITY, MOVE_FILES, RENAME_FILES, LOWERCASE_FILENAMES, USE_MINSIZE, MINSIZE, USE_MAXSIZE, MAXSIZE, CORRECT_METADATA, FOLDER_FORMAT, FILE_FORMAT, REPLACE_CHAR, REPLACE_SPACES, ADD_TO_CSV, CVINFO, \
                 COMIC_LOCATION, QUAL_ALTVERS, QUAL_SCANNER, QUAL_TYPE, QUAL_QUALITY, ENABLE_EXTRA_SCRIPTS, EXTRA_SCRIPTS, ENABLE_PRE_SCRIPTS, PRE_SCRIPTS
                 
         if __INITIALIZED__:
@@ -259,7 +265,12 @@ def initialize():
         
         SEARCH_INTERVAL = check_setting_int(CFG, 'General', 'search_interval', 360)
         NZB_STARTUP_SEARCH = bool(check_setting_int(CFG, 'General', 'nzb_startup_search', 0))
+        LIBRARYSCAN = bool(check_setting_int(CFG, 'General', 'libraryscan', 1))
         LIBRARYSCAN_INTERVAL = check_setting_int(CFG, 'General', 'libraryscan_interval', 300)
+        ADD_COMICS = bool(check_setting_int(CFG, 'General', 'add_comics', 0))
+        COMIC_DIR = check_setting_str(CFG, 'General', 'comic_dir', '')
+        IMP_MOVE = bool(check_setting_int(CFG, 'General', 'imp_move', 0))
+        IMP_RENAME = bool(check_setting_int(CFG, 'General', 'imp_rename', 0))
         DOWNLOAD_SCAN_INTERVAL = check_setting_int(CFG, 'General', 'download_scan_interval', 5)
         INTERFACE = check_setting_str(CFG, 'General', 'interface', 'default')
         AUTOWANT_ALL = bool(check_setting_int(CFG, 'General', 'autowant_all', 0))
@@ -283,7 +294,7 @@ def initialize():
         USE_MAXSIZE = bool(check_setting_int(CFG, 'General', 'use_maxsize', 0))
         MAXSIZE = check_setting_str(CFG, 'General', 'maxsize', '')
         ADD_TO_CSV = bool(check_setting_int(CFG, 'General', 'add_to_csv', 1))
-
+        CVINFO = bool(check_setting_int(CFG, 'General', 'cvinfo', 0))
         ENABLE_EXTRA_SCRIPTS = bool(check_setting_int(CFG, 'General', 'enable_extra_scripts', 0))
         EXTRA_SCRIPTS = check_setting_str(CFG, 'General', 'extra_scripts', '')
 
@@ -506,7 +517,12 @@ def config_write():
 
     new_config['General']['search_interval'] = SEARCH_INTERVAL
     new_config['General']['nzb_startup_search'] = int(NZB_STARTUP_SEARCH)
+    new_config['General']['libraryscan'] = int(LIBRARYSCAN)
     new_config['General']['libraryscan_interval'] = LIBRARYSCAN_INTERVAL
+    new_config['General']['add_comics'] = int(ADD_COMICS)
+    new_config['General']['comic_dir'] = COMIC_DIR
+    new_config['General']['imp_move'] = int(IMP_MOVE)
+    new_config['General']['imp_rename'] = int(IMP_RENAME)
     new_config['General']['download_scan_interval'] = DOWNLOAD_SCAN_INTERVAL
     new_config['General']['interface'] = INTERFACE
     new_config['General']['autowant_all'] = int(AUTOWANT_ALL)
@@ -530,7 +546,7 @@ def config_write():
     new_config['General']['use_maxsize'] = int(USE_MAXSIZE)
     new_config['General']['maxsize'] = MAXSIZE
     new_config['General']['add_to_csv'] = int(ADD_TO_CSV)
-
+    new_config['General']['cvinfo'] = int(CVINFO)
     new_config['General']['enable_extra_scripts'] = int(ENABLE_EXTRA_SCRIPTS)
     new_config['General']['extra_scripts'] = EXTRA_SCRIPTS
     new_config['General']['enable_pre_scripts'] = int(ENABLE_PRE_SCRIPTS)
@@ -626,7 +642,7 @@ def dbcheck():
     c.execute('CREATE TABLE IF NOT EXISTS nzblog (IssueID TEXT, NZBName TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS weekly (SHIPDATE text, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text)')
 #    c.execute('CREATE TABLE IF NOT EXISTS sablog (nzo_id TEXT, ComicName TEXT, ComicYEAR TEXT, ComicIssue TEXT, name TEXT, nzo_complete TEXT)')
-
+    c.execute('CREATE TABLE IF NOT EXISTS importresults (ComicName TEXT, ComicYear TEXT, Status TEXT, ImportDate TEXT)')
     conn.commit
     c.close
     #new
@@ -672,8 +688,8 @@ def dbcheck():
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE comics ADD COLUMN UseFuzzy TEXT')
 
-    #let's delete errant comics that are stranded (ie. None)
-    c.execute("DELETE from COMICS WHERE ComicName='None'")
+    #let's delete errant comics that are stranded (ie. Comicname = Comic ID: )
+    c.execute("DELETE from COMICS WHERE ComicName='None' OR ComicName LIKE 'Comic ID%'")
     logger.info(u"Ensuring DB integrity - Removing all Erroneous Comics (ie. named None)")
 
     conn.commit()

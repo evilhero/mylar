@@ -37,7 +37,7 @@ def pullit():
             pull_date = myDB.action("SELECT SHIPDATE from weekly").fetchone()
             logger.info(u"Weekly pull list present - checking if it's up-to-date..")
             pulldate = pull_date['SHIPDATE']
-        except sqlite3.OperationalError, msg:
+        except (sqlite3.OperationalError, TypeError),msg:
             conn=sqlite3.connect(mylar.DB_FILE)
             c=conn.cursor()
             logger.info(u"Error Retrieving weekly pull list - attempting to adjust")
@@ -397,9 +397,10 @@ def pullitcheck(comic1off_name=None,comic1off_id=None):
                 lines[cnt] = str(lines[cnt]).upper()
                 #llen[cnt] = str(llen[cnt])
                 logger.fdebug("looking for : " + str(lines[cnt]))
-                sqlsearch = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\+\'\?\@]', ' ', str(lines[cnt]))
+                sqlsearch = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\'\?\@]', ' ', str(lines[cnt]))
                 sqlsearch = re.sub(r'\s', '%', sqlsearch) 
                 if 'THE' in sqlsearch: sqlsearch = re.sub('THE', '', sqlsearch)
+                if '+' in sqlsearch: sqlsearch = re.sub('\+', '%PLUS%', sqlsearch)
                 logger.fdebug("searchsql: " + str(sqlsearch))
                 weekly = myDB.select('SELECT PUBLISHER, ISSUE, COMIC, EXTRA, SHIPDATE FROM weekly WHERE COMIC LIKE (?)', [sqlsearch])
                 #cur.execute('SELECT PUBLISHER, ISSUE, COMIC, EXTRA, SHIPDATE FROM weekly WHERE COMIC LIKE (?)', [lines[cnt]])
@@ -421,12 +422,12 @@ def pullitcheck(comic1off_name=None,comic1off_id=None):
                                 comicnm = week['COMIC']
                                 #here's the tricky part, ie. BATMAN will match on
                                 #every batman comic, not exact
-#                                logger.fdebug("comparing" + str(comicnm) + "..to.." + str(unlines[cnt]).upper())
-                                logger.fdebug("comparing" + str(sqlsearch) + "..to.." + str(unlines[cnt]).upper())
+                                logger.fdebug("comparing" + str(comicnm) + "..to.." + str(unlines[cnt]).upper())
+                                #logger.fdebug("comparing" + str(sqlsearch) + "..to.." + str(unlines[cnt]).upper())
 
                                 #-NEW-
                                 # strip out all special characters and compare
-                                watchcomic = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\+\'\?\@]', '', str(sqlsearch))
+                                watchcomic = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\+\'\?\@]', '', str(unlines[cnt]))
                                 comicnm = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\+\'\?\@]', '', str(comicnm))
                                 watchcomic = re.sub(r'\s', '', watchcomic)
                                 comicnm = re.sub(r'\s', '', comicnm)
@@ -435,6 +436,10 @@ def pullitcheck(comic1off_name=None,comic1off_id=None):
                                 logger.fdebug("ComicNM: " + str(comicnm))
                                 if 'THE' in str(watchcomic):
                                     modcomicnm = re.sub('THE', '', comicnm)
+                                #thnx to A+X for this...
+                                if '+' in str(watchcomic):
+                                    if 'plus' in str(comicnm).lower():
+                                        modcomicnm = re.sub('plus', '+', comicnm)
                                 if str(comicnm) == str(watchcomic).upper() or str(modcomicnm) == str(watchcomic).upper():
                                     logger.fdebug("matched on:" + str(comicnm) + "..." + str(watchcomic).upper())
                                     #pass
