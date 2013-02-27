@@ -27,7 +27,7 @@ import urllib2
 import sqlite3
 from xml.dom.minidom import parseString
 
-from mylar import logger, db, helpers, updater
+from mylar import logger, db, helpers, updater, notifiers
 
 class PostProcessor(object):
     """
@@ -95,7 +95,7 @@ class PostProcessor(object):
         currentScriptName = str(mylar.PRE_SCRIPTS).decode("string_escape")
         self._log("pre script detected...enabling: " + str(currentScriptName), logger.DEBUG)
             # generate a safe command line string to execute the script and provide all the parameters
-        script_cmd = shlex.split(currentScriptName) + [str(nzb_name), str(nzb_folder), str(seriesmetadata)]
+        script_cmd = shlex.split(currentScriptName, posix=False) + [str(nzb_name), str(nzb_folder), str(seriesmetadata)]
         self._log("cmd to be executed: " + str(script_cmd), logger.DEBUG)
 
             # use subprocess to run the command and capture output
@@ -139,6 +139,10 @@ class PostProcessor(object):
             self._log("nzb folder: " + str(self.nzb_folder), logger.DEBUG)
             logger.fdebug("nzb name: " + str(self.nzb_name))
             logger.fdebug("nzb folder: " + str(self.nzb_folder))
+            # if the SAB Directory option is enabled, let's use that folder name and append the jobname.
+            if mylar.SAB_DIRECTORY is not None and mylar.SAB_DIRECTORY is not 'None' and len(mylar.SAB_DIRECTORY) > 4:
+                self.nzb_folder = os.path.join(mylar.SAB_DIRECTORY, self.nzb_name).encode(mylar.SYS_ENCODING)
+
             #lookup nzb_name in nzblog table to get issueid
 
             #query SAB to find out if Replace Spaces enabled / not as well as Replace Decimals
@@ -168,6 +172,7 @@ class PostProcessor(object):
             #replace spaces
             nzbname = re.sub(' ', '.', str(nzbname))
             nzbname = re.sub('[\,\:]', '', str(nzbname))
+            nzbname = re.sub('[\&]', 'and', str(nzbname))
 
             logger.fdebug("After conversions, nzbname is : " + str(nzbname))
             self._log("nzbname: " + str(nzbname), logger.DEBUG)
@@ -319,7 +324,7 @@ class PostProcessor(object):
             logger.fdebug("Original Filname: " + str(ofilename))
             logger.fdebug("Original Extension: " + str(ext))
 
-            if mylar.FILE_FORMAT == '':
+            if mylar.FILE_FORMAT == '' or not mylar.RENAME_FILES:
                 self._log("Rename Files isn't enabled...keeping original filename.", logger.DEBUG)
                 logger.fdebug("Rename Files isn't enabled - keeping original filename.")
                 #check if extension is in nzb_name - will screw up otherwise
@@ -369,6 +374,16 @@ class PostProcessor(object):
             updater.forceRescan(comicid)
             logger.info(u"Post-Processing completed for: " + series + " issue: " + str(issuenum) )
             self._log(u"Post Processing SUCCESSFULL! ", logger.DEBUG)
+
+            if mylar.PROWL_ENABLED:
+                pushmessage = series + '(' + issueyear + ') - issue #' + issuenum
+                logger.info(u"Prowl request")
+                prowl = notifiers.PROWL()
+                prowl.notify(pushmessage,"Download and Postprocessing completed")
+
+            if mylar.NMA_ENABLED:
+                nma = notifiers.NMA()
+                nma.notify(series, str(issueyear), str(issuenum))
 
             # retrieve/create the corresponding comic objects
 

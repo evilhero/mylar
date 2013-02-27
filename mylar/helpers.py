@@ -18,6 +18,7 @@ from operator import itemgetter
 import datetime
 import re
 import itertools
+import os
 import mylar
 
 def multikeysort(items, columns):
@@ -123,7 +124,32 @@ def bytes_to_mb(bytes):
     mb = int(bytes)/1048576
     size = '%.1f MB' % mb
     return size
-    
+
+def human_size(size_bytes):
+    """
+    format a size in bytes into a 'human' file size, e.g. bytes, KB, MB, GB, TB, PB
+    Note that bytes/KB will be reported in whole numbers but MB and above will have greater precision
+    e.g. 1 byte, 43 bytes, 443 KB, 4.3 MB, 4.43 GB, etc
+    """
+    if size_bytes == 1:
+        # because I really hate unnecessary plurals
+        return "1 byte"
+
+    suffixes_table = [('bytes',0),('KB',0),('MB',1),('GB',2),('TB',2), ('PB',2)]
+
+    num = float(0 if size_bytes is None else size_bytes)
+    for suffix, precision in suffixes_table:
+        if num < 1024.0:
+            break
+        num /= 1024.0
+
+    if precision == 0:
+        formatted_size = "%d" % num
+    else:
+        formatted_size = str(round(num, ndigits=precision))
+
+    return "%s %s" % (formatted_size, suffix)
+
 def replace_all(text, dic):
     for i, j in dic.iteritems():
         text = text.replace(i, j)
@@ -184,8 +210,29 @@ def decimal_issue(iss):
     deciss = (int(iss_b4dec) * 1000) + issdec
     return deciss
 
-def rename_param(comicid, comicname, comicyear, issue, issueid=None):
+def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=None):
+            from mylar import db, logger
             myDB = db.DBConnection()
+            print ("comicid: " + str(comicid))
+            print ("issue#: " + str(issue))
+            # the issue here is a non-decimalized version, we need to see if it's got a decimal and if not, add '.00'
+            iss_find = issue.find('.')
+            if iss_find < 0:
+                # no decimal in issue number
+                iss = str(int(issue)) + ".00"
+            else:
+                iss_b4dec = issue[:iss_find]
+                iss_decval = issue[iss_find+1:]
+                if len(iss_decval) == 1:
+                    iss = str(int(iss_b4dec)) + "." + iss_decval
+                else:
+                    if issue.endswith(".00"):
+                        iss = issue
+                    else:
+                        iss = str(int(iss_b4dec)) + "." + iss_decval.rstrip('0')
+            issue = iss
+
+            print ("converted issue#: " + str(issue))
             if issueid is None:
                 chkissue = myDB.action("SELECT * from issues WHERE ComicID=? AND Issue_Number=?", [comicid, issue]).fetchone()
                 if chkissue is None:
@@ -283,8 +330,10 @@ def rename_param(comicid, comicname, comicyear, issue, issueid=None):
 
             extensions = ('.cbr', '.cbz')
 
+            if ofilename.lower().endswith(extensions):
+                path, ext = os.path.splitext(ofilename)
+
             if mylar.FILE_FORMAT == '':
-                self._log("Rename Files isn't enabled...keeping original filename.", logger.DEBUG)
                 logger.fdebug("Rename Files isn't enabled - keeping original filename.")
                 #check if extension is in nzb_name - will screw up otherwise
                 if ofilename.lower().endswith(extensions):
@@ -292,18 +341,18 @@ def rename_param(comicid, comicname, comicyear, issue, issueid=None):
                 else:
                     nfilename = ofilename
             else:
-                nfilename = helpers.replace_all(mylar.FILE_FORMAT, file_values)
+                nfilename = replace_all(mylar.FILE_FORMAT, file_values)
                 if mylar.REPLACE_SPACES:
                     #mylar.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
                     nfilename = nfilename.replace(' ', mylar.REPLACE_CHAR)
-            nfilename = re.sub('[\,\:]', '', nfilename)
+            nfilename = re.sub('[\,\:]', '', nfilename) + ext.lower()
             logger.fdebug("New Filename: " + str(nfilename))
 
             if mylar.LOWERCASE_FILENAMES:
-                dst = (comlocation + "/" + nfilename + ext).lower()
+                dst = (comlocation + "/" + nfilename).lower()
             else:
-                dst = comlocation + "/" + nfilename + ext.lower()
-            logger.fdebug("Source: " + str(src))
+                dst = comlocation + "/" + nfilename
+            logger.fdebug("Source: " + str(ofilename))
             logger.fdebug("Destination: " + str(dst))
 
             rename_this = { "destination_dir" : dst, 

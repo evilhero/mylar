@@ -1,5 +1,7 @@
-<%inherit file="base.html" /> <%!
+<%inherit file="base.html" />
+<%!
 	import mylar
+        from mylar import db
 	from mylar.helpers import checked
 %>
 <%def name="headerIncludes()">
@@ -11,6 +13,7 @@
 </%def>
 
 <%def name="body()">
+
 	<div id="paddingheader">
 		<h1 class="clearfix">Borg Importing Results</h1>
 	</div>
@@ -22,56 +25,145 @@
 
                    <table>
                     <tr>
-                     <td width="250">
-                     <fieldset>
-                     </fieldset>
-                      </td>
-                       <td width="100%">
-                        </td>
+                          <fieldset>
+                              <div class="row checkbox">
+                                   <input type="checkbox" name="autoadd" style="vertical-align: middle; margin: 3px; margin-top: -1px;" id="autoadd" value="1" ${checked(mylar.ADD_COMICS)}><label>Auto-add new series</label>
+                                        </div>
+                                        <div class="row checkbox">
+                                              <input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="imp_move" id="imp_move" value="1" ${checked(mylar.IMP_MOVE)}><label>Move files</label>
+                                        </div>
+                                        <div class="row checkbox">
+                                               <input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="imp_rename" id="imp_rename" value="1" ${checked(mylar.IMP_RENAME)}><label>Rename Files </label>
+                                               <small>(After importing, Rename thefiles to configuration settings)</small>
+                                        </div>
+                                        <div class="row checkbox">
+                                               <input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="imp_metadata" id="imp_metadata" value="1" ${checked(mylar.IMP_METADATA)}><label>Use Existing Metadata</label>
+                                               <small>(Use existing Metadata to better locate series for import)</small>
+                                        </div>
+
+                                </fieldset>
                      </tr>
                    </table>
-        <table class="display" id="searchmanage_table">
+              </div>
+        <form action="markComics" method="get" id="markComics">
+        <div id="markcomic">
+                <select name="action" onChange="doAjaxCall('markComics',$(this),'table',true);" data-error="You didn't select any comics">
+                        <option disabled="disabled" selected="selected">Choose...</option>
+                        <option value="pause">Start Import</option>
+                        <option value="resume">Remove</option>
+                </select>
+                <input type="hidden" value="Go">
+        </div>
+        <table class="display" id="impresults_table">
+               <tr />
+               <tr><center><h3>To be Imported</h3></center></tr>
+                <tr><center><small>(green indicates confirmed on watchlist)</tr>
                 <thead>
                         <tr>
+                                <th id="select"></th>
                                 <th id="comicname">Comic Name</th>
-                                <th id="status">Year</th>
-                                <th id="comicissues">Status</th>
+                                <th id="comicyear">Year</th>
+                                <th id="issues">Issues</th>
+                                <th id="status">Status</th>
                                 <th id="importdate">Import Date</th>
                                 <th id="addcomic">Options</th>
                         </tr>
                 </thead>
                 <tbody>
-                                        %if results:
-                                          %for result in results:
-                                        <tr>
+                                          %if results:
+                                          %for result in results:                                      
+                                     <tr>
+                                        <td id="select"><input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="${result['ComicName']}" class="checkbox" /></td>
                                         <td id="comicname"><a href="${result['ComicName']}" title="${result['ComicName']}" target="_blank">${result['ComicName']}</td>
-                                        <td id="comicissues"><title="${result['ComicYear']}">${result['ComicYear']}</td>
-                                        <td id="status">${result['Status']}</td>
+                                        <td id="comicyear"><title="${result['ComicYear']}">${result['ComicYear']}</td>
+                                        <td id="comicissues"><title="${result['IssueCount']}">${result['IssueCount']}</td>
+                                        <td id="status">${result['Status']}
+                                        %if result['WatchMatch'] is not None:
+                                            <img src="interfaces/default/images/green-circle.png" height="10" width="10"/>
+                                        %endif
+                                        </td>
                                         <td id="importdate">${result['ImportDate']}</td>
-                                        <td id="addcomic"><a href="searchit?name=${result['ComicName']}"><span class="ui-icon-plus"></span>Add Series</a></td>
-                                        </tr>
-                                           %endfor
+                                        <td id="addcomic">[<a href="preSearchit?ComicName=${result['ComicName']}">Import</a>]
+                                        [<a href="deleteimport?ComicName=${result['ComicName']}">Remove</a>]
+                                        </td>
+                                     </tr>
+                                        <%
+                                             myDB = db.DBConnection()
+                                             files = myDB.action("SELECT * FROM importresults WHERE ComicName=?", [result['ComicName']])
+
+                                         %>
+                                        %endfor
                                         %else:
                                         <tr>
-                                        <td colspan="5"><center><legend>There are no results to display</legend></center></td>
-                                        </tr>
-                                        %endif
-
-                            </div>
+                                        <td colspan="6"><center><legend>There are no results to display</legend></center></td></tr>
+                                       %endif
                           </tbody>
+
                           </table>
-                </div>
+
+        <table class="display" id="impresults_table">
+                <tr><br /></tr>
+                <tr><center><h3>Already on Watchlist</h3></center></tr>
+                <tr><center>(you need to CONFIRM the match before doing an import!)
+                <thead>
+                        <tr>
+                                <th id="select"></th>
+                                <th id="comicname">Comic Name</th>
+                                <th id="comicyear">Year</th>
+                                <th id="status">Status</th>
+                                <th id="importdate">Import Date</th>
+                                <th id="confirmed">Confirmed</th>
+                                <th id="addcomic">Options</th>
+                        </tr>
+                </thead>
+                <tbody>
+                                       %if watchresults:
+                                       %for wresult in watchresults:
+                                        <tr>
+                                        <td id="select"><input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="${wresult['ComicName']}" class="checkbox" /></td>
+                                        <td id="comicname"><a href="http://www.comicvine.com/volume/49-${wresult['WatchMatch']} title="${wresult['ComicName']}" target="_blank">${wresult['ComicName']}</td>
+                                        <td id="comicissues"><title="${wresult['ComicYear']}">${wresult['ComicYear']}</td>
+                                        <td id="status">${wresult['Status']}</td>
+                                        <td id="importdate">${wresult['ImportDate']}</td>
+                                        <td id="confirmed">
+                                         <input type="text" name="confirmed" id="confirmed" size="5">
+                                        %if wresult['WatchMatch']:
+                                         <a href="confirmResult?comicname=${wresult['ComicName']}&comicid=${wresult['WatchMatch']}">Confirm</a>
+                                        %else:
+                                          No
+                                        %endif
+                                        </td>
+                                         [<a href="deleteimport?ComicName=${wresult['ComicName']}">Remove</a>]
+                                        </td>
+                                        </tr>
+                                        <%
+                                            myDB = db.DBConnection()
+                                            files = myDB.action("SELECT * FROM importresults WHERE ComicName=?", [wresult['ComicName']])
+
+                                         %>
+                                       %endfor
+                                       %else:
+                                        <tr>
+                                        <td colspan="100%"><center><legend>There are no results to display</legend></center></td></tr>
+                                       %endif
+                          </tbody>
+                       </table>
+
+</div>
+</form>
 </div>
 </%def>
 <%def name="javascriptIncludes()">
-	<script>
-		function initThisPage() {
-			jQuery( "#tabs" ).tabs();
-			initActions();
-		};
-		$(document).ready(function() {
-			initThisPage();
-		});
-	</script>
+
+        <script>
+                function initThisPage() {
+                        jQuery( "#tabs" ).tabs();
+                        initActions();
+                };
+                $(document).ready(function() {
+                        initThisPage();
+                });
+        </script>
+
 </%def>
 

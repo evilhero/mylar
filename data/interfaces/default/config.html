@@ -47,8 +47,17 @@
 
                        </div>                       
                    </fieldset>
-                </td>
-                <td>
+                  </td>
+                  <td>
+                   <fieldset>
+                      <legend>Bragging Rights</legend>
+                        <div>
+                            <label><strong># of Series you're watching: </strong> ${comicinfo['COUNT_COMICS']}</br>
+                           <label><strong># of Issues you're watching: </strong> ${comicinfo['COUNT_ISSUES']}</br>
+                           <label><strong># of Issues you actually have: </strong> ${comicinfo['COUNT_HAVES']}</br>
+                           <label><strong> ... total HD-space being used: </strong> ${comicinfo['COUNT_SIZE']}</br>
+                        </div>
+                   </fieldset>
                 <fieldset>
                     <legend>Branch history</legend>
                           <label>This would be a nice place to see revision history...</label>
@@ -137,13 +146,16 @@
         <table class="configtable" summary="Download Settings">
 	    <tr>
                 <td>
-                	<fieldset>
-                		<legend>SABnzbd</legend>
+                    <fieldset>
+                         <div class="row checkbox">
+                             <input id="use_sabnzbd" type="checkbox" onclick="initConfigCheckbox($(this))"; name="use_sabnzbd" value="1" ${config['use_sabnzbd']} /><label>SABnbzd</label>
+                         </div>
+                         <div class="config">
 	                	<div class="row">
 		                    <label>SABnzbd Host:</label>
 		                    <input type="text" name="sab_host" value="${config['sab_host']}" size="30">
 		                    <small>usually http://localhost:8080</small>
-	                    </div>
+	                        </div>
 	                   	<div class="row">
 		                    <label>SABnzbd Username</label>
 		                    <input type="text" name="sab_username" value="${config['sab_user']}" size="20">
@@ -151,31 +163,80 @@
 	                	<div class="row">
 		                    <label>SABnzbd API:</label>
 		                    <input type="text" name="sab_apikey" value="${config['sab_api']}" size="36">
+
 	                    </div>
 	                   	<div class="row">
 		                    <label>SABnzbd Password:</label>
 		                    <input type="password" name="sab_password" value="${config['sab_pass']}" size="20">
 	                    </div>
+                                <div class="row">
+                                    <label>SABnzbd Download Directory</label>
+                                    <input type="text" name="sab_directory" value="${config['sab_directory']}" size="36" />
+                                    <small>Where your SAB downloads go... (optional)</small>
+                            </div>
+
 	                    <div class="row">
 	                        <label>SABnzbd Category:</label>
 	                        <input type="text" name="sab_category" value="${config['sab_cat']}" size="20">
 	                    </div>
                                               <div class="row">
                                                 <label>SAB Priority</label>
-                                                <select name="sab_priority">
-                                                %for prio in ['Default', 'Low', 'Normal', 'High', 'Paused']:
+                                            <select name="sab_priority">
+                                %for prio in ['Default', 'Low', 'Normal', 'High', 'Paused']:
                                                         <%
                                                                 if config['sab_priority'] == prio:
                                                                         outputselect = 'selected'
                                                                 else:
                                                                         outputselect = ''
                                                         %>
-                                                        <option value=${prio} ${outputselect}>${prio}</option>
+                                     <option value=${prio} ${outputselect}>${prio}</option>
                                                 %endfor
                                                 </select>
                                               </div>
 
-
+                         </div>
+                         <div class="row checkbox">
+                             <input id="use_nzbget" type="checkbox" onclick="initConfigCheckbox($(this))"; name="use_nzbget" value="1" ${config['use_nzbget']} /><label>NZBGet</label>
+                         </div>                         
+                         <div class="config">
+                                <div class="row">
+                                    <label>NZBGet Host:</label>
+                                    <input type="text" name="nzbget_host" value="${config['nzbget_host']}" size="30">
+                                    <small>usually http://localhost</small>
+                                </div>
+                                <div class="row">
+                                    <label>NZBGet Port:</label>
+                                    <input type="text" name="nzbget_port" value="${config['nzbget_port']}" size="36">
+                                </div>
+                                <div class="row">
+                                    <label>NZBGet Username:</label>
+                                    <input type="text" name="nzbget_username" value="${config['nzbget_user']}" size="20">
+                                </div>
+                                <div class="row">
+                                    <label>NZBGet Password:</label>
+                                    <input type="password" name="nzbget_password" value="${config['nzbget_pass']}" size="20">
+                            </div>
+                            <div class="row">
+                                <label>NZBGet Category:</label>
+                                <input type="text" name="nzbget_category" value="${config['nzbget_cat']}" size="20">
+                            </div>
+                                              <div class="row">
+                                                <label>NZBGet Priority</label>
+                                            <select name="nzbget_priority">
+                                %for prio in ['Default', 'Low', 'Normal', 'High', 'Paused']:
+                                                        <%
+                                                                if config['nzbget_priority'] == prio:
+                                                                        outputselect = 'selected'
+                                                                else:
+                                                                        outputselect = ''
+                                                        %>
+                                     <option value=${prio} ${outputselect}>${prio}</option>
+                                                %endfor
+                                                </select>
+                                              </div>
+                         
+                         </div>
+                      </div>
                     </fieldset>
                 </td>
            
@@ -183,7 +244,7 @@
                       <legend>Usenet</legend>
                        <fieldset>
                             <div class="row checkbox">
-                                <input id="useblackhole" type="checkbox" name="blackhole" value=1 ${config['use_blackhole']} /><label>Use Black Hole</label>
+                                <input id="useblackhole" type="checkbox" onclick="initConfigCheckbox($(this));" name="blackhole" value=1 ${config['use_blackhole']} /><label>Use Black Hole</label>
                             </div>
                             <div class="config">
                                     <div class="row">
@@ -328,7 +389,7 @@
                                 </div>
                         </fieldset>
                         <fieldset>
-                                <legend>Restrictions (not working yet)</legend>
+                                <legend>Restrictions (only with Experimental ATM)</legend>
                                 <div class="row checkbox left">
                                       <input id="use_minsize" type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" onclick="initConfigCheckbox($(this));" name="use_minsize" value="1" ${config['use_minsize']} /><label>Minimum File size<small>(MB)</small></label>
                                 </div>
@@ -355,6 +416,9 @@
                         <fieldset>
                                 <legend>Post-Processing</legend>
                                 <div class="row checkbox left clearfix">
+                                     <input type="checkbox" name="post_processing" value="1" ${config['post_processing']} /><label>Enable Post-Processing<small> (not checked = NO post-processing/post-management)</small></label>
+                                </div>
+                                <div class="row checkbox left clearfix">
                                      <input type="checkbox" name="enable_pre_scripts" value="1" ${config['enable_pre_scripts']} /><label>Use Extra Script BEFORE Post-Processing</label>
                                 </div>
                                 <div class="row">
@@ -370,7 +434,6 @@
                                       <input type="text" name="extra_scripts" value="${config['extra_scripts']}" size="30">
                                       <small>enter in the absolute path to the script</small>
                                 </div>                           
-                                </div>
                 	</fieldset>
                </td>
             </tr>
@@ -387,19 +450,19 @@
                                 </div>
                 		<div>
                                      <label>*Folder Format is used only when adding new comics*</label>
-                                 </div>
-                                                <div class="row">
+                                </div>
+                                <div class="row">
                                      <label>Folder Format</label>
-                                     <input type="text" name="folder_format" value="${config['folder_format']}" size="43">
+                                     <input type="text" title="$Publisher, $Series, $Year" name="folder_format" value="${config['folder_format']}" size="43">
                                      <small>Use: $Publisher, $Series, $Year<br />
                                                                 E.g.: $Publisher/$Series ($Year) = DC Comics/Action Comics (2011)</small>
                                  </div>
                                  <div class="row">
-                                 <label> File Format</label>
-                                 <input type="text" name="file_format" value="${config['file_format']}" size="43">
-                                 <small>Use:  $Series, $Year, $Issue<br />
+                                    <label> File Format</label>
+                                    <input type="text" name="file_format" value="${config['file_format']}" size="43">
+                                    <small>Use:  $Series, $Year, $Issue<br />
                                                                 E.g.: $Series $Issue ($Year) = Animal Man 0 (2012) </small>
-
+                                 </div>
                       </fieldset>
                 	
     				<fieldset>
@@ -480,8 +543,68 @@
 							<label>Log Directory:</label>
 							<input type="text" name="log_dir" value="${config['log_dir']}" size="50">
 						</div>
+
 					</fieldset>
-						            	
+                                        <h2>Notifications</h2>
+                                        <fieldset>
+                                                <h3>Prowl</h3>
+                                                <div class="row checkbox">
+                                                    <input type="checkbox" name="prowl_enabled" id="prowl" value="1" ${config['prowl_enabled']} /><label>Enable Prowl Notifications</label>
+                                                 </div>
+                                                 <div id="prowloptions">
+                                                     <div class="row">
+                                                         <label>API key</label><input type="text" name="prowl_keys" value="${config['prowl_keys']}" size="50">
+                                                     </div>
+                                                        <div class="row checkbox">
+                                                             <input type="checkbox" name="prowl_onsnatch" value="1" ${config['prowl_onsnatch']} /><label>Notify on snatch?</label>
+                                                        </div>
+                                                        <div class="row">
+                                                                <label>Priority (-2,-1,0,1 or 2):</label>
+                                                                   <input type="text" name="prowl_priority" value="${config['prowl_priority']}" size="2">
+                                                        </div>
+                                                 </div>
+                                        </fieldset>
+                     <fieldset>
+                        <h3>NotifyMyAndroid</h3>
+                        <div class="checkbox row">
+                            <input type="checkbox" name="nma_enabled" id="nma" value="1" ${config['nma_enabled']} /><label>Enable NotifyMyAndroid</label>
+                        </div>
+                        <div id="nmaoptions">
+                            <div class="row">
+                                    <div class="row checkbox">
+                                         <input type="checkbox" name="nma_onsnatch" value="1" ${config['nma_onsnatch']} /><label>Notify on snatch?</label>
+                                    </div>
+                                    <label>NotifyMyAndroid API Key</label>
+                                    <input type="text" name="nma_apikey" value="${config['nma_apikey']}" size="30">
+                                    <small>Separate multiple api keys with commas</small>
+                            </div>
+                            <div class="row">
+                            <label>Priority</label>
+                            <select name="nma_priority">
+                                        %for x in [-2,-1,0,1,2]:
+                                                <%
+                                                        if config['nma_priority'] == x:	
+                                                                nma_priority_selected = 'selected'
+                                                        else:
+                                                                nma_priority_selected = ''
+
+                                                        if x == -2:
+                                                                nma_priority_value = 'Very Low'
+                                                        elif x == -1:
+                                                                nma_priority_value = 'Moderate'
+                                                        elif x == 0:
+                                                                nma_priority_value = 'Normal'
+                                                        elif x == 1:
+                                                                nma_priority_value = 'High'
+                                                        else:
+                                                                nma_priority_value = 'Emergency'
+                                                %>
+                                <option value=${x} ${nma_priority_selected}>${nma_priority_value}</option>
+                                        %endfor
+                                </select>
+                                </div>
+                        </div>
+                     </fieldset>
                                         
             
 				</td>
@@ -522,6 +645,48 @@
 	function initThisPage() 
 	
 	{
+
+                if ($("#prowl").is(":checked"))
+                        {
+                                $("#prowloptions").show();
+                        }
+                else
+                        {
+                                $("#prowloptions").hide();
+                        }
+
+                $("#prowl").click(function(){
+                        if ($("#prowl").is(":checked"))
+                        {
+                                $("#prowloptions").slideDown();
+                        }
+                        else
+                        {
+                                $("#prowloptions").slideUp();
+                        }
+                });
+
+                if ($("#nma").is(":checked"))
+                        {
+                                $("#nmaoptions").show();
+                        }
+                else
+                        {
+                                $("#nmaoptions").hide();
+                        }
+
+                $("#nma").click(function(){
+                        if ($("#nma").is(":checked"))
+                        {
+                                $("#nmaoptions").slideDown();
+                        }
+                        else
+                        {
+                                $("#nmaoptions").slideUp();
+                        }
+                });
+
+
                 var deletedNewznabs = 0;
 
                 $(".remove").click(function() {
@@ -550,6 +715,9 @@
 		});
 		initActions();
                 initConfigCheckbox("#launch_browser");
+                initConfigCheckbox("#use_sabnzbd");
+                initConfigCheckbox("#use_nzbget");
+                initConfigCheckbox("#useblackhole");
                 initConfigCheckbox("#usenewznab");
 		initConfigCheckbox("#usenzbsu");
                 initConfigCheckbox("#usedognzb");

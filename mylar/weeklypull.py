@@ -59,7 +59,8 @@ def pullit():
                'BOOKS',
                'COLLECTIBLES',
                'MCFARLANE TOYS',
-               'New Releases']
+               'New Releases',
+               'Upcoming Releases']
 
     excludes=['2ND PTG',
               '3RD PTG',
@@ -112,11 +113,13 @@ def pullit():
         for nono in not_these:
             if nono in i:
                 #let's try and grab the date for future pull checks
-                if i.startswith('Shipping') or i.startswith('New Releases'):
+                if i.startswith('Shipping') or i.startswith('New Releases') or i.startswith('Upcoming Releases'):
                     shipdatechk = i.split()
                     if i.startswith('Shipping'):
                         shipdate = shipdatechk[1]                
                     elif i.startswith('New Releases'):
+                        shipdate = shipdatechk[3]
+                    elif i.startswith('Upcoming Releases'):
                         shipdate = shipdatechk[3]
                     sdsplit = shipdate.split('/')
                     mo = sdsplit[0]
@@ -131,11 +134,13 @@ def pullit():
                     if pulldate == shipdaterep:
                         logger.info(u"No new pull-list available - will re-check again in 24 hours.")
                         pullitcheck()
+                        mylar.PULLNEW = 'no'
                         return
                     else:
                         logger.info(u"Preparing to update to the new listing.")
                 break    
         else:
+            mylar.PULLNEW = 'yes'
             for yesyes in checkit:
                 if yesyes in i:
                     if format(str(yesyes)) == 'COMICS':
@@ -177,8 +182,11 @@ def pullit():
                                 issue = "NA"
                                 break
                             issue = issname[n]
-                            #print ("issue found : " + issname[n])
-                            comicend = n - 1
+                            if 'ongoing' not in issname[n-1].lower():
+                                #print ("issue found : " + issname[n])
+                                comicend = n - 1
+                            else:
+                                comicend = n - 2
                             break
                         n+=1
                     if issue == "": issue = 'NA'
@@ -240,7 +248,13 @@ def pullit():
                     comicnm = issname[1]
                     n = 2
                     while (n < comicend + 1):
-                        comicnm = comicnm + " " + issname[n]
+                        #stupid - this errors out if the array mistakingly goes to far.
+                        try:
+                            comicnm = comicnm + " " + issname[n]
+                        except IndexError:
+                            #print ("went too far looking at this comic...adjusting.")
+                            comicnm = comicnm
+                            break
                         n+=1
                     #print ("Comicname: " + str(comicnm) )
                     #get remainder
@@ -396,12 +410,12 @@ def pullitcheck(comic1off_name=None,comic1off_id=None):
             while (cnt > -1):
                 lines[cnt] = str(lines[cnt]).upper()
                 #llen[cnt] = str(llen[cnt])
-                logger.fdebug("looking for : " + str(lines[cnt]))
+                #logger.fdebug("looking for : " + str(lines[cnt]))
                 sqlsearch = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\'\?\@]', ' ', str(lines[cnt]))
                 sqlsearch = re.sub(r'\s', '%', sqlsearch) 
                 if 'THE' in sqlsearch: sqlsearch = re.sub('THE', '', sqlsearch)
                 if '+' in sqlsearch: sqlsearch = re.sub('\+', '%PLUS%', sqlsearch)
-                logger.fdebug("searchsql: " + str(sqlsearch))
+                #logger.fdebug("searchsql: " + str(sqlsearch))
                 weekly = myDB.select('SELECT PUBLISHER, ISSUE, COMIC, EXTRA, SHIPDATE FROM weekly WHERE COMIC LIKE (?)', [sqlsearch])
                 #cur.execute('SELECT PUBLISHER, ISSUE, COMIC, EXTRA, SHIPDATE FROM weekly WHERE COMIC LIKE (?)', [lines[cnt]])
                 for week in weekly:
@@ -409,21 +423,20 @@ def pullitcheck(comic1off_name=None,comic1off_id=None):
                         break
                     for nono in not_t:
                         if nono in week['PUBLISHER']:
-                            logger.fdebug("nono present")
+                            #logger.fdebug("nono present")
                             break
                         if nono in week['ISSUE']:
-                            logger.fdebug("graphic novel/tradeback detected..ignoring.")
+                            #logger.fdebug("graphic novel/tradeback detected..ignoring.")
                             break
                         for nothere in not_c:
                             if nothere in week['EXTRA']:
-                                logger.fdebug("nothere present")
+                                #logger.fdebug("nothere present")
                                 break
                             else:
                                 comicnm = week['COMIC']
                                 #here's the tricky part, ie. BATMAN will match on
                                 #every batman comic, not exact
-                                logger.fdebug("comparing" + str(comicnm) + "..to.." + str(unlines[cnt]).upper())
-                                #logger.fdebug("comparing" + str(sqlsearch) + "..to.." + str(unlines[cnt]).upper())
+                                #logger.fdebug("comparing" + str(comicnm) + "..to.." + str(unlines[cnt]).upper())
 
                                 #-NEW-
                                 # strip out all special characters and compare
@@ -431,29 +444,26 @@ def pullitcheck(comic1off_name=None,comic1off_id=None):
                                 comicnm = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\+\'\?\@]', '', str(comicnm))
                                 watchcomic = re.sub(r'\s', '', watchcomic)
                                 comicnm = re.sub(r'\s', '', comicnm)
-                                modcomicnm = ''
-                                logger.fdebug("Revised_Watch: " + str(watchcomic))
-                                logger.fdebug("ComicNM: " + str(comicnm))
-                                if 'THE' in str(watchcomic):
+                                #logger.fdebug("Revised_Watch: " + str(watchcomic))
+                                #logger.fdebug("ComicNM: " + str(comicnm))
+                                if 'THE' in str(watchcomic).upper():
+                                    modwatchcomic = re.sub('THE', '', watchcomic.upper())
                                     modcomicnm = re.sub('THE', '', comicnm)
+                                else:
+                                    modwatchcomic = watchcomic
+                                    modcomicnm = comicnm
                                 #thnx to A+X for this...
                                 if '+' in str(watchcomic):
                                     if 'plus' in str(comicnm).lower():
                                         modcomicnm = re.sub('plus', '+', comicnm)
-                                if str(comicnm) == str(watchcomic).upper() or str(modcomicnm) == str(watchcomic).upper():
-                                    logger.fdebug("matched on:" + str(comicnm) + "..." + str(watchcomic).upper())
-                                    #pass
+                                if str(comicnm) == str(watchcomic).upper() or str(modcomicnm) == str(modwatchcomic).upper():
+                                    #logger.fdebug("matched on:" + str(comicnm) + "..." + str(watchcomic).upper())
+                                    pass
                                 elif ("ANNUAL" in week['EXTRA']):
                                     pass
                                     #print ( row[3] + " matched on ANNUAL")
                                 else:
-                                    if 'THE' in str(comicnm):
-                                        modcomicnm = re.sub('THE', '', comicnm)
-                                    #print ( row[2] + " not an EXACT match...")
                                     break
-                                #if "WOLVERINE AND X-MEN" in str(comicnm):
-                                #    comicnm = "WOLVERINE AND THE X-MEN"
-                                    #print ("changed wolvy")
                                 if ("NA" not in week['ISSUE']) and ("HC" not in week['ISSUE']):
                                     if ("COMBO PACK" not in week['EXTRA']) and ("2ND PTG" not in week['EXTRA']) and ("3RD PTG" not in week['EXTRA']):
                                         otot+=1

@@ -771,6 +771,30 @@ div#searchbar .mini-icon {
   margin-left: 6px;
   margin-top: 6px;
 }
+.checkbox.inline {
+  padding: 0 5px;
+}
+.checkbox.inline > input {
+  margin-right: 5px;
+  margin-left: 0;
+}
+.Skipped {
+  background-color: #bedeed;
+  height: 30px;
+}
+.Downloaded {
+  background-color: #c3e3c8;
+  height: 30px;
+}
+.Archived {
+  background-color: #ffda8a;
+  height: 30px;
+}
+.Wanted {
+  background-color: #ffb0b0;
+  height: 30px;
+}
+
 .comictable legend {
   font-size: 14px
   font-weight: bold;
@@ -1252,6 +1276,70 @@ div#artistheader h2 a {
   filter: progid:dximagetransform.microsoft.gradient(startColorstr=#fafafa, endColorstr=#eaeaea) !important;
   -ms-filter: progid:dximagetransform.microsoft.gradient(startColorstr=#fafafa, endColorstr=#eaeaea) !important;
 }
+#impresults_table th#select {
+  min-width: 10px;
+  text-align: left;
+  vertical-align
+}
+#impresults_table th#select input {
+  vertical-align: middle;
+  min-width: 10px;
+}
+#impresults_table th#comicname {
+  min-width: 325px;
+  text-align: left;
+}
+#impresults_table th#comicyear {
+  min-width: 75px;
+  text-align: center;
+}
+#impresults_table th#status {
+  min-width: 110px;
+  text-align: center;
+}
+#impresults_table th#importdate {
+  min-width: 100px;
+  text-align: center;
+}
+#impresults_table th#addcomic {
+  min-width: 100px;
+  text-align: left;
+}
+#impresults_table td#select{
+  min-width: 10px;
+  text-align: middle;
+  vertical-align: middle;
+}
+#impresults_table td#select input{
+  min-width: 10px;
+  vertical-align: middle;
+}
+#impresults_table td#comicname {
+  min-width: 325px;
+  text-align: left;
+  vertical-align: middle;
+}
+#impresults_table td#comicyear {
+  min-width: 75px;
+  text-align: left;
+  vertical-align: middle;
+}
+#impresults_table td#status {
+  min-width: 110px;
+  text-align: left;
+  vertical-align: middle;
+}
+#impresults_table td#importdate {
+  min-width: 100px;
+  text-align: left;
+  vertical-align: middle;
+}
+#impresults_table td#addcomic {
+  min-width: 100px;
+  vertical-align: middle;
+  text-align: left;
+}
+
 #searchmanage_table th#comicname {
   min-width: 325px;
   text-align: left;

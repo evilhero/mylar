@@ -16,7 +16,7 @@
 from __future__ import division
 
 import mylar
-from mylar import logger, db, updater, helpers, parseit, findcomicfeed, prov_nzbx
+from mylar import logger, db, updater, helpers, parseit, findcomicfeed, prov_nzbx, notifiers
 
 nzbsu_APIkey = mylar.NZBSU_APIKEY
 dognzb_APIkey = mylar.DOGNZB_APIKEY
@@ -119,7 +119,7 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, IssueDate, IssueI
                     logger.fdebug("findit = found!")
                     break
                 else:
-                    if AlternateSearch is not None and AlternateSearch is not "None":
+                    if AlternateSearch is not None and AlternateSearch != "None":
                         logger.info(u"Alternate Search pattern detected...re-adjusting to : " + str(AlternateSearch) + " " + str(ComicYear))
                         findit = NZB_SEARCH(AlternateSearch, IssueNumber, ComicYear, SeriesYear, nzbprov, nzbpr, IssDateFix, IssueID, UseFuzzy, newznab_host)
                         if findit == 'yes':
@@ -134,7 +134,7 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, IssueDate, IssueI
                 logger.fdebug("findit = found!")
                 break
             else:
-                if AlternateSearch is not None and AlternateSearch is not "None":
+                if AlternateSearch is not None and AlternateSearch != "None":
                     logger.info(u"Alternate Search pattern detected...re-adjusting to : " + str(AlternateSearch) + " " + str(ComicYear))
                     findit = NZB_SEARCH(AlternateSearch, IssueNumber, ComicYear, SeriesYear, nzbprov, nzbpr, IssDateFix, IssueID, UseFuzzy)
                     if findit == 'yes':
@@ -150,7 +150,7 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, IssueDate, IssueI
                 logger.fdebug("findit = found!")
                 break
             else:
-                if AlternateSearch is not None and AlternateSearch is not "None":
+                if AlternateSearch is not None and AlternateSearch != "None":
                     logger.info(u"Alternate Search pattern detected...re-adjusting to : " + str(AlternateSearch) + " " + str(ComicYear))
                     findit = NZB_SEARCH(AlternateSearch, IssueNumber, ComicYear, SeriesYear, nzbprov, nzbpr, IssDateFix, IssueID, UseFuzzy)
                     if findit == 'yes':
@@ -166,7 +166,7 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, IssueDate, IssueI
                 logger.fdebug("findit = found!")
                 break
             else:
-                if AlternateSearch is not None and AlternateSearch is not "None":
+                if AlternateSearch is not None and AlternateSearch != "None":
                     logger.info(u"Alternate Search pattern detected...re-adjusting to : " + str(AlternateSearch) + " " + str(ComicYear))
                     findit = NZB_SEARCH(AlternateSearch, IssueNumber, ComicYear, SeriesYear, nzbprov, nzbpr, IssDateFix, IssueID, UseFuzzy)
                     if findit == 'yes':
@@ -185,7 +185,7 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, IssueDate, IssueI
                 logger.fdebug("findit = found!")
                 break
             else:
-                if AlternateSearch is not None and AlternateSearch is not "None":
+                if AlternateSearch is not None and AlternateSearch != "None":
                     logger.info(u"Alternate Search pattern detected...re-adjusting to : " + str(AlternateSearch) + " " + str(ComicYear))
                     findit = NZB_SEARCH(AlternateSearch, IssueNumber, ComicYear, SeriesYear, nzbprov, nzbpr, IssDateFix, IssueID, UseFuzzy)
                     if findit == 'yes':
@@ -281,7 +281,9 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, nzbprov, nzbpr, Is
     #print ("we need : " + str(findcomic[findcount]) + " issue: #" + str(findcomiciss[findcount]))
     # replace whitespace in comic name with %20 for api search
     cm1 = re.sub(" ", "%20", str(findcomic[findcount]))
-    cm = re.sub("\&", "%26", str(cm1))
+    #cm = re.sub("\&", "%26", str(cm1))
+    cm = re.sub("and", "", str(cm1)) # remove 'and' & '&' from the search pattern entirely (broader results, will filter out later)
+    cm = re.sub("\&", "", str(cm))
     #print (cmi)
     if '.' in findcomiciss[findcount]:
         if len(str(isschk_b4dec)) == 3:
@@ -325,9 +327,10 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, nzbprov, nzbpr, Is
                 comsearch[findloop] = comsrc + "%200" + isssearch[findloop] + "%20" + str(filetype)
             elif cmloopit == 1:
                 comsearch[findloop] = comsrc + "%20" + isssearch[findloop] + "%20" + str(filetype)
-            logger.fdebug("comsearch: " + str(comsearch))
-            logger.fdebug("cmloopit: " + str(cmloopit))
-            logger.fdebug("done: " + str(done))
+            #logger.fdebug("comsearch: " + str(comsearch))
+            #logger.fdebug("cmloopit: " + str(cmloopit))
+            #logger.fdebug("done: " + str(done))
+
             if nzbprov != 'experimental':
                 if nzbprov == 'dognzb':
                     findurl = "http://dognzb.cr/api?t=search&apikey=" + str(apikey) + "&q=" + str(comsearch[findloop]) + "&o=xml&cat=7030"
@@ -335,14 +338,29 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, nzbprov, nzbpr, Is
                     findurl = "http://www.nzb.su/api?t=search&q=" + str(comsearch[findloop]) + "&apikey=" + str(apikey) + "&o=xml&cat=7030"
                 elif nzbprov == 'newznab':
                     #let's make sure the host has a '/' at the end, if not add it.
-                    if host_newznab[-1] != "/": host_newznab = str(host_newznab) + "/"
+                    if host_newznab[:-1] != "/": host_newznab = str(host_newznab) + "/"
                     findurl = str(host_newznab) + "api?t=search&q=" + str(comsearch[findloop]) + "&apikey=" + str(apikey) + "&o=xml&cat=7030"
                     logger.fdebug("search-url: " + str(findurl))
                 elif nzbprov == 'nzbx':
                     bb = prov_nzbx.searchit(comsearch[findloop])
-                    logger.fdebug("nzbx.co!")
                 if nzbprov != 'nzbx':
-                    bb = feedparser.parse(findurl)
+                    # Add a user-agent
+                    #print ("user-agent:" + str(mylar.USER_AGENT))
+                    request = urllib2.Request(findurl)
+                    request.add_header('User-Agent', str(mylar.USER_AGENT))
+                    opener = urllib2.build_opener()
+
+                    try:
+                        data = opener.open(request).read()
+                    except Exception, e:
+                        logger.warn('Error fetching data from %s: %s' % (nzbprov, e))
+                        data = False
+
+                    if data:
+                        bb = feedparser.parse(data)
+                    else:
+                        bb = "no results"
+
             elif nzbprov == 'experimental':
                 #bb = parseit.MysterBinScrape(comsearch[findloop], comyear)
                 bb = findcomicfeed.Startit(cm, isssearch[findloop], comyear)
@@ -362,11 +380,31 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, nzbprov, nzbpr, Is
                     logger.fdebug("Entry: " + str(thisentry))
                     cleantitle = re.sub('[_/.]', ' ', str(entry['title']))
                     cleantitle = helpers.cleanName(str(cleantitle))
+                    # this is new - if title contains a '&' in the title it will assume the filename has ended at that point
+                    # which causes false positives (ie. wolverine & the x-men becomes the x-men, which matches on x-men.
+                    # 'the' is removed for comparisons later on
+                    if '&' in cleantitle: cleantitle = re.sub('[/&]','and', cleantitle) 
 
                     nzbname = cleantitle
 
                     logger.fdebug("Cleantitle: " + str(cleantitle))
-                    if len(re.findall('[^()]+', cleantitle)) == 1: cleantitle = "abcdefghijk 0 (1901).cbz"                      
+                    if len(re.findall('[^()]+', cleantitle)) == 1: cleantitle = "abcdefghijk 0 (1901).cbz"
+#----size constraints.
+                #if it's not within size constaints - dump it now and save some time.
+#                    logger.fdebug("size : " + str(entry['size']))
+#                    if mylar.USE_MINSIZE:
+#                        conv_minsize = int(mylar.MINSIZE) * 1024 * 1024
+#                        print("comparing " + str(conv_minsize) + " .. to .. " + str(entry['size']))
+#                        if conv_minsize >= int(entry['size']):
+#                            print("Failure to meet the Minimum size threshold - skipping")
+#                            continue
+#                    if mylar.USE_MAXSIZE:
+#                         conv_maxsize = int(mylar.maxsize) * 1024 * 1024
+#                         print("comparing " + str(conv_maxsize) + " .. to .. " + str(entry['size']))
+#                         if conv_maxsize >= int(entry['size']):
+#                             print("Failure to meet the Maximium size threshold - skipping")
+#                             continue
+# -- end size constaints.
                     if done:
                         break
                 #let's narrow search down - take out year (2010), (2011), etc
@@ -484,6 +522,7 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, nzbprov, nzbpr, Is
 
                     # make sure that things like - in watchcomic are accounted for when comparing to nzb.
                     watchcomic_split = helpers.cleanName(str(findcomic[findloop]))
+                    if '&' in watchcomic_split: watchcomic_split = re.sub('[/&]','and', watchcomic_split)
                     watchcomic_split = re.sub('[\-\:\,\.]', ' ', watchcomic_split).split(None)
                      
                     logger.fdebug(str(splitit) + " nzb series word count: " + str(splitst))
@@ -606,7 +645,14 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, nzbprov, nzbpr, Is
                                     #pretty this biatch up.
                                     Bl_ComicName = re.sub('[/:/,\/]', '', str(ComicName))
                                     filenamenzb = str(re.sub(" ", ".", str(Bl_ComicName))) + "." + str(IssueNumber) + ".(" + str(comyear) + ").nzb"
-                                    urllib.urlretrieve(linkapi, str(mylar.BLACKHOLE_DIR) + str(filenamenzb))
+                                    # Add a user-agent
+                                    request = urllib2.Request(linkapi) #(str(mylar.BLACKHOLE_DIR) + str(filenamenzb))
+                                    request.add_header('User-Agent', str(mylar.USER_AGENT))
+                                    try: 
+                                        opener = urlretrieve(urllib2.urlopen(request), str(mylar.BLACKHOLE_DIR) + str(filenamenzb))
+                                    except Exception, e:
+                                         logger.warn('Error fetching data from %s: %s' % (nzbprov, e))
+                                         return
                                     logger.fdebug("filename saved to your blackhole as : " + str(filenamenzb))
                                     logger.info(u"Successfully sent .nzb to your Blackhole directory : " + str(mylar.BLACKHOLE_DIR) + str(filenamenzb) )
                                     nzbname = filenamenzb[:-4]
@@ -633,6 +679,8 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, nzbprov, nzbpr, Is
 
                                 #let's change all space to decimals for simplicity
                                 nzbname = re.sub(" ", ".", str(entry['title']))
+                                #gotta replace & or escape it
+                                nzbname = re.sub("\&", 'and', str(nzbname))
                                 nzbname = re.sub('[\,\:]', '', str(nzbname))
                                 extensions = ('.cbr', '.cbz')
 
@@ -650,63 +698,67 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, nzbprov, nzbpr, Is
                                     logger.fdebug("new linkapi (this should =nzbname) :" + str(linkapi))
 
 #                               #test nzb.get
-#                               if mylar.NZBGET:                                
-#                                   from xmlrpclib import ServerProxy
-#                                   if mylar.NZBGET_HOST[:4] = 'http':
-#                                       tmpapi = "http://"
-#                                       nzbget_host = mylar.NZBGET_HOST[7]
-#                                   elif mylar.NZBGET_HOST[:5] = 'https':
-#                                       tmpapi = "https://"
-#                                       nzbget_host = mylar.NZBGET_HOST[8]
-#                                   tmpapi = tmpapi + str(mylar.NZBGET_USERNAME) + ":" + str(mylar.NZBGET_PASSWORD)
-#                                   tmpapi = tmpapi + "@" + nzbget_host + ":" + str(mylar.NZBGET_PORT) + "/xmlrpc"                               
-#                                   server = ServerProxy(tmpapi)
-#                                   send_to_nzbget = server.appendurl(nzbname, mylar.NZBGET_CATEGORY, mylar.NZBGET_PRIORITY, True, str(linkapi))
-#                                   if send_to_nzbget is True:
-#                                       logger.info("Successfully sent nzb to NZBGet!")
-#                                   else:
-#                                       logger.info("Unable to send nzb to NZBGet - check your configs.")
-#                               #end nzb.get test
+                                if mylar.USE_NZBGET:                                
+                                    from xmlrpclib import ServerProxy
+                                    if mylar.NZBGET_HOST[:4] == 'http':
+                                        tmpapi = "http://"
+                                        nzbget_host = mylar.NZBGET_HOST[7]
+                                    elif mylar.NZBGET_HOST[:5] == 'https':
+                                        tmpapi = "https://"
+                                        nzbget_host = mylar.NZBGET_HOST[8]
+                                    tmpapi = tmpapi + str(mylar.NZBGET_USERNAME) + ":" + str(mylar.NZBGET_PASSWORD)
+                                    tmpapi = tmpapi + "@" + nzbget_host + ":" + str(mylar.NZBGET_PORT) + "/xmlrpc" 
+                                    server = ServerProxy(tmpapi)
+                                    send_to_nzbget = server.appendurl(nzbname, mylar.NZBGET_CATEGORY, mylar.NZBGET_PRIORITY, True, str(linkapi))
+                                    if send_to_nzbget is True:
+                                        logger.info("Successfully sent nzb to NZBGet!")
+                                    else:
+                                        logger.info("Unable to send nzb to NZBGet - check your configs.")
+#                                #end nzb.get test
 
-                                # let's build the send-to-SAB string now:
-                                tmpapi = str(mylar.SAB_HOST)
-                                logger.fdebug("send-to-SAB host string: " + str(tmpapi))
-                                # changed to just work with direct links now...
-                                SABtype = "/api?mode=addurl&name="
-                                fileURL = str(linkapi)
-                                tmpapi = tmpapi + str(SABtype)
-                                logger.fdebug("...selecting API type: " + str(tmpapi))
-                                tmpapi = tmpapi + str(fileURL)
-                                logger.fdebug("...attaching nzb provider link: " + str(tmpapi))
-                                # determine SAB priority
-                                if mylar.SAB_PRIORITY:
-                                    tmpapi = tmpapi + "&priority=" + str(sabpriority)
-                                    logger.fdebug("...setting priority: " + str(tmpapi))
-                                # if category is blank, let's adjust
-                                if mylar.SAB_CATEGORY:
-                                    tmpapi = tmpapi + "&cat=" + str(mylar.SAB_CATEGORY)
-                                    logger.fdebug("...attaching category: " + str(tmpapi))
-                                if mylar.RENAME_FILES == 1:
-                                    tmpapi = tmpapi + "&script=ComicRN.py"
-                                    logger.fdebug("...attaching rename script: " + str(tmpapi))
-                                #final build of send-to-SAB    
-                                tmpapi = tmpapi + "&apikey=" + str(mylar.SAB_APIKEY)
+                                elif mylar.USE_SABNZBD:
+                                    # let's build the send-to-SAB string now:
+                                    tmpapi = str(mylar.SAB_HOST)
+                                    logger.fdebug("send-to-SAB host string: " + str(tmpapi))
+                                    # changed to just work with direct links now...
+                                    SABtype = "/api?mode=addurl&name="
+                                    fileURL = str(linkapi)
+                                    tmpapi = tmpapi + str(SABtype)
+                                    logger.fdebug("...selecting API type: " + str(tmpapi))
+                                    tmpapi = tmpapi + str(fileURL)
+                                    logger.fdebug("...attaching nzb provider link: " + str(tmpapi))
+                                    # determine SAB priority
+                                    if mylar.SAB_PRIORITY:
+                                        tmpapi = tmpapi + "&priority=" + str(sabpriority)
+                                        logger.fdebug("...setting priority: " + str(tmpapi))
+                                    # if category is blank, let's adjust
+                                    if mylar.SAB_CATEGORY:
+                                        tmpapi = tmpapi + "&cat=" + str(mylar.SAB_CATEGORY)
+                                        logger.fdebug("...attaching category: " + str(tmpapi))
+                                    if mylar.RENAME_FILES or mylar.POST_PROCESSING:
+                                        tmpapi = tmpapi + "&script=ComicRN.py"
+                                        logger.fdebug("...attaching rename script: " + str(tmpapi))
+                                    #final build of send-to-SAB    
+                                    tmpapi = tmpapi + "&apikey=" + str(mylar.SAB_APIKEY)
 
-                                logger.fdebug("Completed send-to-SAB link: " + str(tmpapi))
+                                    logger.fdebug("Completed send-to-SAB link: " + str(tmpapi))
 
-                                try:
-                                    urllib2.urlopen(tmpapi)
-                                except urllib2.URLError:
-                                    logger.error(u"Unable to send nzb file to SABnzbd")
-                                    return
+                                    try:
+                                        urllib2.urlopen(tmpapi)
+                                    except urllib2.URLError:
+                                        logger.error(u"Unable to send nzb file to SABnzbd")
+                                        return
+ 
+                                    logger.info(u"Successfully sent nzb file to SABnzbd")
 
-                                logger.info(u"Successfully sent nzb file to SABnzbd")
-                                #delete the .nzb now.
-                                #if mylar.PROG_DIR is not "/" and nzbprov != 'nzb.su':
-                                #    logger.fdebug("preparing to remove temporary nzb file at: " + str(savefile))
-                                #    os.remove(savefile)
-                                #    logger.info(u"Removed temporary save file")
-                            #raise an exception to break out of loop
+                                if mylar.PROWL_ENABLED and mylar.PROWL_ONSNATCH:
+                                    logger.info(u"Sending Prowl notification")
+                                    prowl = notifiers.PROWL()
+                                    prowl.notify(nzbname,"Download started")
+                                if mylar.NMA_ENABLED and mylar.NMA_ONSNATCH:
+                                    logger.info(u"Sending NMA notification")
+                                    nma = notifiers.NMA()
+                                    nma.notify(snatched_nzb=nzbname)
 
 
                             foundc = "yes"
@@ -758,7 +810,7 @@ def searchforissue(issueid=None, new=False):
             else: 
                 ComicYear = str(result['IssueDate'])[:4]
 
-            if (mylar.NZBSU or mylar.DOGNZB or mylar.EXPERIMENTAL or mylar.NEWZNAB or mylar.NZBX) and (mylar.SAB_HOST):
+            if (mylar.NZBSU or mylar.DOGNZB or mylar.EXPERIMENTAL or mylar.NEWZNAB or mylar.NZBX) and (mylar.USE_SABNZBD or mylar.USE_NZBGET):
                     foundNZB = search_init(result['ComicName'], result['Issue_Number'], str(ComicYear), comic['ComicYear'], IssueDate, result['IssueID'], AlternateSearch, UseFuzzy)
                     if foundNZB == "yes": 
                         #print ("found!")
@@ -780,7 +832,7 @@ def searchforissue(issueid=None, new=False):
             IssueYear = str(result['IssueDate'])[:4]
 
         foundNZB = "none"
-        if (mylar.NZBSU or mylar.DOGNZB or mylar.EXPERIMENTAL or mylar.NEWZNAB or mylar.NZBX) and (mylar.SAB_HOST):
+        if (mylar.NZBSU or mylar.DOGNZB or mylar.EXPERIMENTAL or mylar.NEWZNAB or mylar.NZBX) and (mylar.USE_SABNZBD or mylar.USE_NZBGET):
             foundNZB = search_init(result['ComicName'], result['Issue_Number'], str(IssueYear), comic['ComicYear'], IssueDate, result['IssueID'], AlternateSearch, UseFuzzy)
             if foundNZB == "yes":
                 #print ("found!")
@@ -803,7 +855,7 @@ def searchIssueIDList(issuelist):
             ComicYear = comic['ComicYear']
         else:
             ComicYear = str(issue['IssueDate'])[:4]
-        if (mylar.NZBSU or mylar.DOGNZB or mylar.EXPERIMENTAL or mylar.NEWZNAB or mylar.NZBX) and (mylar.SAB_HOST):
+        if (mylar.NZBSU or mylar.DOGNZB or mylar.EXPERIMENTAL or mylar.NEWZNAB or mylar.NZBX) and (mylar.USE_SABNZBD or mylar.USE_NZBGET):
                 foundNZB = search_init(comic['ComicName'], issue['Issue_Number'], str(ComicYear), comic['ComicYear'], issue['IssueDate'], issue['IssueID'], AlternateSearch, UseFuzzy)
                 if foundNZB == "yes":
                     #print ("found!")
@@ -812,3 +864,13 @@ def searchIssueIDList(issuelist):
                     pass
                     #print ("not found!")
 
+def urlretrieve(urlfile, fpath):
+    chunk = 4096
+    f = open(fpath, "w")
+    while 1:
+        data = urlfile.read(chunk)
+        if not data:
+            print "done."
+            break
+        f.write(data)
+        print "Read %s bytes"%len(data)

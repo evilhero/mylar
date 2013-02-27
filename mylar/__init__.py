@@ -30,7 +30,6 @@ from lib.configobj import ConfigObj
 import cherrypy
 
 from mylar import versioncheck, logger, version
-from mylar.common import *
 
 FULL_PATH = None
 PROG_DIR = None
@@ -63,6 +62,8 @@ LOG_LIST = []
 
 CACHE_DIR = None
 
+PULLNEW = None
+
 HTTP_PORT = None
 HTTP_HOST = None
 HTTP_USERNAME = None
@@ -75,6 +76,7 @@ INSTALL_TYPE = None
 CURRENT_VERSION = None
 LATEST_VERSION = None
 COMMITS_BEHIND = None
+USER_AGENT = None
 
 CHECK_GITHUB = False
 CHECK_GITHUB_ON_STARTUP = False
@@ -88,6 +90,7 @@ COMIC_DIR = None
 LIBRARYSCAN = False
 IMP_MOVE = False
 IMP_RENAME = False
+IMP_METADATA = False
 
 SEARCH_INTERVAL = 360
 NZB_STARTUP_SEARCH = False
@@ -112,22 +115,42 @@ ZERO_LEVEL = False
 ZERO_LEVEL_N = None
 LOWERCASE_FILENAME = False
 USE_MINSIZE = False
-MINSIZE = None
+MINSIZE = 10
 USE_MAXSIZE = False
-MAXSIZE = None
+MAXSIZE = 60
 AUTOWANT_UPCOMING = True
 AUTOWANT_ALL = False
 COMIC_COVER_LOCAL = False
 ADD_TO_CSV = True
+PROWL_ENABLED = True
+PROWL_PRIORITY = 1
+PROWL_KEYS = None
+PROWL_ONSNATCH = True
+NMA_ENABLED = False
+NMA_APIKEY = None
+NMA_PRIORITY = None
+NMA_ONSNATCH = None
 SKIPPED2WANTED = False
 CVINFO = False
+LOG_LEVEL = None
+POST_PROCESSING = True
 
+USE_SABNZBD = True
 SAB_HOST = None
 SAB_USERNAME = None
 SAB_PASSWORD = None
 SAB_APIKEY = None
 SAB_CATEGORY = None
 SAB_PRIORITY = None
+SAB_DIRECTORY = None
+
+USE_NZBGET = False
+NZBGET_HOST = None
+NZBGET_PORT = None
+NZBGET_USERNAME = None
+NZBGET_PASSWORD = None
+NZBGET_PRIORITY = None
+NZBGET_CATEGORY = None
 
 NZBSU = False
 NZBSU_APIKEY = None
@@ -162,6 +185,10 @@ EXTRA_SCRIPTS = None
 
 ENABLE_PRE_SCRIPTS = 1
 PRE_SCRIPTS = None
+
+COUNT_COMICS = 0
+COUNT_ISSUES = 0
+COUNT_HAVES = 0
 
 def CheckSection(sec):
     """ Check if INI section exists, if not create it """
@@ -215,14 +242,15 @@ def initialize():
     
         global __INITIALIZED__, FULL_PATH, PROG_DIR, VERBOSE, DAEMON, DATA_DIR, CONFIG_FILE, CFG, CONFIG_VERSION, LOG_DIR, CACHE_DIR, LOGVERBOSE, \
                 HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, LAUNCH_BROWSER, GIT_PATH, \
-                CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, MUSIC_DIR, DESTINATION_DIR, \
+                CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, USER_AGENT, MUSIC_DIR, DESTINATION_DIR, \
                 DOWNLOAD_DIR, USENET_RETENTION, SEARCH_INTERVAL, NZB_STARTUP_SEARCH, INTERFACE, AUTOWANT_ALL, AUTOWANT_UPCOMING, ZERO_LEVEL, ZERO_LEVEL_N, COMIC_COVER_LOCAL, \
-                LIBRARYSCAN, LIBRARYSCAN_INTERVAL, DOWNLOAD_SCAN_INTERVAL, SAB_HOST, SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_PRIORITY, BLACKHOLE, BLACKHOLE_DIR, ADD_COMICS, COMIC_DIR, IMP_MOVE, IMP_RENAME, \
-                NZBSU, NZBSU_APIKEY, DOGNZB, DOGNZB_APIKEY, NZBX,\
+                LIBRARYSCAN, LIBRARYSCAN_INTERVAL, DOWNLOAD_SCAN_INTERVAL, USE_SABNZBD, SAB_HOST, SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_PRIORITY, SAB_DIRECTORY, BLACKHOLE, BLACKHOLE_DIR, ADD_COMICS, COMIC_DIR, IMP_MOVE, IMP_RENAME, IMP_METADATA, \
+                USE_NZBGET, NZBGET_HOST, NZBGET_PORT, NZBGET_USERNAME, NZBGET_PASSWORD, NZBGET_CATEGORY, NZBGET_PRIORITY, NZBSU, NZBSU_APIKEY, DOGNZB, DOGNZB_APIKEY, NZBX,\
                 NEWZNAB, NEWZNAB_HOST, NEWZNAB_APIKEY, NEWZNAB_ENABLED, EXTRA_NEWZNABS,\
                 RAW, RAW_PROVIDER, RAW_USERNAME, RAW_PASSWORD, RAW_GROUPS, EXPERIMENTAL, \
-                PREFERRED_QUALITY, MOVE_FILES, RENAME_FILES, LOWERCASE_FILENAMES, USE_MINSIZE, MINSIZE, USE_MAXSIZE, MAXSIZE, CORRECT_METADATA, FOLDER_FORMAT, FILE_FORMAT, REPLACE_CHAR, REPLACE_SPACES, ADD_TO_CSV, CVINFO, \
-                COMIC_LOCATION, QUAL_ALTVERS, QUAL_SCANNER, QUAL_TYPE, QUAL_QUALITY, ENABLE_EXTRA_SCRIPTS, EXTRA_SCRIPTS, ENABLE_PRE_SCRIPTS, PRE_SCRIPTS
+                PROWL_ENABLED, PROWL_PRIORITY, PROWL_KEYS, PROWL_ONSNATCH, NMA_ENABLED, NMA_APIKEY, NMA_PRIORITY, NMA_ONSNATCH, \
+                PREFERRED_QUALITY, MOVE_FILES, RENAME_FILES, LOWERCASE_FILENAMES, USE_MINSIZE, MINSIZE, USE_MAXSIZE, MAXSIZE, CORRECT_METADATA, FOLDER_FORMAT, FILE_FORMAT, REPLACE_CHAR, REPLACE_SPACES, ADD_TO_CSV, CVINFO, LOG_LEVEL, POST_PROCESSING, \
+                COMIC_LOCATION, QUAL_ALTVERS, QUAL_SCANNER, QUAL_TYPE, QUAL_QUALITY, ENABLE_EXTRA_SCRIPTS, EXTRA_SCRIPTS, ENABLE_PRE_SCRIPTS, PRE_SCRIPTS, PULLNEW, COUNT_ISSUES, COUNT_HAVES, COUNT_COMICS
                 
         if __INITIALIZED__:
             return False
@@ -230,6 +258,7 @@ def initialize():
         # Make sure all the config sections exist
         CheckSection('General')
         CheckSection('SABnzbd')
+        CheckSection('NZBGet')
         CheckSection('NZBsu')
         CheckSection('DOGnzb')
         CheckSection('Raw')
@@ -271,6 +300,7 @@ def initialize():
         COMIC_DIR = check_setting_str(CFG, 'General', 'comic_dir', '')
         IMP_MOVE = bool(check_setting_int(CFG, 'General', 'imp_move', 0))
         IMP_RENAME = bool(check_setting_int(CFG, 'General', 'imp_rename', 0))
+        IMP_METADATA = bool(check_setting_int(CFG, 'General', 'imp_metadata', 0))
         DOWNLOAD_SCAN_INTERVAL = check_setting_int(CFG, 'General', 'download_scan_interval', 5)
         INTERFACE = check_setting_str(CFG, 'General', 'interface', 'default')
         AUTOWANT_ALL = bool(check_setting_int(CFG, 'General', 'autowant_all', 0))
@@ -289,23 +319,38 @@ def initialize():
         ZERO_LEVEL = bool(check_setting_int(CFG, 'General', 'zero_level', 0))
         ZERO_LEVEL_N = check_setting_str(CFG, 'General', 'zero_level_n', '')
         LOWERCASE_FILENAMES = bool(check_setting_int(CFG, 'General', 'lowercase_filenames', 0))
+
+        PROWL_ENABLED = bool(check_setting_int(CFG, 'Prowl', 'prowl_enabled', 0))
+        PROWL_KEYS = check_setting_str(CFG, 'Prowl', 'prowl_keys', '')
+        PROWL_ONSNATCH = bool(check_setting_int(CFG, 'Prowl', 'prowl_onsnatch', 0))
+        PROWL_PRIORITY = check_setting_int(CFG, 'Prowl', 'prowl_priority', 0)
+
+        NMA_ENABLED = bool(check_setting_int(CFG, 'NMA', 'nma_enabled', 0))
+        NMA_APIKEY = check_setting_str(CFG, 'NMA', 'nma_apikey', '')
+        NMA_PRIORITY = check_setting_int(CFG, 'NMA', 'nma_priority', 0)
+        NMA_ONSNATCH = bool(check_setting_int(CFG, 'NMA', 'nma_onsnatch', 0))
+
         USE_MINSIZE = bool(check_setting_int(CFG, 'General', 'use_minsize', 0))
         MINSIZE = check_setting_str(CFG, 'General', 'minsize', '')
         USE_MAXSIZE = bool(check_setting_int(CFG, 'General', 'use_maxsize', 0))
         MAXSIZE = check_setting_str(CFG, 'General', 'maxsize', '')
         ADD_TO_CSV = bool(check_setting_int(CFG, 'General', 'add_to_csv', 1))
         CVINFO = bool(check_setting_int(CFG, 'General', 'cvinfo', 0))
+        LOG_LEVEL = check_setting_str(CFG, 'General', 'log_level', '')
         ENABLE_EXTRA_SCRIPTS = bool(check_setting_int(CFG, 'General', 'enable_extra_scripts', 0))
         EXTRA_SCRIPTS = check_setting_str(CFG, 'General', 'extra_scripts', '')
 
         ENABLE_PRE_SCRIPTS = bool(check_setting_int(CFG, 'General', 'enable_pre_scripts', 0))
         PRE_SCRIPTS = check_setting_str(CFG, 'General', 'pre_scripts', '')
+        POST_PROCESSING = bool(check_setting_int(CFG, 'General', 'post_processing', 1))
 
+        USE_SABNZBD = bool(check_setting_int(CFG, 'SABnzbd', 'use_sabnzbd', 0))
         SAB_HOST = check_setting_str(CFG, 'SABnzbd', 'sab_host', '')
         SAB_USERNAME = check_setting_str(CFG, 'SABnzbd', 'sab_username', '')
         SAB_PASSWORD = check_setting_str(CFG, 'SABnzbd', 'sab_password', '')
         SAB_APIKEY = check_setting_str(CFG, 'SABnzbd', 'sab_apikey', '')
         SAB_CATEGORY = check_setting_str(CFG, 'SABnzbd', 'sab_category', '')
+        SAB_DIRECTORY = check_setting_str(CFG, 'SABnzbd', 'sab_directory', '')
         SAB_PRIORITY = check_setting_str(CFG, 'SABnzbd', 'sab_priority', '')
         if SAB_PRIORITY.isdigit():
             if SAB_PRIORITY == "0": SAB_PRIORITY = "Default"
@@ -314,6 +359,15 @@ def initialize():
             elif SAB_PRIORITY == "3": SAB_PRIORITY = "High"
             elif SAB_PRIORITY == "4": SAB_PRIORITY = "Paused"
             else: SAB_PRIORITY = "Default"
+
+        USE_NZBGET = bool(check_setting_int(CFG, 'NZBGet', 'use_nzbget', 0))
+        NZBGET_HOST = check_setting_str(CFG, 'NZBGet', 'nzbget_host', '')
+        NZBGET_PORT = check_setting_str(CFG, 'NZBGet', 'nzbget_port', '')
+        NZBGET_USERNAME = check_setting_str(CFG, 'NZBGet', 'nzbget_username', '')
+        NZBGET_PASSWORD = check_setting_str(CFG, 'NZBGet', 'nzbget_password', '')
+        NZBGET_CATEGORY = check_setting_str(CFG, 'NZBGet', 'nzbget_category', '')
+        NZBGET_PRIORITY = check_setting_str(CFG, 'NZBGet', 'nzbget_priority', '')
+
         NZBSU = bool(check_setting_int(CFG, 'NZBsu', 'nzbsu', 0))
         NZBSU_APIKEY = check_setting_str(CFG, 'NZBsu', 'nzbsu_apikey', '')
 
@@ -419,6 +473,17 @@ def initialize():
         # Get the currently installed version - returns None, 'win32' or the git hash
         # Also sets INSTALL_TYPE variable to 'win', 'git' or 'source'
         CURRENT_VERSION = versioncheck.getVersion()
+        if CURRENT_VERSION is not None:
+            hash = CURRENT_VERSION[:7]
+        else:
+            hash = "unknown"
+
+        if version.MYLAR_VERSION == 'master':
+            vers = 'M'
+        else:
+           vers = 'D'
+
+        USER_AGENT = 'Mylar/'+str(hash)+'('+vers+') +http://www.github.com/evilhero/mylar/'
 
         # Check for new versions
         if CHECK_GITHUB_ON_STARTUP:
@@ -523,6 +588,7 @@ def config_write():
     new_config['General']['comic_dir'] = COMIC_DIR
     new_config['General']['imp_move'] = int(IMP_MOVE)
     new_config['General']['imp_rename'] = int(IMP_RENAME)
+    new_config['General']['imp_metadata'] = int(IMP_METADATA)
     new_config['General']['download_scan_interval'] = DOWNLOAD_SCAN_INTERVAL
     new_config['General']['interface'] = INTERFACE
     new_config['General']['autowant_all'] = int(AUTOWANT_ALL)
@@ -541,24 +607,40 @@ def config_write():
     new_config['General']['zero_level'] = int(ZERO_LEVEL)
     new_config['General']['zero_level_n'] = ZERO_LEVEL_N
     new_config['General']['lowercase_filenames'] = LOWERCASE_FILENAMES
+
     new_config['General']['use_minsize'] = int(USE_MINSIZE)
     new_config['General']['minsize'] = MINSIZE
     new_config['General']['use_maxsize'] = int(USE_MAXSIZE)
     new_config['General']['maxsize'] = MAXSIZE
     new_config['General']['add_to_csv'] = int(ADD_TO_CSV)
     new_config['General']['cvinfo'] = int(CVINFO)
+    new_config['General']['log_level'] = LOG_LEVEL
     new_config['General']['enable_extra_scripts'] = int(ENABLE_EXTRA_SCRIPTS)
     new_config['General']['extra_scripts'] = EXTRA_SCRIPTS
     new_config['General']['enable_pre_scripts'] = int(ENABLE_PRE_SCRIPTS)
     new_config['General']['pre_scripts'] = PRE_SCRIPTS
+    new_config['General']['post_processing'] = POST_PROCESSING
+
 
     new_config['SABnzbd'] = {}
+    new_config['SABnzbd']['use_sabnzbd'] = int(USE_SABNZBD)
     new_config['SABnzbd']['sab_host'] = SAB_HOST
     new_config['SABnzbd']['sab_username'] = SAB_USERNAME
     new_config['SABnzbd']['sab_password'] = SAB_PASSWORD
     new_config['SABnzbd']['sab_apikey'] = SAB_APIKEY
     new_config['SABnzbd']['sab_category'] = SAB_CATEGORY
     new_config['SABnzbd']['sab_priority'] = SAB_PRIORITY
+    new_config['SABnzbd']['sab_directory'] = SAB_DIRECTORY
+
+    new_config['NZBGet'] = {}
+    new_config['NZBGet']['use_nzbget'] = int(USE_NZBGET)
+    new_config['NZBGet']['nzbget_host'] = NZBGET_HOST
+    new_config['NZBGet']['nzbget_port'] = NZBGET_PORT
+    new_config['NZBGet']['nzbget_username'] = NZBGET_USERNAME
+    new_config['NZBGet']['nzbget_password'] = NZBGET_PASSWORD
+    new_config['NZBGet']['nzbget_category'] = NZBGET_CATEGORY
+    new_config['NZBGet']['nzbget_priority'] = NZBGET_PRIORITY
+
 
     new_config['NZBsu'] = {}
     new_config['NZBsu']['nzbsu'] = int(NZBSU)
@@ -587,6 +669,18 @@ def config_write():
 
     new_config['Newznab']['extra_newznabs'] = flattened_newznabs
 
+    new_config['Prowl'] = {}
+    new_config['Prowl']['prowl_enabled'] = int(PROWL_ENABLED)
+    new_config['Prowl']['prowl_keys'] = PROWL_KEYS
+    new_config['Prowl']['prowl_onsnatch'] = int(PROWL_ONSNATCH)
+    new_config['Prowl']['prowl_priority'] = int(PROWL_PRIORITY)
+
+    new_config['NMA'] = {}
+    new_config['NMA']['nma_enabled'] = int(NMA_ENABLED)
+    new_config['NMA']['nma_apikey'] = NMA_APIKEY
+    new_config['NMA']['nma_priority'] = NMA_PRIORITY
+    new_config['NMA']['nma_onsnatch'] = int(PROWL_ONSNATCH)
+
     new_config['Raw'] = {}
     new_config['Raw']['raw'] = int(RAW)
     new_config['Raw']['raw_provider'] = RAW_PROVIDER
@@ -613,6 +707,7 @@ def start():
         
         #weekly pull list gets messed up if it's not populated first, so let's populate it then set the scheduler.
         logger.info("Checking for existance of Weekly Comic listing...")
+        PULLNEW = 'no'  #reset the indicator here.
         threading.Thread(target=weeklypull.pullit).start()
         #now the scheduler (check every 24 hours)
         SCHED.add_interval_job(weeklypull.pullit, hours=24)
@@ -642,7 +737,9 @@ def dbcheck():
     c.execute('CREATE TABLE IF NOT EXISTS nzblog (IssueID TEXT, NZBName TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS weekly (SHIPDATE text, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text)')
 #    c.execute('CREATE TABLE IF NOT EXISTS sablog (nzo_id TEXT, ComicName TEXT, ComicYEAR TEXT, ComicIssue TEXT, name TEXT, nzo_complete TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS importresults (ComicName TEXT, ComicYear TEXT, Status TEXT, ImportDate TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS importresults (impID TEXT, ComicName TEXT, ComicYear TEXT, Status TEXT, ImportDate TEXT, ComicFilename TEXT, ComicLocation TEXT, WatchMatch TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS readlist (IssueID TEXT, ComicName TEXT, Issue_Number TEXT, Status TEXT, DateAdded TEXT, Location TEXT, inCacheDir TEXT)')
+
     conn.commit
     c.close
     #new
@@ -687,6 +784,64 @@ def dbcheck():
         c.execute('SELECT UseFuzzy from comics')
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE comics ADD COLUMN UseFuzzy TEXT')
+
+    try:
+        c.execute('SELECT WatchMatch from importresults')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE importresults ADD COLUMN WatchMatch TEXT')
+
+    try:
+        c.execute('SELECT IssueCount from importresults')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE importresults ADD COLUMN IssueCount TEXT')
+
+    try:
+        c.execute('SELECT ComicLocation from importresults')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE importresults ADD COLUMN ComicLocation TEXT')
+
+    try:
+        c.execute('SELECT ComicFilename from importresults')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE importresults ADD COLUMN ComicFilename TEXT')
+
+    try:
+        c.execute('SELECT impID from importresults')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE importresults ADD COLUMN impID TEXT')
+
+    try:
+        c.execute('SELECT inCacheDIR from readlist')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE readlist ADD COLUMN inCacheDIR TEXT')
+
+    try:
+        c.execute('SELECT Location from readlist')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE readlist ADD COLUMN Location TEXT')
+
+    #if it's prior to Wednesday, the issue counts will be inflated by one as the online db's everywhere
+    #prepare for the next 'new' release of a series. It's caught in updater.py, so let's just store the 
+    #value in the sql so we can display it in the details screen for everyone to wonder at.
+    try:
+        c.execute('SELECT not_updated_db from comics')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE comics ADD COLUMN not_updated_db TEXT')
+
+# -- not implemented just yet ;)
+
+    # for metadata...
+    # MetaData_Present will be true/false if metadata is present
+    # MetaData will hold the MetaData itself in tuple format
+#    try:
+#        c.execute('SELECT MetaData_Present from comics')
+#    except sqlite3.OperationalError:
+#        c.execute('ALTER TABLE importresults ADD COLUMN MetaData_Present TEXT')
+
+#    try:
+#        c.execute('SELECT MetaData from importresults')
+#    except sqlite3.OperationalError:
+#        c.execute('ALTER TABLE importresults ADD COLUMN MetaData TEXT')
 
     #let's delete errant comics that are stranded (ie. Comicname = Comic ID: )
     c.execute("DELETE from COMICS WHERE ComicName='None' OR ComicName LIKE 'Comic ID%'")

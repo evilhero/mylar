@@ -35,7 +35,16 @@ def dbUpdate():
     for comic in activecomics:
     
         comicid = comic[0]
-        mylar.importer.addComictoDB(comicid)
+        mismatch = "no"
+        CV_EXcomicid = myDB.action("SELECT * from exceptions WHERE ComicID=?", [comicid]).fetchone()
+        if CV_EXcomicid is None: pass
+        else:
+            if CV_EXcomicid['variloop'] == '99':
+                mismatch = "yes"
+        if comicid[:1] == "G":
+            mylar.importer.GCDimport(comicid)
+        else: 
+            mylar.importer.addComictoDB(comicid,mismatch)
         
     logger.info('Update complete')
 
@@ -80,6 +89,21 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate):
     issuechk = myDB.action("SELECT * FROM issues WHERE ComicID=? AND Issue_Number=?", [ComicID, IssueNumber]).fetchone()
     if issuechk is None:
         logger.fdebug(str(ComicName) + " Issue: " + str(IssueNumber) + " not present in listings to mark for download...updating comic and adding to Upcoming Wanted Releases.")
+        # we need to either decrease the total issue count, OR indicate that an issue is upcoming.
+        upco_results = myDB.action("SELECT COUNT(*) FROM UPCOMING WHERE ComicID=?",[ComicID]).fetchall()
+        upco_iss = upco_results[0][0]
+        #logger.info("upco_iss: " + str(upco_iss))
+        if int(upco_iss) > 0:
+            #logger.info("There is " + str(upco_iss) + " of " + str(ComicName) + " that's not accounted for")
+            newKey = {"ComicID": ComicID}
+            newVal = {"not_updated_db": str(upco_iss)}
+            myDB.upsert("comics", newVal, newKey)
+        elif int(upco_iss) <=0 and lastupdatechk['not_updated_db']:
+            #if not_updated_db has a value, and upco_iss is > 0, let's zero it back out cause it's updated now.
+            newKey = {"ComicID": ComicID}
+            newVal = {"not_updated_db": ""}
+            myDB.upsert("comics", newVal, newKey)
+
         if hours > 5:
             pullupd = "yes"
             logger.fdebug("Now Refreshing comic " + str(ComicName) + " to make sure it's up-to-date")
@@ -127,7 +151,7 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate):
         else:
             myDB.upsert("issues", values, control)
     else:
-        logger.fdebug("Issues don't match for some reason... db issue: " + str(issuechk['Issue_Number']) + " ...weekly new issue: " + str(IssueNumber))
+        logger.fdebug("Issues don't match for some reason...weekly new issue: " + str(IssueNumber))
 
 
 def weekly_update(ComicName):
@@ -205,12 +229,15 @@ def foundsearch(ComicID, IssueID):
     logger.info(u"Updating now complete for " + str(comic['ComicName']) + " issue: " + str(issue['Issue_Number']))
     return
 
-def forceRescan(ComicID):
+def forceRescan(ComicID,archive=None):
     myDB = db.DBConnection()
     # file check to see if issue exists
     rescan = myDB.action('SELECT * FROM comics WHERE ComicID=?', [ComicID]).fetchone()
     logger.info(u"Now checking files for " + str(rescan['ComicName']) + " (" + str(rescan['ComicYear']) + ") in " + str(rescan['ComicLocation']) )
-    fc = filechecker.listFiles(dir=rescan['ComicLocation'], watchcomic=rescan['ComicName'], AlternateSearch=rescan['AlternateSearch'])
+    if archive is None:
+        fc = filechecker.listFiles(dir=rescan['ComicLocation'], watchcomic=rescan['ComicName'], AlternateSearch=rescan['AlternateSearch'])
+    else:
+        fc = filechecker.listFiles(dir=archive, watchcomic=rescan['ComicName'], AlternateSearch=rescan['AlternateSearch'])
     iscnt = rescan['Total']
     havefiles = 0
     fccnt = int(fc['comiccount'])
@@ -232,11 +259,56 @@ def forceRescan(ComicID):
             tmpfc = fc['comiclist'][fn]
         except IndexError:
             break
-        temploc = tmpfc['ComicFilename'].replace('_', ' ')
+        temploc= tmpfc['JusttheDigits'].replace('_', ' ')
+
+#        temploc = tmpfc['ComicFilename'].replace('_', ' ')
         temploc = re.sub('[\#\']', '', temploc)
         #logger.fdebug("temploc: " + str(temploc))
         if 'annual' not in temploc:
-            fcnew = shlex.split(str(temploc))
+            #remove the extension here
+            extensions = ('.cbr','.cbz')
+            if temploc.lower().endswith(extensions):
+                #print ("removed extension for issue:" + str(temploc))
+                temploc = temploc[:-4]
+            deccnt = str(temploc).count('.')
+            if deccnt > 1:
+                #print ("decimal counts are :" + str(deccnt))
+                #if the file is formatted with '.' in place of spaces we need to adjust.
+                #before replacing - check to see if digits on either side of decimal and if yes, DON'T REMOVE
+                occur=1
+                prevstart = 0
+                digitfound = "no"
+                decimalfound = "no"
+                tempreconstruct = ''
+                while (occur <= deccnt):
+                    n = occur
+                    start = temploc.find('.')
+                    while start >=0 and n > 1:
+                        start = temploc.find('.', start+len('.'))
+                        n-=1
+                    #print "occurance " + str(occur) + " of . at position: " + str(start)
+                    if temploc[prevstart:start].isdigit():
+                        if digitfound == "yes":
+                            #print ("this is a decimal, assuming decimal issue.")
+                            decimalfound = "yes"
+                            reconst = "." + temploc[prevstart:start] + " "
+                        else:
+                            #print ("digit detected.")
+                            digitfound = "yes"
+                            reconst = temploc[prevstart:start]
+                    else:
+                        reconst = temploc[prevstart:start] + " "
+                    #print "word: " + reconst
+                    tempreconstruct = tempreconstruct + reconst 
+                    #print ("tempreconstruct is : " + tempreconstruct)
+                    prevstart = (start+1)
+                    occur+=1
+                #print "word: " + temploc[prevstart:]
+                tempreconstruct = tempreconstruct + temploc[prevstart:]
+                #print ("final filename to use is : " + str(tempreconstruct))
+                temploc = tempreconstruct            
+            #print("checking " + str(temploc))
+            fcnew = shlex.split(str(temploc))            
             fcn = len(fcnew)
             n = 0
             while (n <= iscnt):
@@ -272,8 +344,8 @@ def forceRescan(ComicID):
                             i = float(fcnew[som])
                         except ValueError, TypeError:
                             #not numeric
-                            fcnew[som] = fcnew[som].replace(".", "")
                             #logger.fdebug("NOT NUMERIC - new word: " + str(fcnew[som]))
+                            fcnew[som] = fcnew[som].replace(".", "")
                         else:
                             #numeric
                             pass
@@ -326,7 +398,7 @@ def forceRescan(ComicID):
                         #logger.fdebug("let's compare with this issue value: " + str(fcdigit))
                     else:
                         # it's a word, skip it.
-                        fcdigit = 1000000    
+                        fcdigit = 19283838380101193
                     #logger.fdebug("fcdigit: " + str(fcdigit))
                     #logger.fdebug("int_iss: " + str(int_iss))
                     if "." in str(int_iss):
@@ -361,6 +433,8 @@ def forceRescan(ComicID):
         #we have the # of comics, now let's update the db.
         #even if we couldn't find the physical issue, check the status.
         #if Archived, increase the 'Have' count.
+        if archive:
+            issStatus = "Archived"
         if haveissue == "no" and issuedupe == "no":
             isslocation = "None"
             if old_status == "Skipped":
