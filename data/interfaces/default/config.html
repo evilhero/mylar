@@ -38,9 +38,9 @@
                   <legend>Configuration Options</legend>
                        <div>
                             <label><strong>Mylar Version: </strong> ${config['branch']}</br> -- ${config['br_type']}  build ${config['br_version']}.</label></br>
-                            <label><strong>Python Version:</strong> ${config['py_version']}</label></br></br>
+                            <label><strong>Python Version :</strong> ${config['py_version']}</label></br></br>
                             <legend>MYLAR PROGRAM OPTIONS</legend>
-                            <label><strong>Mylar Data Directory:</strong>  ${config['data_dir']}</label></br>
+                            <label><strong>Mylar Data Directory :</strong>  ${config['data_dir']}</label></br>
                             <label><strong>Mylar Program Directory :</strong> ${config['prog_dir']}</label></br>
                             <label><strong>Mylar Cache Directory :</strong> ${config['cache_dir']}</label></br>
                             <label><strong>Mylar Config File :</strong>${config['config_file']}</label></br>
@@ -52,12 +52,35 @@
                    <fieldset>
                       <legend>Bragging Rights</legend>
                         <div>
-                            <label><strong># of Series you're watching: </strong> ${comicinfo['COUNT_COMICS']}</br>
-                           <label><strong># of Issues you're watching: </strong> ${comicinfo['COUNT_ISSUES']}</br>
-                           <label><strong># of Issues you actually have: </strong> ${comicinfo['COUNT_HAVES']}</br>
-                           <label><strong> ... total HD-space being used: </strong> ${comicinfo['COUNT_SIZE']}</br>
+                            <label><strong># of Series you're watching: </strong> ${comicinfo['COUNT_COMICS']}</br></label>
+                           <label><strong># of Issues you're watching: </strong> ${comicinfo['COUNT_ISSUES']}</br></label>
+                           <label><strong># of Issues you actually have: </strong> ${comicinfo['COUNT_HAVES']}</br></label>
+                           <label><strong> ... total HD-space being used: </strong> ${comicinfo['COUNT_SIZE']}</br></label>
                         </div>
                    </fieldset>
+                <fieldset>
+                     <legend>Useful Information</legend>
+                        <div class="row">
+                          <label><strong>Homepage</strong></label>
+                            <div>Coming Soon...</div>
+                        </div>
+                        <div class="row">
+                          <label><strong>Forums</strong></label>
+                            <div>Coming Soon...</div>
+                        </div>
+                        <div class="row">
+                          <label><strong>Source</strong></label>
+                            <div><a href="https://github.com/evilhero/mylar/">https://github.com/evilhero/mylar/</a></div>
+                        </div>
+                        <div class="row">
+                          <label><strong>Issues</strong></label>
+                            <div><a href="https://github.com/evilhero/mylar/">https://github.com/evilhero/mylar/issues/</a></div>
+                        </div>
+                        <div class="row">
+                          <label><strong>Internet Relay Chat</strong></label>
+                              <div><a href="irc://irc.freenode.net/#mylar">#mylar on irc.freenode.net</a></div>
+                        </div>
+                </fieldset>
                 <fieldset>
                     <legend>Branch history</legend>
                           <label>This would be a nice place to see revision history...</label>
@@ -98,6 +121,10 @@
                                     <input type="checkbox" name="logverbose" value="1" ${config['logverbose']} /> <label>Verbose Logging</label>
                                     <br/><small>*Use this only when experiencing problems*</small>
                                  </div>
+                                 <div class="row checkbox">
+                                    <input type="checkbox" name="syno_fix" value="1" ${config['syno_fix']} /> <label>Synology Fix</label>
+                                    <br/><small>*Use this if experiencing parsing problems*</small>
+                                 </div>
 
             		 </fieldset>
             	</td>
@@ -109,6 +136,10 @@
 	                    	<input type="text" name="nzb_search_interval" value="${config['nzb_search_interval']}" size="4">mins
                                   <div class="row checkbox">
                                     <input type="checkbox" name="nzb_startup_search" value="1" ${config['nzb_startup_search']} /><label>NZB Search on startup</label>
+                                  </div>
+                                  <div class="row">
+                                  <label>Search delay</label>
+                                  <input type="text" name="search_delay" value="${config['search_delay']}" size="4" />mins
                                   </div>
                             </div>
 
@@ -133,7 +164,17 @@
                                         <input type="text" name="destination_dir" value="${config['destination_dir']}" size="50">
                                         <small>Where do you store your comics?<br/> (or where do you want me to store them)</small>
                                         <small>e.g. /Users/name/Comics or /Volumes/share/comics</small>
+                                </div>
 
+                                <div class="row">
+                                    <label>Directory CHMOD</label>
+                                    <input type="text" name="chmod_dir" value="${config['chmod_dir']}" size="50">
+                                    <small>Permissions on created/moved directories</small>
+                                </div>
+                                <div class="row">
+                                    <label>File CHMOD</label>
+                                    <input type="text" name="chmod_file" value="${config['chmod_file']}" size="50">
+                                    <small>Permissions on created/moved directories</small>
                                 </div>
 
 	                </fieldset>
@@ -460,8 +501,13 @@
                                  <div class="row">
                                     <label> File Format</label>
                                     <input type="text" name="file_format" value="${config['file_format']}" size="43">
+                                    <%
+                                         file_options = "$Series = SeriesName\n$Year = SeriesYear\n$Issue = IssueNumber\n$VolumeY = V{SeriesYear}\n$VolumeN = V{Volume#}"
+                                    %>
+                                    <a href="#" title="${file_options}"><img src="interfaces/default/images/info32.png" height="16" alt="" /></a>
                                     <small>Use:  $Series, $Year, $Issue<br />
                                                                 E.g.: $Series $Issue ($Year) = Animal Man 0 (2012) </small>
+                                    <small>if tag isn't available, won't create it</small>
                                  </div>
                       </fieldset>
                 	
@@ -606,7 +652,27 @@
                         </div>
                      </fieldset>
                                         
-            
+                                        <fieldset>
+                                                 <h3>Pushover</h3>
+                                                 <div class="row checkbox">
+                                                    <input type="checkbox" name="pushover_enabled" id="pushover" value="1" ${config['pushover_enabled']} /><label>Enable Pushover Notifications</label>
+                                                 </div>
+                                                 <div id="pushoveroptions">
+                                                   <div class="row">
+                                                       <label>API key</label><input type="text" name="pushover_apikey" value="${config['pushover_apikey']}" size="50">
+                                                   </div>
+                                                   <div class="row">
+                                                       <label>User key</label><input type="text" name="pushover_userkey" value="${config['pushover_userkey']}" size="50">
+                                                   </div>
+                                                   <div class="row checkbox">
+                                                       <input type="checkbox" name="pushover_onsnatch" value="1" ${config['pushover_onsnatch']} /><label>Notify on snatch?</label>
+                                                   </div>
+                                                   <div class="row">
+                                                       <label>Priority (-2,-1,0,1 or 2):</label>
+                                                       <input type="text" name="pushover_priority" value="${config['pushover_priority']}" size="2">
+                                                   </div>
+                                                 </div>
+                                        </fieldset>            
 				</td>
 			</tr>
         </table>
@@ -686,6 +752,25 @@
                         }
                 });
 
+                if ($("#pushover").is(":checked"))
+                        {
+                                $("#pushoveroptions").show();
+                        }
+                else
+                        {
+                                $("#pushoveroptions").hide();
+                        }
+
+                $("#pushover").click(function(){
+                        if ($("#pushover").is(":checked"))
+                        {
+                                $("#pushoveroptions").slideDown();
+                        }
+                        else
+                        {
+                                $("#pushoveroptions").slideUp();
+                        }
+                });
 
                 var deletedNewznabs = 0;
 

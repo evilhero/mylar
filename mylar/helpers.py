@@ -195,44 +195,55 @@ def is_number(s):
 
 def decimal_issue(iss):
     iss_find = iss.find('.')
-    iss_b4dec = iss[:iss_find]
-    iss_decval = iss[iss_find+1:]
-    if int(iss_decval) == 0:
-        iss = iss_b4dec
-        issdec = int(iss_decval)
-    else:
-        if len(iss_decval) == 1:
-            iss = iss_b4dec + "." + iss_decval
-            issdec = int(iss_decval) * 10
+    dec_except = None
+    if iss_find == -1:
+        #no matches for a decimal, assume we're converting from decimal to int.
+        #match for special issues with alphanumeric numbering...
+        if 'au' in iss.lower():
+            dec_except = 'AU'
+            decex = iss.lower().find('au')
+            deciss = int(iss[:decex]) * 1000
         else:
-            iss = iss_b4dec + "." + iss_decval.rstrip('0')
-            issdec = int(iss_decval.rstrip('0')) * 10
-    deciss = (int(iss_b4dec) * 1000) + issdec
-    return deciss
+            deciss = int(iss) * 1000
+    else:
+        iss_b4dec = iss[:iss_find]
+        iss_decval = iss[iss_find+1:]
+        if int(iss_decval) == 0:
+            iss = iss_b4dec
+            issdec = int(iss_decval)
+        else:
+            if len(iss_decval) == 1:
+                iss = iss_b4dec + "." + iss_decval
+                issdec = int(iss_decval) * 10
+            else:
+                iss = iss_b4dec + "." + iss_decval.rstrip('0')
+                issdec = int(iss_decval.rstrip('0')) * 10
+        deciss = (int(iss_b4dec) * 1000) + issdec
+    return deciss, dec_except
 
 def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=None):
             from mylar import db, logger
             myDB = db.DBConnection()
-            print ("comicid: " + str(comicid))
-            print ("issue#: " + str(issue))
+            #print ("comicid: " + str(comicid))
+            #print ("issue#: " + str(issue))
             # the issue here is a non-decimalized version, we need to see if it's got a decimal and if not, add '.00'
-            iss_find = issue.find('.')
-            if iss_find < 0:
-                # no decimal in issue number
-                iss = str(int(issue)) + ".00"
-            else:
-                iss_b4dec = issue[:iss_find]
-                iss_decval = issue[iss_find+1:]
-                if len(iss_decval) == 1:
-                    iss = str(int(iss_b4dec)) + "." + iss_decval
-                else:
-                    if issue.endswith(".00"):
-                        iss = issue
-                    else:
-                        iss = str(int(iss_b4dec)) + "." + iss_decval.rstrip('0')
-            issue = iss
+#            iss_find = issue.find('.')
+#            if iss_find < 0:
+#                # no decimal in issue number
+#                iss = str(int(issue)) + ".00"
+#            else:
+#                iss_b4dec = issue[:iss_find]
+#                iss_decval = issue[iss_find+1:]
+#                if len(str(int(iss_decval))) == 1:
+#                    iss = str(int(iss_b4dec)) + "." + str(int(iss_decval)*10)
+#                else:
+#                    if issue.endswith(".00"):
+#                        iss = issue
+#                    else:
+#                        iss = str(int(iss_b4dec)) + "." + iss_decval
+#            issue = iss
 
-            print ("converted issue#: " + str(issue))
+#            print ("converted issue#: " + str(issue))
             if issueid is None:
                 chkissue = myDB.action("SELECT * from issues WHERE ComicID=? AND Issue_Number=?", [comicid, issue]).fetchone()
                 if chkissue is None:
@@ -246,25 +257,31 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
             #comicid = issuenzb['ComicID']
             issuenum = issuenzb['Issue_Number']
             #issueno = str(issuenum).split('.')[0]
-
-            iss_find = issuenum.find('.')
-            iss_b4dec = issuenum[:iss_find]
-            iss_decval = issuenum[iss_find+1:]
-            if int(iss_decval) == 0:
-                iss = iss_b4dec
-                issdec = int(iss_decval)
-                issueno = str(iss)
-                logger.fdebug("Issue Number: " + str(issueno))
-            else:
-                if len(iss_decval) == 1:
-                    iss = iss_b4dec + "." + iss_decval
-                    issdec = int(iss_decval) * 10
+            issue_except = 'None'
+            if 'au' in issuenum.lower():
+                issuenum = re.sub("[^0-9]", "", issuenum)
+                issue_except = ' AU'
+            if '.' in issuenum:
+                iss_find = issuenum.find('.')
+                iss_b4dec = issuenum[:iss_find]
+                iss_decval = issuenum[iss_find+1:]
+                if int(iss_decval) == 0:
+                    iss = iss_b4dec
+                    issdec = int(iss_decval)
+                    issueno = str(iss)
+                    logger.fdebug("Issue Number: " + str(issueno))
                 else:
-                    iss = iss_b4dec + "." + iss_decval.rstrip('0')
-                    issdec = int(iss_decval.rstrip('0')) * 10
-                issueno = iss_b4dec
-                logger.fdebug("Issue Number: " + str(iss))
-
+                    if len(iss_decval) == 1:
+                        iss = iss_b4dec + "." + iss_decval
+                        issdec = int(iss_decval) * 10
+                    else:
+                        iss = iss_b4dec + "." + iss_decval.rstrip('0')
+                        issdec = int(iss_decval.rstrip('0')) * 10
+                    issueno = iss_b4dec
+                    logger.fdebug("Issue Number: " + str(iss))
+            else:
+                iss = issuenum
+                issueno = str(iss)
             # issue zero-suppression here
             if mylar.ZERO_LEVEL == "0":
                 zeroadd = ""
@@ -278,11 +295,16 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
             if str(len(issueno)) > 1:
                 if int(issueno) < 10:
                     logger.fdebug("issue detected less than 10")
-                    if int(iss_decval) > 0:
-                        issueno = str(iss)
-                        prettycomiss = str(zeroadd) + str(iss)
+                    if '.' in iss:
+                        if int(iss_decval) > 0:
+                            issueno = str(iss)
+                            prettycomiss = str(zeroadd) + str(iss)
+                        else:
+                            prettycomiss = str(zeroadd) + str(int(issueno))
                     else:
-                        prettycomiss = str(zeroadd) + str(int(issueno))
+                        prettycomiss = str(zeroadd) + str(iss)
+                    if issue_except != 'None':
+                        prettycomiss = str(prettycomiss) + issue_except
                     logger.fdebug("Zero level supplement set to " + str(mylar.ZERO_LEVEL_N) + ". Issue will be set as : " + str(prettycomiss))
                 elif int(issueno) >= 10 and int(issueno) < 100:
                     logger.fdebug("issue detected greater than 10, but less than 100")
@@ -290,17 +312,25 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                         zeroadd = ""
                     else:
                         zeroadd = "0"
-                    if int(iss_decval) > 0:
-                        issueno = str(iss)
-                        prettycomiss = str(zeroadd) + str(iss)
+                    if '.' in iss:
+                        if int(iss_decval) > 0:
+                            issueno = str(iss)
+                            prettycomiss = str(zeroadd) + str(iss)
+                        else:
+                           prettycomiss = str(zeroadd) + str(int(issueno))
                     else:
-                        prettycomiss = str(zeroadd) + str(int(issueno))
+                        prettycomiss = str(zeroadd) + str(iss)
+                    if issue_except != 'None':
+                        prettycomiss = str(prettycomiss) + issue_except
                     logger.fdebug("Zero level supplement set to " + str(mylar.ZERO_LEVEL_N) + ".Issue will be set as : " + str(prettycomiss))
                 else:
                     logger.fdebug("issue detected greater than 100")
-                    if int(iss_decval) > 0:
-                        issueno = str(iss)
+                    if '.' in iss:
+                        if int(iss_decval) > 0:
+                            issueno = str(iss)
                     prettycomiss = str(issueno)
+                    if issue_except != 'None':
+                        prettycomiss = str(prettycomiss) + issue_except
                     logger.fdebug("Zero level supplement set to " + str(mylar.ZERO_LEVEL_N) + ". Issue will be set as : " + str(prettycomiss))
             else:
                 prettycomiss = str(issueno)
@@ -318,6 +348,18 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
             logger.fdebug("Year: "  + str(seriesyear))
             comlocation = comicnzb['ComicLocation']
             logger.fdebug("Comic Location: " + str(comlocation))
+            comversion = comicnzb['ComicVersion']
+            if comversion is None:
+                comversion = 'None'
+            #if comversion is None, remove it so it doesn't populate with 'None'
+            if comversion == 'None':
+                chunk_f_f = re.sub('\$VolumeN','',mylar.FILE_FORMAT)
+                chunk_f = re.compile(r'\s+')
+                chunk_file_format = chunk_f.sub(' ', chunk_f_f)
+                logger.fdebug("No version # found for series, removing from filename")
+                print ("new format: " + str(chunk_file_format))
+            else:
+                chunk_file_format = mylar.FILE_FORMAT
 
             file_values = {'$Series':    series,
                            '$Issue':     prettycomiss,
@@ -325,7 +367,8 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                            '$series':    series.lower(),
                            '$Publisher': publisher,
                            '$publisher': publisher.lower(),
-                           '$Volume':    seriesyear
+                           '$VolumeY':   'V' + str(seriesyear),
+                           '$VolumeN':   comversion
                           }
 
             extensions = ('.cbr', '.cbz')
@@ -341,7 +384,7 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                 else:
                     nfilename = ofilename
             else:
-                nfilename = replace_all(mylar.FILE_FORMAT, file_values)
+                nfilename = replace_all(chunk_file_format, file_values)
                 if mylar.REPLACE_SPACES:
                     #mylar.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
                     nfilename = nfilename.replace(' ', mylar.REPLACE_CHAR)
@@ -361,3 +404,98 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                             "comicid" : comicid }
 
             return rename_this
+
+
+def apiremove(apistring, type):
+    if type == 'nzb':
+        value_regex = re.compile("(?<=apikey=)(?P<value>.*?)(?=$)")
+        #match = value_regex.search(apistring)
+        apiremoved = value_regex.sub("xUDONTNEEDTOKNOWTHISx", apistring)
+    else:
+        #type = $ to denote end of string
+        #type = & to denote up until next api variable
+        value_regex = re.compile("(?<=%26i=1%26r=)(?P<value>.*?)(?=" + str(type) +")")
+        #match = value_regex.search(apistring)
+        apiremoved = value_regex.sub("xUDONTNEEDTOKNOWTHISx", apistring)        
+
+    return apiremoved
+
+def ComicSort(comicorder=None,sequence=None,imported=None):
+    if sequence:
+        # if it's on startup, load the sql into a tuple for use to avoid record-locking
+        i = 0
+        import db, logger
+        myDB = db.DBConnection()
+        comicsort = myDB.action("SELECT * FROM comics ORDER BY ComicSortName COLLATE NOCASE")
+        comicorderlist = []
+        comicorder = {}
+        comicidlist = []
+        if sequence == 'update':
+            mylar.COMICSORT['SortOrder'] = None
+            mylar.COMICSORT['LastOrderNo'] = None
+            mylar.COMICSORT['LastOrderID'] = None
+        for csort in comicsort:
+            if csort['ComicID'] is None: pass
+            if not csort['ComicID'] in comicidlist:
+                if sequence == 'startup':
+                    comicorderlist.append({
+                         'ComicID':             csort['ComicID'],
+                         'ComicOrder':           i
+                         })
+                elif sequence == 'update':
+                    comicorderlist.append({
+#                    mylar.COMICSORT['SortOrder'].append({
+                         'ComicID':             csort['ComicID'],
+                         'ComicOrder':           i
+                         })
+
+                comicidlist.append(csort['ComicID'])
+                i+=1
+        if sequence == 'startup':
+            if i == 0: 
+                comicorder['SortOrder'] = ({'ComicID':'99999','ComicOrder':1})  
+                comicorder['LastOrderNo'] = 1
+                comicorder['LastOrderID'] = 99999
+            else: 
+                comicorder['SortOrder'] = comicorderlist
+                comicorder['LastOrderNo'] = i-1
+                comicorder['LastOrderID'] = comicorder['SortOrder'][i-1]['ComicID']
+            logger.info("Sucessfully ordered " + str(i-1) + " series in your watchlist.")
+            return comicorder
+        elif sequence == 'update':
+            mylar.COMICSORT['SortOrder'] = comicorderlist
+            print ("i:" + str(i))
+            if i == 0:
+                placemnt = 1
+            else:
+                placemnt = int(i-1)
+            mylar.COMICSORT['LastOrderNo'] = placemnt
+            mylar.COMICSORT['LastOrderID'] = mylar.COMICSORT['SortOrder'][placemnt]['ComicID']
+            return            
+    else:
+        # for new series adds, we already know the comicid, so we set the sortorder to an abnormally high #
+        # we DO NOT write to the db to avoid record-locking.
+        # if we get 2 999's we're in trouble though.
+        sortedapp = []
+        if comicorder['LastOrderNo'] == '999':
+            lastorderval = int(comicorder['LastOrderNo']) + 1
+        else:
+            lastorderval = 999
+        sortedapp.append({
+             'ComicID':             imported,
+             'ComicOrder':           lastorderval
+             })
+        mylar.COMICSORT['SortOrder'] = sortedapp
+        mylar.COMICSORT['LastOrderNo'] = lastorderval
+        mylar.COMICSORT['LastOrderID'] = imported
+        return
+        
+def fullmonth(monthno):
+    #simple numerical to worded month conversion....
+    basmonths = {'1':'January','2':'February','3':'March','4':'April','5':'May','6':'June','7':'July','8':'August','9':'September','10':'October','11':'November','12':'December'}
+
+    for numbs in basmonths:
+        if numbs in str(int(monthno)):
+            monthconv = basmonths[numbs]
+
+    return monthconv

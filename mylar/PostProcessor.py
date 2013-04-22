@@ -27,7 +27,7 @@ import urllib2
 import sqlite3
 from xml.dom.minidom import parseString
 
-from mylar import logger, db, helpers, updater, notifiers
+from mylar import logger, db, helpers, updater, notifiers, filechecker
 
 class PostProcessor(object):
     """
@@ -106,7 +106,7 @@ class PostProcessor(object):
             out, err = p.communicate() #@UnusedVariable
             self._log(u"Script result: "+str(out), logger.DEBUG)
         except OSError, e:
-            self._log(u"Unable to run pre_script: " + str(script_cmd))
+           self._log(u"Unable to run pre_script: " + str(script_cmd))
 
     def _run_extra_scripts(self, nzb_name, nzb_folder, filen, folderp, seriesmetadata):
         """
@@ -139,25 +139,31 @@ class PostProcessor(object):
             self._log("nzb folder: " + str(self.nzb_folder), logger.DEBUG)
             logger.fdebug("nzb name: " + str(self.nzb_name))
             logger.fdebug("nzb folder: " + str(self.nzb_folder))
-            # if the SAB Directory option is enabled, let's use that folder name and append the jobname.
-            if mylar.SAB_DIRECTORY is not None and mylar.SAB_DIRECTORY is not 'None' and len(mylar.SAB_DIRECTORY) > 4:
-                self.nzb_folder = os.path.join(mylar.SAB_DIRECTORY, self.nzb_name).encode(mylar.SYS_ENCODING)
-
-            #lookup nzb_name in nzblog table to get issueid
-
-            #query SAB to find out if Replace Spaces enabled / not as well as Replace Decimals
-            #http://localhost:8080/sabnzbd/api?mode=set_config&section=misc&keyword=dirscan_speed&value=5
-            querysab = str(mylar.SAB_HOST) + "/api?mode=get_config&section=misc&output=xml&apikey=" + str(mylar.SAB_APIKEY)
-            #logger.info("querysab_string:" + str(querysab))
-            file = urllib2.urlopen(querysab)
-            data = file.read()
-            file.close()
-            dom = parseString(data)
-
-            sabreps = dom.getElementsByTagName('replace_spaces')[0].firstChild.wholeText
-            sabrepd = dom.getElementsByTagName('replace_dots')[0].firstChild.wholeText
-            logger.fdebug("SAB Replace Spaces: " + str(sabreps))
-            logger.fdebug("SAB Replace Dots: " + str(sabrepd))
+            if mylar.USE_SABNZBD==0:
+                logger.fdebug("Not using SABNzbd")
+            else:
+                # if the SAB Directory option is enabled, let's use that folder name and append the jobname.
+                if mylar.SAB_DIRECTORY is not None and mylar.SAB_DIRECTORY is not 'None' and len(mylar.SAB_DIRECTORY) > 4:
+                    self.nzb_folder = os.path.join(mylar.SAB_DIRECTORY, self.nzb_name).encode(mylar.SYS_ENCODING)
+    
+                #lookup nzb_name in nzblog table to get issueid
+    
+                #query SAB to find out if Replace Spaces enabled / not as well as Replace Decimals
+                #http://localhost:8080/sabnzbd/api?mode=set_config&section=misc&keyword=dirscan_speed&value=5
+                querysab = str(mylar.SAB_HOST) + "/api?mode=get_config&section=misc&output=xml&apikey=" + str(mylar.SAB_APIKEY)
+                #logger.info("querysab_string:" + str(querysab))
+                file = urllib2.urlopen(querysab)
+                data = file.read()
+                file.close()
+                dom = parseString(data)
+    
+                sabreps = dom.getElementsByTagName('replace_spaces')[0].firstChild.wholeText
+                sabrepd = dom.getElementsByTagName('replace_dots')[0].firstChild.wholeText
+                logger.fdebug("SAB Replace Spaces: " + str(sabreps))
+                logger.fdebug("SAB Replace Dots: " + str(sabrepd))
+            if mylar.USE_NZBGET==1:
+                logger.fdebug("Using NZBGET")
+                logger.fdebug("NZB name as passed from NZBGet: " + self.nzb_name)
             myDB = db.DBConnection()
 
             nzbname = self.nzb_name
@@ -171,10 +177,12 @@ class PostProcessor(object):
 
             #replace spaces
             nzbname = re.sub(' ', '.', str(nzbname))
-            nzbname = re.sub('[\,\:]', '', str(nzbname))
+            nzbname = re.sub('[\,\:\?]', '', str(nzbname))
             nzbname = re.sub('[\&]', 'and', str(nzbname))
 
             logger.fdebug("After conversions, nzbname is : " + str(nzbname))
+#            if mylar.USE_NZBGET==1:
+#                nzbname=self.nzb_name
             self._log("nzbname: " + str(nzbname), logger.DEBUG)
 
             nzbiss = myDB.action("SELECT * from nzblog WHERE nzbname=?", [nzbname]).fetchone()
@@ -196,32 +204,90 @@ class PostProcessor(object):
                     issueid = nzbiss['IssueID']
             else: 
                 issueid = nzbiss['IssueID']
+                print "issueid:" + str(issueid)
                 #use issueid to get publisher, series, year, issue number
             issuenzb = myDB.action("SELECT * from issues WHERE issueid=?", [issueid]).fetchone()
-            comicid = issuenzb['ComicID']
-            issuenum = issuenzb['Issue_Number']
-            #issueno = str(issuenum).split('.')[0]
-
-            iss_find = issuenum.find('.')
-            iss_b4dec = issuenum[:iss_find]
-            iss_decval = issuenum[iss_find+1:]
-            if int(iss_decval) == 0:
-                iss = iss_b4dec
-                issdec = int(iss_decval)
-                issueno = str(iss)
-                self._log("Issue Number: " + str(issueno), logger.DEBUG)
-                logger.fdebug("Issue Number: " + str(issueno))
+            if helpers.is_number(issueid):
+                sandwich = int(issuenzb['IssueID'])
             else:
-                if len(iss_decval) == 1:
-                    iss = iss_b4dec + "." + iss_decval
-                    issdec = int(iss_decval) * 10
-                else:
-                    iss = iss_b4dec + "." + iss_decval.rstrip('0')
-                    issdec = int(iss_decval.rstrip('0')) * 10
-                issueno = iss_b4dec
-                self._log("Issue Number: " + str(iss), logger.DEBUG)
-                logger.fdebug("Issue Number: " + str(iss))
+                #if it's non-numeric, it contains a 'G' at the beginning indicating it's a multi-volume
+                #using GCD data. Set sandwich to 1 so it will bypass and continue post-processing.
+                sandwich = 1
+            if issuenzb is None or sandwich >= 900000:
+                # this has no issueID, therefore it's a one-off or a manual post-proc.
+                # At this point, let's just drop it into the Comic Location folder and forget about it..
+                self._log("One-off mode enabled for Post-Processing. All I'm doing is moving the file untouched into the Grab-bag directory.", logger.DEBUG)
+                logger.info("One-off mode enabled for Post-Processing. Will move into Grab-bag directory.")
+                self._log("Grab-Bag Directory set to : " + mylar.GRABBAG_DIR, logger.DEBUG)
+                for root, dirnames, filenames in os.walk(self.nzb_folder):
+                    for filename in filenames:
+                        if filename.lower().endswith(extensions):
+                            ofilename = filename
+                            path, ext = os.path.splitext(ofilename)
 
+                if mylar.GRABBAG_DIR:
+                    grdst = mylar.GRABBAG_DIR
+                else:
+                    grdst = mylar.DESTINATION_DIR
+
+                grab_dst = os.path.join(grdst, ofilename)
+                self._log("Destination Path : " + grab_dst, logger.DEBUG)
+                grab_src = os.path.join(self.nzb_folder, ofilename)
+                self._log("Source Path : " + grab_src, logger.DEBUG)
+                logger.info("Moving " + str(ofilename) + " into grab-bag directory : " + str(grdst))
+
+                try:
+                    shutil.move(grab_src, grab_dst)
+                except (OSError, IOError):
+                    self.log("Failed to move directory - check directories and manually re-run.", logger.DEBUG)
+                    logger.debug("Failed to move directory - check directories and manually re-run.")
+                    return self.log
+                #tidyup old path
+                try:
+                    shutil.rmtree(self.nzb_folder)
+                except (OSError, IOError):
+                    self._log("Failed to remove temporary directory.", logger.DEBUG)
+                    logger.debug("Failed to remove temporary directory - check directory and manually re-run.")
+                    return self.log
+
+                logger.debug("Removed temporary directory : " + str(self.nzb_folder))
+                self._log("Removed temporary directory : " + self.nzb_folder, logger.DEBUG)
+                #delete entry from nzblog table
+                myDB.action('DELETE from nzblog WHERE issueid=?', [issueid])
+                return self.log
+
+            comicid = issuenzb['ComicID']
+            issuenumOG = issuenzb['Issue_Number']
+            #issueno = str(issuenum).split('.')[0]
+            #new CV API - removed all decimals...here we go AGAIN!
+            issuenum = issuenumOG
+            issue_except = 'None'
+            if 'au' in issuenum.lower():
+                issuenum = re.sub("[^0-9]", "", issuenum)
+                issue_except = ' AU'
+            if '.' in issuenum:
+                iss_find = issuenum.find('.')
+                iss_b4dec = issuenum[:iss_find]
+                iss_decval = issuenum[iss_find+1:]
+                if int(iss_decval) == 0:
+                    iss = iss_b4dec
+                    issdec = int(iss_decval)
+                    issueno = str(iss)
+                    self._log("Issue Number: " + str(issueno), logger.DEBUG)
+                    logger.fdebug("Issue Number: " + str(issueno))
+                else:
+                    if len(iss_decval) == 1:
+                        iss = iss_b4dec + "." + iss_decval
+                        issdec = int(iss_decval) * 10
+                    else:
+                        iss = iss_b4dec + "." + iss_decval.rstrip('0')
+                        issdec = int(iss_decval.rstrip('0')) * 10
+                    issueno = iss_b4dec
+                    self._log("Issue Number: " + str(iss), logger.DEBUG)
+                    logger.fdebug("Issue Number: " + str(iss))
+            else:
+                iss = issuenum
+                issueno = str(iss)
             # issue zero-suppression here
             if mylar.ZERO_LEVEL == "0": 
                 zeroadd = ""
@@ -235,11 +301,16 @@ class PostProcessor(object):
             if str(len(issueno)) > 1:
                 if int(issueno) < 10:
                     self._log("issue detected less than 10", logger.DEBUG)
-                    if int(iss_decval) > 0:
-                        issueno = str(iss)
-                        prettycomiss = str(zeroadd) + str(iss)
+                    if '.' in iss:
+                        if int(iss_decval) > 0:
+                            issueno = str(iss)
+                            prettycomiss = str(zeroadd) + str(iss)
+                        else:
+                            prettycomiss = str(zeroadd) + str(int(issueno))
                     else:
-                        prettycomiss = str(zeroadd) + str(int(issueno))
+                        prettycomiss = str(zeroadd) + str(iss)
+                    if issue_except != 'None': 
+                        prettycomiss = str(prettycomiss) + issue_except
                     self._log("Zero level supplement set to " + str(mylar.ZERO_LEVEL_N) + ". Issue will be set as : " + str(prettycomiss), logger.DEBUG)
                 elif int(issueno) >= 10 and int(issueno) < 100:
                     self._log("issue detected greater than 10, but less than 100", logger.DEBUG)
@@ -247,17 +318,25 @@ class PostProcessor(object):
                         zeroadd = ""
                     else:
                         zeroadd = "0"
-                    if int(iss_decval) > 0:
-                        issueno = str(iss)
-                        prettycomiss = str(zeroadd) + str(iss)
+                    if '.' in iss:
+                        if int(iss_decval) > 0:
+                            issueno = str(iss)
+                            prettycomiss = str(zeroadd) + str(iss)
+                        else:
+                           prettycomiss = str(zeroadd) + str(int(issueno))
                     else:
-                        prettycomiss = str(zeroadd) + str(int(issueno))
+                        prettycomiss = str(zeroadd) + str(iss)
+                    if issue_except != 'None':
+                        prettycomiss = str(prettycomiss) + issue_except
                     self._log("Zero level supplement set to " + str(mylar.ZERO_LEVEL_N) + ".Issue will be set as : " + str(prettycomiss), logger.DEBUG)
                 else:
                     self._log("issue detected greater than 100", logger.DEBUG)
-                    if int(iss_decval) > 0:
-                        issueno = str(iss)
+                    if '.' in iss:
+                        if int(iss_decval) > 0:
+                            issueno = str(iss)
                     prettycomiss = str(issueno)
+                    if issue_except != 'None':
+                        prettycomiss = str(prettycomiss) + issue_except
                     self._log("Zero level supplement set to " + str(mylar.ZERO_LEVEL_N) + ". Issue will be set as : " + str(prettycomiss), logger.DEBUG)
             else:
                 prettycomiss = str(issueno)
@@ -271,7 +350,8 @@ class PostProcessor(object):
             publisher = comicnzb['ComicPublisher']
             self._log("Publisher: " + publisher, logger.DEBUG)
             logger.fdebug("Publisher: " + str(publisher))
-            series = comicnzb['ComicName']
+            #we need to un-unicode this to make sure we can write the filenames properly for spec.chars
+            series = comicnzb['ComicName'].encode('ascii', 'ignore').strip()
             self._log("Series: " + series, logger.DEBUG)
             logger.fdebug("Series: " + str(series))
             seriesyear = comicnzb['ComicYear']
@@ -280,7 +360,21 @@ class PostProcessor(object):
             comlocation = comicnzb['ComicLocation']
             self._log("Comic Location: " + comlocation, logger.DEBUG)
             logger.fdebug("Comic Location: " + str(comlocation))
-
+            comversion = comicnzb['ComicVersion']
+            self._log("Comic Version: " + str(comversion), logger.DEBUG)
+            logger.fdebug("Comic Version: " + str(comversion))
+            if comversion is None:
+                comversion = 'None'
+            #if comversion is None, remove it so it doesn't populate with 'None'
+            if comversion == 'None':
+                chunk_f_f = re.sub('\$VolumeN','',mylar.FILE_FORMAT)
+                chunk_f = re.compile(r'\s+')
+                chunk_file_format = chunk_f.sub(' ', chunk_f_f)
+                self._log("No version # found for series - tag will not be available for renaming.", logger.DEBUG)
+                logger.fdebug("No version # found for series, removing from filename")
+                logger.fdebug("new format is now: " + str(chunk_file_format))
+            else:
+                chunk_file_format = mylar.FILE_FORMAT
             #Run Pre-script
 
             if mylar.ENABLE_PRE_SCRIPTS:
@@ -311,7 +405,8 @@ class PostProcessor(object):
                            '$series':    series.lower(),
                            '$Publisher': publisher,
                            '$publisher': publisher.lower(),
-                           '$Volume':    seriesyear
+                           '$VolumeY':   'V' + str(seriesyear),
+                           '$VolumeN':   comversion
                           }
 
             for root, dirnames, filenames in os.walk(self.nzb_folder):
@@ -333,15 +428,18 @@ class PostProcessor(object):
                 else:
                     nfilename = ofilename
             else:
-                nfilename = helpers.replace_all(mylar.FILE_FORMAT, file_values)
+                nfilename = helpers.replace_all(chunk_file_format, file_values)
                 if mylar.REPLACE_SPACES:
                     #mylar.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
                     nfilename = nfilename.replace(' ', mylar.REPLACE_CHAR)
-            nfilename = re.sub('[\,\:]', '', nfilename)
+            nfilename = re.sub('[\,\:\?]', '', nfilename)
             self._log("New Filename: " + nfilename, logger.DEBUG)
             logger.fdebug("New Filename: " + str(nfilename))
 
             src = os.path.join(self.nzb_folder, ofilename)
+
+            filechecker.validateAndCreateDirectory(comlocation, True)
+
             if mylar.LOWERCASE_FILENAMES:
                 dst = (comlocation + "/" + nfilename + ext).lower()
             else:
@@ -372,19 +470,25 @@ class PostProcessor(object):
             myDB.action('DELETE from nzblog WHERE issueid=?', [issueid])
                     #force rescan of files
             updater.forceRescan(comicid)
-            logger.info(u"Post-Processing completed for: " + series + " issue: " + str(issuenum) )
+            logger.info(u"Post-Processing completed for: " + series + " issue: " + str(issuenumOG) )
             self._log(u"Post Processing SUCCESSFULL! ", logger.DEBUG)
 
             if mylar.PROWL_ENABLED:
-                pushmessage = series + '(' + issueyear + ') - issue #' + issuenum
+                pushmessage = series + '(' + issueyear + ') - issue #' + issuenumOG
                 logger.info(u"Prowl request")
                 prowl = notifiers.PROWL()
                 prowl.notify(pushmessage,"Download and Postprocessing completed")
 
             if mylar.NMA_ENABLED:
                 nma = notifiers.NMA()
-                nma.notify(series, str(issueyear), str(issuenum))
+                nma.notify(series, str(issueyear), str(issuenumOG))
 
+            if mylar.PUSHOVER_ENABLED:
+                pushmessage = series + ' (' + str(issueyear) + ') - issue #' + str(issuenumOG)
+                logger.info(u"Pushover request")
+                pushover = notifiers.PUSHOVER()
+                pushover.notify(pushmessage, "Download and Post-Processing completed")
+             
             # retrieve/create the corresponding comic objects
 
             if mylar.ENABLE_EXTRA_SCRIPTS:

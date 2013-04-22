@@ -58,7 +58,7 @@
 				elif comic['Status'] == 'Loading':
 			        	grade = 'L'
                                 elif comic['Status'] == 'Error':
-                                        grade = 'Z'
+                                        grade = 'X'
                                 else:
                                         grade = 'A'
 				
@@ -73,7 +73,7 @@
 				<td id="status">
                                 %if comic['ComicPublished'] is None or comic['ComicPublished'] == '':
                                     Unknown 
-                                %elif 'present' in comic['ComicPublished'].lower():
+                                %elif 'present' in comic['ComicPublished'].lower() or ( helpers.today()[:4] in comic['LatestDate']):
                                     Continuing
                                 %else:
                                     Ended
@@ -81,9 +81,9 @@
                                 </td>
                                 <td id="active" align="center">
                                 %if comic['Status'] == "Active":
-                                    <img src="/images/checkmark.png" alt="Y" width="16" height="16" />
+                                    <img src="/interfaces/default/images/checkmark.png" alt="Y" width="16" height="16" />
                                 %else:
-                                    <img src="/images/cross.png" alt="N" width="16" height="16" />
+                                    <img src="/interfaces/default/images/cross.png" alt="N" width="16" height="16" />
                                 %endif
                                 </td>
                          </tr>
@@ -108,6 +108,7 @@
 			        "aoColumnDefs": [
 			          { 'bSortable': false, 'aTargets': [ 5 ] }
 			        ],
+                                "aLengthMenu": [[10, 25, 50, -1], [10, 25, 50, 'All' ]],
 			        "oLanguage": {
                                         "sLengthMenu":"Show _MENU_ results per page",
                                         "sEmptyTable": "No results",

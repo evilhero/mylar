@@ -28,11 +28,15 @@ mb_lock = threading.Lock()
 
 
 def pullsearch(comicapi,comicquery,offset):
-    PULLURL='http://api.comicvine.com/search?api_key=' + str(comicapi) + '&resources=volume&query=' + str(comicquery) + '&field_list=id,name,description,start_year,site_detail_url,count_of_issues,image,publisher&format=xml&offset=' + str(offset)
+    PULLURL='http://api.comicvine.com/search?api_key=' + str(comicapi) + '&resources=volume&query=' + str(comicquery) + '&field_list=id,name,start_year,site_detail_url,count_of_issues,image,publisher&format=xml&page=' + str(offset)
 
     #all these imports are standard on most modern python implementations
     #download the file:
-    file = urllib2.urlopen(PULLURL)
+    try:
+        file = urllib2.urlopen(PULLURL)
+    except urllib2.HTTPError, err:
+        logger.error("There was a major problem retrieving data from ComicVine - on their end. You'll have to try again later most likely.")
+        return        
     #convert to string:
     data = file.read()
     #close file because we dont need it anymore:
@@ -51,24 +55,27 @@ def findComic(name, mode, issue, limityear=None):
     if any((c in chars) for c in name):
         name = '"'+name+'"'
 
-    print ("limityear: " + str(limityear))            
+    #print ("limityear: " + str(limityear))            
     if limityear is None: limityear = 'None'
 
     comicquery=name.replace(" ", "%20")
     comicapi='583939a3df0a25fc4e8b7a29934a13078002dc27'
-    offset = 20
+    offset = 1
 
     #let's find out how many results we get from the query...    
-    searched = pullsearch(comicapi,comicquery,0)
+    searched = pullsearch(comicapi,comicquery,1)
+    if searched is None: return False
     totalResults = searched.getElementsByTagName('number_of_total_results')[0].firstChild.wholeText
     #print ("there are " + str(totalResults) + " search results...")
     if not totalResults:
         return False
     countResults = 0
-    while (countResults < totalResults):
+    while (countResults < int(totalResults)):
         #print ("querying " + str(countResults))
         if countResults > 0:
-            searched = pullsearch(comicapi,comicquery,countResults)
+            #new api - have to change to page # instead of offset count
+            offsetcount = (countResults/100) + 1
+            searched = pullsearch(comicapi,comicquery,offsetcount)
         comicResults = searched.getElementsByTagName('volume')
         body = ''
         n = 0        
@@ -80,7 +87,10 @@ def findComic(name, mode, issue, limityear=None):
                 xmlcnt = result.getElementsByTagName('count_of_issues')[0].firstChild.wholeText
                 #here we can determine what called us, and either start gathering all issues or just limited ones.
                 #print ("n: " + str(n) + "--xmcnt" + str(xmlcnt))
-                if issue is not None: limiter = int(issue)
+                if issue is not None and str(issue).isdigit():
+                    #this gets buggered up with NEW/ONGOING series because the db hasn't been updated
+                    #to reflect the proper count. Drop it by 1 to make sure.
+                    limiter = int(issue) - 1
                 else: limiter = 0
                 if int(xmlcnt) >= limiter:
                     
@@ -112,8 +122,8 @@ def findComic(name, mode, issue, limityear=None):
                     else:
                         print ("year: " + str(xmlYr) + " -  contraint not met. Has to be within " + str(limityear)) 
                 n+=1    
-        #search results are limited to 20/page...let's account for this.
-        countResults = countResults + 20
+        #search results are limited to 100 and by pagination now...let's account for this.
+        countResults = countResults + 100
    
     return comiclist
         

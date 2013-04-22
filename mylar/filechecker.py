@@ -20,6 +20,7 @@ import pprint
 import subprocess
 import re
 import logger
+import mylar
 
 def file2comicmatch(watchmatch):
     #print ("match: " + str(watchmatch))
@@ -29,7 +30,9 @@ def listFiles(dir,watchcomic,AlternateSearch=None):
     # use AlternateSearch to check for filenames that follow that naming pattern
     # ie. Star Trek TNG Doctor Who Assimilation won't get hits as the 
     # checker looks for Star Trek TNG Doctor Who Assimilation2 (according to CV)
-
+    
+    # we need to convert to ascii, as watchcomic is utf-8 and special chars f'it up
+    u_watchcomic = watchcomic.encode('ascii', 'ignore').strip()    
     logger.fdebug("comic: " + watchcomic)
     basedir = dir
     logger.fdebug("Looking in: " + dir)
@@ -40,22 +43,36 @@ def listFiles(dir,watchcomic,AlternateSearch=None):
         #print item
         #subname = os.path.join(basedir, item)
         subname = item
-        #print subname
-        subname = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\+\'\?\@]',' ', str(subname))
-        modwatchcomic = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\+\'\?\@]', ' ', str(watchcomic))
-        modwatchcomic = re.sub('\s+', ' ', str(modwatchcomic)).strip()
         #versioning - remove it
         subsplit = subname.split()
+        volrem = None
         for subit in subsplit:
-            if 'v' in str(subit):
+            #print ("subit:" + str(subit))
+            if 'v' in str(subit).lower():
                 #print ("possible versioning detected.")
                 if subit[1:].isdigit():
+                    #if in format v1, v2009 etc...
                     #print (subit + "  - assuming versioning. Removing from initial search pattern.")
                     subname = re.sub(str(subit), '', subname)
-                
+                    volrem = subit
+                if subit.lower()[:3] == 'vol':
+                    #if in format vol.2013 etc
+                    #because the '.' in Vol. gets removed, let's loop thru again after the Vol hit to remove it entirely
+                    #print ("volume detected as version #:" + str(subit))
+                    subname = re.sub(subit, '', subname)
+                    volrem = subit
+
+        subname = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\+\'\?\@]',' ', str(subname))
+        modwatchcomic = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\+\'\?\@]', ' ', u_watchcomic)
+        modwatchcomic = re.sub('\&', ' and ', modwatchcomic)
+        modwatchcomic = re.sub('\s+', ' ', str(modwatchcomic)).strip()
+        subname = re.sub('&', ' and ', subname) 
         subname = re.sub('\s+', ' ', str(subname)).strip()
         if AlternateSearch is not None:
-            altsearchcomic = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\+\'\?\@]', ' ', str(AlternateSearch))
+            #same = encode.
+            u_altsearchcomic = AlternateSearch.encode('ascii', 'ignore').strip()
+            altsearchcomic = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\+\'\?\@]', ' ', u_altsearchcomic)
+            altseachcomic = re.sub('&', ' and ', altsearchcomic)
             altsearchcomic = re.sub('\s+', ' ', str(altsearchcomic)).strip()       
         else:
             #create random characters so it will never match.
@@ -73,10 +90,18 @@ def listFiles(dir,watchcomic,AlternateSearch=None):
             #print ("Comicsize:" + str(comicsize))
             comiccnt+=1
             if modwatchcomic.lower() in subname.lower():
-                jtd_len = len(modwatchcomic)
+                #remove versioning here
+                if volrem != None:
+                    jtd_len = len(modwatchcomic) + len(volrem) + 1 #1 is to account for space btwn comic and vol #
+                else:
+                    jtd_len = len(modwatchcomic)
                 justthedigits = item[jtd_len:]
             elif altsearchcomic.lower() in subname.lower():
-                jtd_len = len(altsearchcomic)
+                #remove versioning here
+                if volrem != None:
+                    jtd_len = len(altsearchcomic) + len(volrem) + 1
+                else:
+                    jtd_len = len(altsearchcomic)
                 justthedigits = item[jtd_len:]
             comiclist.append({
                  'ComicFilename':           item,
@@ -88,6 +113,25 @@ def listFiles(dir,watchcomic,AlternateSearch=None):
         else:
             pass
             #print ("directory found - ignoring")
-    logger.fdebug("you have a total of " + str(comiccnt) + " " + str(watchcomic) + " comics")
+    logger.fdebug("you have a total of " + str(comiccnt) + " " + watchcomic + " comics")
     watchmatch['comiccount'] = comiccnt
     return watchmatch
+
+def validateAndCreateDirectory(dir, create=False):
+    if os.path.exists(dir):
+        logger.info("Found comic directory: " + dir)
+        return True
+    else:
+        logger.warn("Could not find comic directory: " + dir)
+        if create:
+            if dir.strip():
+                logger.info("Creating comic directory ("+str(mylar.CHMOD_DIR)+") : " + dir)
+                try:
+                    os.makedirs(dir, mode=int(mylar.CHMOD_DIR))
+                except OSError:
+                    raise SystemExit('Could not create data directory: ' + mylar.DATA_DIR + '. Exiting....')
+                return True
+            else:
+                logger.warn("Provided directory is blank, aborting")
+                return False
+    return False
