@@ -25,6 +25,7 @@ import urllib
 import os 
 import time 
 import re
+import datetime
 
 import mylar 
 from mylar import db, updater, helpers, logger
@@ -36,14 +37,18 @@ def pullit(forcecheck=None):
         try:
             pull_date = myDB.action("SELECT SHIPDATE from weekly").fetchone()
             logger.info(u"Weekly pull list present - checking if it's up-to-date..")
-            pulldate = pull_date['SHIPDATE']
+            if (pull_date is None):
+                pulldate = '00000000'
+            else:
+                pulldate = pull_date['SHIPDATE']
         except (sqlite3.OperationalError, TypeError),msg:
             conn=sqlite3.connect(mylar.DB_FILE)
             c=conn.cursor()
             logger.info(u"Error Retrieving weekly pull list - attempting to adjust")
             c.execute('DROP TABLE weekly')    
-            c.execute('CREATE TABLE IF NOT EXISTS weekly (SHIPDATE text, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text)')
+            c.execute('CREATE TABLE IF NOT EXISTS weekly (SHIPDATE text, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text, ComicID text)')
             pulldate = '00000000'
+            logger.fdebug(u"Table re-created, trying to populate")
     else:
         logger.info(u"No pullist found...I'm going to try and get a new list now.")
         pulldate = '00000000'
@@ -281,6 +286,9 @@ def pullit(forcecheck=None):
                         #print ("issue: " + str(issue))
                         dupefound = "no"
                 #--start duplicate comic / issue chk
+                # pullist has shortforms of a series' title sometimes and causes problems
+                if 'O/T' in comicnm:
+                    comicnm = re.sub('O/T', 'OF THE', comicnm)
                 for excl in excludes:
                     if excl in str(comicrm):
                         #duplicate comic / issue detected - don't add...
@@ -303,7 +311,7 @@ def pullit(forcecheck=None):
 
     cursor.executescript('drop table if exists weekly;')
 
-    cursor.execute("CREATE TABLE IF NOT EXISTS weekly (SHIPDATE, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text);")
+    cursor.execute("CREATE TABLE IF NOT EXISTS weekly (SHIPDATE, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text, ComicID text);")
     connection.commit()
 
 
@@ -317,7 +325,8 @@ def pullit(forcecheck=None):
         if "BOOK" in row: break
         #print (row)
         try:
-            cursor.execute("INSERT INTO weekly VALUES (?,?,?,?,?,?);", row)
+            logger.debug("Row: %s" % row)
+            cursor.execute("INSERT INTO weekly VALUES (?,?,?,?,?,?,null);", row)
         except Exception, e:
             #print ("Error - invald arguments...-skipping")
             pass
@@ -371,34 +380,49 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None):
         cur = con.cursor()
         # if it's a one-off check (during an add series), load the comicname here and ignore below.
         if comic1off_name:
+            logger.fdebug("this is a one-off" + str(comic1off_name))
             lines.append(comic1off_name.strip())
             unlines.append(comic1off_name.strip())
             comicid.append(comic1off_id)
             w = 1            
         else:
             #let's read in the comic.watchlist from the db here
-            cur.execute("SELECT ComicID, ComicName, ComicYear, ComicPublisher, ComicPublished from comics")
+            cur.execute("SELECT ComicID, ComicName, ComicYear, ComicPublisher, ComicPublished, LatestDate from comics")
             while True:
                 watchd = cur.fetchone()
                 #print ("watchd: " + str(watchd))
                 if watchd is None:
                     break
                 if 'Present' in watchd[4] or (helpers.now()[:4] in watchd[4]):
-                 # let's not even bother with comics that are in the Present.
-                    a_list.append(watchd[1])
-                    b_list.append(watchd[2])
-                    comicid.append(watchd[0])
-                    pubdate.append(watchd[4])
-                    #print ( "Comic:" + str(a_list[w]) + " Year: " + str(b_list[w]) )
-                    #if "WOLVERINE AND THE X-MEN" in str(a_list[w]): a_list[w] = "WOLVERINE AND X-MEN"
-                    lines.append(a_list[w].strip())
-                    unlines.append(a_list[w].strip())
-                    llen.append(a_list[w].splitlines())
-                    ccname.append(a_list[w].strip())
-                    tmpwords = a_list[w].split(None)
-                    ltmpwords = len(tmpwords)
-                    ltmp = 1
-                    w+=1
+                 # this gets buggered up when series are named the same, and one ends in the current
+                 # year, and the new series starts in the same year - ie. Avengers
+                 # lets' grab the latest issue date and see how far it is from current
+                 # anything > 45 days we'll assume it's a false match ;)
+                    #logger.fdebug("ComicName: " + watchd[1])
+                    latestdate = watchd[5]
+                    #logger.fdebug("latestdate:  " + str(latestdate))
+                    c_date = datetime.date(int(latestdate[:4]),int(latestdate[5:7]),1)
+                    n_date = datetime.date.today()
+                    #logger.fdebug("c_date : " + str(c_date) + " ... n_date : " + str(n_date))
+                    recentchk = (n_date - c_date).days
+                    #logger.fdebug("recentchk: " + str(recentchk) + " days")
+                    #logger.fdebug(" ----- ")
+                    if recentchk < 55:
+                        # let's not even bother with comics that are in the Present.
+                        a_list.append(watchd[1])
+                        b_list.append(watchd[2])
+                        comicid.append(watchd[0])
+                        pubdate.append(watchd[4])
+                        #print ( "Comic:" + str(a_list[w]) + " Year: " + str(b_list[w]) )
+                        #if "WOLVERINE AND THE X-MEN" in str(a_list[w]): a_list[w] = "WOLVERINE AND X-MEN"
+                        lines.append(a_list[w].strip())
+                        unlines.append(a_list[w].strip())
+                        llen.append(a_list[w].splitlines())
+                        ccname.append(a_list[w].strip())
+                        tmpwords = a_list[w].split(None)
+                        ltmpwords = len(tmpwords)
+                        ltmp = 1
+                        w+=1
         cnt = int(w-1)
         cntback = int(w-1)
         kp = []
@@ -412,12 +436,12 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None):
             while (cnt > -1):
                 lines[cnt] = lines[cnt].upper()
                 #llen[cnt] = str(llen[cnt])
-                logger.fdebug("looking for : " + str(lines[cnt]))
+                #logger.fdebug("looking for : " + str(lines[cnt]))
                 sqlsearch = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\'\?\@]', ' ', lines[cnt])
                 sqlsearch = re.sub(r'\s', '%', sqlsearch) 
                 if 'THE' in sqlsearch: sqlsearch = re.sub('THE', '', sqlsearch)
                 if '+' in sqlsearch: sqlsearch = re.sub('\+', '%PLUS%', sqlsearch)
-                logger.fdebug("searchsql: " + str(sqlsearch))
+                #logger.fdebug("searchsql: " + str(sqlsearch))
                 weekly = myDB.select('SELECT PUBLISHER, ISSUE, COMIC, EXTRA, SHIPDATE FROM weekly WHERE COMIC LIKE (?)', [sqlsearch])
                 #cur.execute('SELECT PUBLISHER, ISSUE, COMIC, EXTRA, SHIPDATE FROM weekly WHERE COMIC LIKE (?)', [lines[cnt]])
                 for week in weekly:
@@ -425,7 +449,7 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None):
                         break
                     for nono in not_t:
                         if nono in week['PUBLISHER']:
-                            logger.fdebug("nono present")
+                            #logger.fdebug("nono present")
                             break
                         if nono in week['ISSUE']:
                             #logger.fdebug("graphic novel/tradeback detected..ignoring.")
@@ -457,11 +481,11 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None):
                                 #thnx to A+X for this...
                                 if '+' in watchcomic:
                                     logger.fdebug("+ detected...adjusting.")
-                                    logger.fdebug("comicnm:" + comicnm)
-                                    logger.fdebug("watchcomic:" + watchcomic)
+                                    #logger.fdebug("comicnm:" + comicnm)
+                                    #logger.fdebug("watchcomic:" + watchcomic)
                                     modwatchcomic = re.sub('\+', 'PLUS', modwatchcomic)
-                                    logger.fdebug("modcomicnm:" + modcomicnm)
-                                    logger.fdebug("modwatchcomic:" + modwatchcomic)
+                                    #logger.fdebug("modcomicnm:" + modcomicnm)
+                                    #logger.fdebug("modwatchcomic:" + modwatchcomic)
                                 if comicnm == watchcomic.upper() or modcomicnm == modwatchcomic.upper():
                                     logger.fdebug("matched on:" + str(comicnm) + "..." + str(watchcomic).upper())
                                     pass
@@ -499,7 +523,13 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None):
                                             # here we add to upcoming table...
                                             statusupdate = updater.upcoming_update(ComicID=ComicID, ComicName=ComicName, IssueNumber=ComicIssue, IssueDate=ComicDate, forcecheck=forcecheck)
                                             # here we update status of weekly table...
-                                            updater.weekly_update(ComicName=week['COMIC'], IssueNumber=ComicIssue, CStatus=statusupdate)
+                                            if statusupdate is not None:
+                                                cstatus = statusupdate['Status']
+                                                cstatusid = statusupdate['ComicID']
+                                            else:
+                                                cstatus = None
+                                                cstatusid = None
+                                            updater.weekly_update(ComicName=week['COMIC'], IssueNumber=ComicIssue, CStatus=cstatus, CID=cstatusid)
                                             break
                                         break
                         break

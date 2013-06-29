@@ -58,10 +58,12 @@ def addComictoDB(comicid,mismatch=None,pullupd=None,imported=None,ogcname=None):
         newValueDict = {"ComicName":   "Comic ID: %s" % (comicid),
                 "Status":   "Loading"}
         comlocation = None
+        oldcomversion = None
     else:
         newValueDict = {"Status":   "Loading"}
         comlocation = dbcomic['ComicLocation']
         filechecker.validateAndCreateDirectory(comlocation, True)
+        oldcomversion = dbcomic['ComicVersion'] #store the comicversion and chk if it exists before hammering.
 
     myDB.upsert("comics", newValueDict, controlValueDict)
 
@@ -140,7 +142,8 @@ def addComictoDB(comicid,mismatch=None,pullupd=None,imported=None,ogcname=None):
 
     #let's do the Annual check here.
     if mylar.ANNUALS_ON:
-        annuals = comicbookdb.cbdb(comic['ComicName'], SeriesYear)
+        annualcomicname = re.sub('[\,\:]', '', comic['ComicName'])
+        annuals = comicbookdb.cbdb(annualcomicname, SeriesYear)
         print ("Number of Annuals returned: " + str(annuals['totalissues']))
         nb = 0
         while (nb <= int(annuals['totalissues'])):
@@ -178,9 +181,17 @@ def addComictoDB(comicid,mismatch=None,pullupd=None,imported=None,ogcname=None):
         else: comicdir = u_comicname
 
         series = comicdir
-        publisher = comic['ComicPublisher']
+        publisher = re.sub('!','',comic['ComicPublisher']) # thanks Boom!
         year = SeriesYear
-
+        comversion = comic['ComicVersion']
+        if comversion is None:
+            comversion = 'None'
+        #if comversion is None, remove it so it doesn't populate with 'None'
+        if comversion == 'None':
+            chunk_f_f = re.sub('\$VolumeN','',mylar.FILE_FORMAT)
+            chunk_f = re.compile(r'\s+')
+            mylar.FILE_FORMAT = chunk_f.sub(' ', chunk_f_f)
+         
         #do work to generate folder path
 
         values = {'$Series':        series,
@@ -188,8 +199,11 @@ def addComictoDB(comicid,mismatch=None,pullupd=None,imported=None,ogcname=None):
                   '$Year':          year,
                   '$series':        series.lower(),
                   '$publisher':     publisher.lower(),
-                  '$Volume':        year
+                  '$VolumeY':       'V' + str(year),
+                  '$VolumeN':       comversion
                   }
+
+
 
         #print mylar.FOLDER_FORMAT
         #print 'working dir:'
@@ -262,10 +276,19 @@ def addComictoDB(comicid,mismatch=None,pullupd=None,imported=None,ogcname=None):
     except IOError as e:
         logger.error(u"Unable to save cover locally at this time.")
 
-    if comic['ComicVersion'].isdigit():
-        comicVol = "v" + comic['ComicVersion']
+    if oldcomversion is None:
+        if comic['ComicVersion'].isdigit():
+            comicVol = "v" + comic['ComicVersion']
+        else:
+            comicVol = None
     else:
-        comicVol = None
+        comicVol = oldcomversion
+
+    #for description ...
+    #Cdesc = helpers.cleanhtml(comic['ComicDescription'])
+    #cdes_find = Cdesc.find("Collected")
+    #cdes_removed = Cdesc[:cdes_find]
+    #print cdes_removed
 
     controlValueDict = {"ComicID":      comicid}
     newValueDict = {"ComicName":        comic['ComicName'],
@@ -276,6 +299,7 @@ def addComictoDB(comicid,mismatch=None,pullupd=None,imported=None,ogcname=None):
                     "ComicVersion":     comicVol,
                     "ComicLocation":    comlocation,
                     "ComicPublisher":   comic['ComicPublisher'],
+                    #"Description":      Cdesc.decode('utf-8', 'replace'),
                     "DetailURL":        comic['ComicURL'],
 #                    "ComicPublished":   gcdinfo['resultPublished'],
                     "ComicPublished":   'Unknown',
@@ -530,15 +554,17 @@ def addComictoDB(comicid,mismatch=None,pullupd=None,imported=None,ogcname=None):
                                 "IssueDate":          issdate,
                                 "Int_IssueNumber":    int_issnum
                                 }
-                if mylar.AUTOWANT_ALL:
-                    newValueDict['Status'] = "Wanted"
-                elif issdate > helpers.today() and mylar.AUTOWANT_UPCOMING:
-                    newValueDict['Status'] = "Wanted"
-                else:
-                    newValueDict['Status'] = "Skipped"
+
                 if iss_exists:
                     #print ("Existing status : " + str(iss_exists['Status']))
                     newValueDict['Status'] = iss_exists['Status']
+                else:
+                    if mylar.AUTOWANT_ALL:
+                        newValueDict['Status'] = "Wanted"
+                    elif issdate > helpers.today() and mylar.AUTOWANT_UPCOMING:
+                        newValueDict['Status'] = "Wanted"
+                    else:
+                        newValueDict['Status'] = "Skipped"
 
                 try:
                     myDB.upsert("issues", newValueDict, controlValueDict)
@@ -569,7 +595,7 @@ def addComictoDB(comicid,mismatch=None,pullupd=None,imported=None,ogcname=None):
     n_date = datetime.date.today()
     recentchk = (n_date - c_date).days
     #print ("recentchk: " + str(recentchk))
-    if recentchk <= 45:
+    if recentchk <= 55:
         lastpubdate = 'Present'
     else:
         lastpubdate = str(ltmonth) + ' ' + str(ltyear)
@@ -612,20 +638,26 @@ def addComictoDB(comicid,mismatch=None,pullupd=None,imported=None,ogcname=None):
     # lets' check the pullist for anything at this time as well since we're here.
     # do this for only Present comics....
         if mylar.AUTOWANT_UPCOMING and lastpubdate == 'Present': #and 'Present' in gcdinfo['resultPublished']:
-            logger.info(u"Checking this week's pullist for new issues of " + comic['ComicName'])
-            updater.newpullcheck(comic['ComicName'], comicid)
+            print ("latestissue: #" + str(latestiss))
+            chkstats = myDB.action("SELECT * FROM issues WHERE ComicID=? AND Issue_Number=?", [comicid,str(latestiss)]).fetchone()
+            print chkstats['Status']
+            if chkstats['Status'] == 'Skipped' or chkstats['Status'] == 'Wanted' or chkstats['Status'] == 'Snatched':
+                logger.info(u"Checking this week's pullist for new issues of " + comic['ComicName'])
+                updater.newpullcheck(comic['ComicName'], comicid)
 
-    #here we grab issues that have been marked as wanted above...
+        #here we grab issues that have been marked as wanted above...
   
-        results = myDB.select("SELECT * FROM issues where ComicID=? AND Status='Wanted'", [comicid])    
-        if results:
-            logger.info(u"Attempting to grab wanted issues for : "  + comic['ComicName'])
+                results = myDB.select("SELECT * FROM issues where ComicID=? AND Status='Wanted'", [comicid])
+                if results:
+                    logger.info(u"Attempting to grab wanted issues for : "  + comic['ComicName'])
+    
+                    for result in results:
+                        search.searchforissue(result['IssueID'])
+                else: logger.info(u"No issues marked as wanted for " + comic['ComicName'])
 
-            for result in results:
-                search.searchforissue(result['IssueID'])
-        else: logger.info(u"No issues marked as wanted for " + comic['ComicName'])
-
-        logger.info(u"Finished grabbing what I could.")
+                logger.info(u"Finished grabbing what I could.")
+            else:
+                logger.info(u"Already have the latest issue : #" + str(latestiss))
 
 
 def GCDimport(gcomicid, pullupd=None,imported=None,ogcname=None):

@@ -182,15 +182,20 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate, forcecheck=None)
         if issuechk is None:
             myDB.upsert("upcoming", newValue, controlValue)
         else:
+            logger.fdebug("--attempt to find errant adds to Wanted list")
+            logger.fdebug("UpcomingNewValue: " + str(newValue))
+            logger.fdebug("UpcomingcontrolValue: " + str(controlValue))
             myDB.upsert("issues", values, control)
             if issuechk['Status'] == 'Downloaded': 
                 logger.fdebug("updating Pull-list to reflect status.")
-                return issuechk['Status']
+                downstats = {"Status":  issuechk['Status'],
+                             "ComicID": issuechk['ComicID']}
+                return downstats
     else:
         logger.fdebug("Issues don't match for some reason...weekly new issue: " + str(IssueNumber))
 
 
-def weekly_update(ComicName,IssueNumber,CStatus):
+def weekly_update(ComicName,IssueNumber,CStatus,CID):
     # here we update status of weekly table...
     # added Issue to stop false hits on series' that have multiple releases in a week
     # added CStatus to update status flags on Pullist screen
@@ -200,7 +205,8 @@ def weekly_update(ComicName,IssueNumber,CStatus):
         controlValue = { "COMIC":         str(ComicName),
                          "ISSUE":         str(IssueNumber)}
         if CStatus:
-            newValue = {"STATUS":             CStatus}
+            newValue = {"STATUS":             CStatus,
+                        "ComicID":            CID}
         else:
             if mylar.AUTOWANT_UPCOMING:
                 newValue = {"STATUS":             "Wanted"}
@@ -224,21 +230,31 @@ def no_searchresults(ComicID):
                 "LatestIssue":  "Error"}    
     myDB.upsert("comics", newValue, controlValue)
 
-def nzblog(IssueID, NZBName):
+def nzblog(IssueID, NZBName, SARC=None, IssueArcID=None):
     myDB = db.DBConnection()
+
+    newValue = {"NZBName":  NZBName}
+
     if IssueID is None or IssueID == 'None':
        #if IssueID is None, it's a one-off download from the pull-list.
        #give it a generic ID above the last one so it doesn't throw an error later.
-       if mylar.HIGHCOUNT == 0: IssueID = '900000'
-       else: IssueID = int(mylar.HIGHCOUNT) + 1
+       print "SARC detected as: " + str(SARC)
+       if mylar.HIGHCOUNT == 0:
+           IssueID = '900000'
+       else: 
+           IssueID = int(mylar.HIGHCOUNT) + 1
+       
+       if SARC:
+           IssueID = 'S' + str(IssueArcID)
+           newValue['SARC'] = SARC
 
     controlValue = {"IssueID": IssueID}
     #print controlValue
-    newValue = {"NZBName": NZBName}
+    #newValue['NZBName'] = NZBName
     #print newValue
     myDB.upsert("nzblog", newValue, controlValue)
 
-def foundsearch(ComicID, IssueID):
+def foundsearch(ComicID, IssueID, down=None):
     # When doing a Force Search (Wanted tab), the resulting search calls this to update.
 
     # this is all redudant code that forceRescan already does.
@@ -252,24 +268,36 @@ def foundsearch(ComicID, IssueID):
     issue = myDB.action('SELECT * FROM issues WHERE IssueID=?', [IssueID]).fetchone()
     CYear = issue['IssueDate'][:4]
 
-    # update the status to Snatched (so it won't keep on re-downloading!)
-    logger.fdebug("updating status to snatched")
-    controlValue = {"IssueID":   IssueID}
-    newValue = {"Status":    "Snatched"}
-    myDB.upsert("issues", newValue, controlValue)
-    # update the snatched DB
-    controlValueDict = {"IssueID":  IssueID}
-    newValueDict = {"Status": "Snatched"}
-    logger.fdebug("updating snatched db.")
-    myDB.upsert("issues", newValueDict, controlValueDict)
-    snatchedupdate = {"IssueID":     IssueID}
-    newsnatchValues = {"ComicName":       comic['ComicName'],
-                       "ComicID":         ComicID,
-                       "Issue_Number":    issue['Issue_Number'],
-                       "DateAdded":       helpers.now(),
-                       "Status":          "Snatched"
-                       }
-    myDB.upsert("snatched", newsnatchValues, snatchedupdate)
+    if down is None:
+        # update the status to Snatched (so it won't keep on re-downloading!)
+        logger.fdebug("updating status to snatched")
+        controlValue = {"IssueID":   IssueID}
+        newValue = {"Status":    "Snatched"}
+        myDB.upsert("issues", newValue, controlValue)
+
+        # update the snatched DB
+        snatchedupdate = {"IssueID":     IssueID,
+                          "Status":      "Snatched"
+                          }
+        newsnatchValues = {"ComicName":       comic['ComicName'],
+                           "ComicID":         ComicID,
+                           "Issue_Number":    issue['Issue_Number'],
+                           "DateAdded":       helpers.now(),
+                           "Status":          "Snatched"
+                           }
+        myDB.upsert("snatched", newsnatchValues, snatchedupdate)
+    else:
+        snatchedupdate = {"IssueID":     IssueID,
+                          "Status":      "Downloaded"
+                          }
+        newsnatchValues = {"ComicName":       comic['ComicName'],
+                           "ComicID":         ComicID,
+                           "Issue_Number":    issue['Issue_Number'],
+                           "DateAdded":       helpers.now(),
+                           "Status":          "Downloaded"
+                           }
+        myDB.upsert("snatched", newsnatchValues, snatchedupdate)
+
 
     #print ("finished updating snatched db.")
     logger.info(u"Updating now complete for " + comic['ComicName'] + " issue: " + str(issue['Issue_Number']))

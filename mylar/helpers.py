@@ -505,3 +505,87 @@ def fullmonth(monthno):
             monthconv = basmonths[numbs]
 
     return monthconv
+
+def updateComicLocation():
+    import db, logger
+    myDB = db.DBConnection()
+    if mylar.NEWCOM_DIR is not None:
+        logger.info("Performing a one-time mass update to Comic Location")
+        #create the root dir if it doesn't exist
+        if os.path.isdir(mylar.NEWCOM_DIR):
+            logger.info(u"Directory (" + mylar.NEWCOM_DIR + ") already exists! Continuing...")
+        else:
+            logger.info("Directory doesn't exist!")
+            try:
+                os.makedirs(mylar.NEWCOM_DIR)
+                logger.info(u"Directory successfully created at: " + mylar.NEWCOM_DIR)
+            except OSError:
+                logger.error(u"Could not create comicdir : " + mylar.NEWCOM_DIR)
+                return
+
+        dirlist = myDB.select("SELECT * FROM comics")
+
+        if dirlist is not None:
+            for dl in dirlist:
+                
+                comversion = dl['ComicVersion']                
+                if comversion is None:
+                    comversion = 'None'
+                #if comversion is None, remove it so it doesn't populate with 'None'
+                if comversion == 'None':
+                    chunk_f_f = re.sub('\$VolumeN','',mylar.FOLDER_FORMAT)
+                    chunk_f = re.compile(r'\s+')
+                    folderformat = chunk_f.sub(' ', chunk_f_f)
+                else:
+                    folderformat = mylar.FOLDER_FORMAT
+
+                values = {'$Series':        dl['ComicName'],
+                          '$Publisher':     re.sub('!','',dl['ComicPublisher']),
+                          '$Year':          dl['ComicYear'],
+                          '$series':        dl['ComicName'].lower(),
+                          '$publisher':     re.sub('!','',dl['ComicPublisher']).lower(),
+                          '$VolumeY':       'V' + str(dl['ComicYear']),
+                          '$VolumeN':       comversion
+                          }
+                if mylar.FFTONEWCOM_DIR:
+                    #if this is enabled (1) it will apply the Folder_Format to all the new dirs
+                    if mylar.FOLDER_FORMAT == '':
+                        comlocation = re.sub(mylar.DESTINATION_DIR, mylar.NEWCOM_DIR, dl['ComicLocation'])
+                    else:
+                        first = replace_all(folderformat, values)                    
+                        if mylar.REPLACE_SPACES:
+                            #mylar.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
+                            first = first.replace(' ', mylar.REPLACE_CHAR)
+                        comlocation = os.path.join(mylar.NEWCOM_DIR,first)
+
+                else:
+                    comlocation = re.sub(mylar.DESTINATION_DIR, mylar.NEWCOM_DIR, dl['ComicLocation'])
+
+                ctrlVal = {"ComicID":    dl['ComicID']}
+                newVal = {"ComicLocation": comlocation}
+                myDB.upsert("Comics", newVal, ctrlVal)
+                logger.fdebug("updated " + dl['ComicName'] + " to : " + comlocation)
+        #set the value to 0 here so we don't keep on doing this...
+        mylar.LOCMOVE = 0
+        mylar.config_write()
+    else:
+        logger.info("No new ComicLocation path specified - not updating.")
+        #raise cherrypy.HTTPRedirect("config")
+    return
+
+def cleanhtml(raw_html):
+    #cleanr = re.compile('<.*?>')
+    #cleantext = re.sub(cleanr, '', raw_html)
+    #return cleantext
+    from bs4 import BeautifulSoup
+
+    VALID_TAGS = ['div', 'p']
+
+    soup = BeautifulSoup(raw_html)
+
+    for tag in soup.findAll('p'):
+        if tag.name not in VALID_TAGS:
+            tag.replaceWith(tag.renderContents())
+    flipflop = soup.renderContents()
+    print flipflop
+    return flipflop
