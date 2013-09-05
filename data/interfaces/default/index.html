@@ -66,7 +66,7 @@
 			%>
 			<tr class="grade${grade}">
 				<td id="publisher">${comic['ComicPublisher']}</td>
-                                <td id="name"><span title="${comic['ComicSortName']}"></span><a href="artistPage?ComicID=${comic['ComicID']}">${comic['ComicName']}</a></td>
+                                <td id="name"><span title="${comic['ComicSortName']}"></span><a href="comicDetails?ComicID=${comic['ComicID']}">${comic['ComicName']}</a></td>
                                 <td id="year"><span title="${comic['ComicYear']}"></span>${comic['ComicYear']}</td>                               
 				<td id="issue"><span title="${comic['LatestIssue']}"></span># ${comic['LatestIssue']}</td>
                                 <td id="published">${comic['LatestDate']}</td>
@@ -80,7 +80,7 @@
                                           c_date = datetime.date(int(latestdate[:4]),int(latestdate[5:7]),1)
                                           n_date = datetime.date.today()
                                           recentchk = (n_date - c_date).days
-                                          if recentchk < 45:
+                                          if recentchk < 55:
                                               recentstatus = 'Continuing'
                                           else:
                                               recentstatus = 'Ended'

@@ -78,24 +78,31 @@ def Startit(searchName, searchIssue, searchYear, ComicVersion):
 
     regexList=[regEx, regExOne, regExTwo, regExThree, regExFour, regExFive]
 
+    except_list=['releases', 'gold line', 'distribution', '0-day', '0 day']
+
     for title, link in keyPair.items():
-        #print("titlesplit: " + str(title.split("\"")))
+        #logger.fdebug("titlesplit: " + str(title.split("\"")))
         splitTitle = title.split("\"")
 
         for subs in splitTitle:
-#        print(title)
+            logger.fdebug(subs)
             regExCount = 0
-            if len(subs) > 10:
+            if len(subs) > 10 and not any(d in subs.lower() for d in except_list):
                 #Looping through dictionary to run each regEx - length + regex is determined by regexList up top.
-                while regExCount < len(regexList):
-                    regExTest = re.findall(regexList[regExCount], subs, flags=re.IGNORECASE)
-                    regExCount = regExCount +1
-                    if regExTest:   
-                        logger.fdebug(title)
-                        entries.append({
-                                  'title':   subs,
-                                  'link':    str(link)
-                                  })
+#                while regExCount < len(regexList):
+#                    regExTest = re.findall(regexList[regExCount], subs, flags=re.IGNORECASE)
+#                    regExCount = regExCount +1
+#                    if regExTest:   
+#                        logger.fdebug(title)
+#                        entries.append({
+#                                  'title':   subs,
+#                                  'link':    str(link)
+#                                  })
+                entries.append({
+                          'title':   subs,
+                          'link':    str(link)
+                          })
+
               
     if len(entries) >= 1:
         mres['entries'] = entries

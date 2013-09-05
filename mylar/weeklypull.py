@@ -78,6 +78,7 @@ def pullit(forcecheck=None):
     # this checks for the following lists
     # first need to only look for checkit variables
     checkit=['COMICS',
+             'COMIC & GRAPHIC NOVELS',
              'IDW PUBLISHING',
              'MAGAZINES',
              'MERCHANDISE']
@@ -168,9 +169,13 @@ def pullit(forcecheck=None):
                                     flagged = "yes"                    
                                     break
                     else:
-                        pub = format(str(yesyes))
-                        #print (pub)
-                        break
+                        if i.find("COMIC") < 1 and "GRAPHIC NOVELS" in i:
+                            pub = "COMICS"
+                            break
+                        else:
+                            pub = format(str(yesyes))
+                            #print (pub)
+                            break
                     if flagged == "no": 
                         break
             else:
@@ -380,34 +385,43 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None):
         cur = con.cursor()
         # if it's a one-off check (during an add series), load the comicname here and ignore below.
         if comic1off_name:
-            logger.fdebug("this is a one-off" + str(comic1off_name))
+            logger.fdebug("this is a one-off" + comic1off_name)
             lines.append(comic1off_name.strip())
             unlines.append(comic1off_name.strip())
             comicid.append(comic1off_id)
             w = 1            
         else:
             #let's read in the comic.watchlist from the db here
-            cur.execute("SELECT ComicID, ComicName, ComicYear, ComicPublisher, ComicPublished, LatestDate from comics")
+            cur.execute("SELECT ComicID, ComicName, ComicYear, ComicPublisher, ComicPublished, LatestDate, ForceContinuing from comics")
             while True:
                 watchd = cur.fetchone()
                 #print ("watchd: " + str(watchd))
                 if watchd is None:
                     break
-                if 'Present' in watchd[4] or (helpers.now()[:4] in watchd[4]):
+                if 'Present' in watchd[4] or (helpers.now()[:4] in watchd[4]) or watchd[6] == 1:
                  # this gets buggered up when series are named the same, and one ends in the current
                  # year, and the new series starts in the same year - ie. Avengers
                  # lets' grab the latest issue date and see how far it is from current
                  # anything > 45 days we'll assume it's a false match ;)
-                    #logger.fdebug("ComicName: " + watchd[1])
+                    logger.fdebug("ComicName: " + watchd[1])
                     latestdate = watchd[5]
-                    #logger.fdebug("latestdate:  " + str(latestdate))
-                    c_date = datetime.date(int(latestdate[:4]),int(latestdate[5:7]),1)
+                    logger.fdebug("latestdate:  " + str(latestdate))
+                    if latestdate[8:] == '':
+                        logger.fdebug("invalid date " + str(latestdate) + " appending 01 for day for continuation.")
+                        latest_day = '01'
+                    else:
+                        latest_day = latestdate[8:]
+                    c_date = datetime.date(int(latestdate[:4]),int(latestdate[5:7]),int(latest_day))
                     n_date = datetime.date.today()
-                    #logger.fdebug("c_date : " + str(c_date) + " ... n_date : " + str(n_date))
+                    logger.fdebug("c_date : " + str(c_date) + " ... n_date : " + str(n_date))
                     recentchk = (n_date - c_date).days
-                    #logger.fdebug("recentchk: " + str(recentchk) + " days")
-                    #logger.fdebug(" ----- ")
-                    if recentchk < 55:
+                    logger.fdebug("recentchk: " + str(recentchk) + " days")
+                    chklimit = helpers.checkthepub(watchd[0])
+                    logger.fdebug("Check date limit set to : " + str(chklimit))
+                    logger.fdebug(" ----- ")
+                    if recentchk < int(chklimit) or watchd[6] == 1:
+                        if watchd[6] == 1:
+                            logger.fdebug('Forcing Continuing Series enabled for series...')
                         # let's not even bother with comics that are in the Present.
                         a_list.append(watchd[1])
                         b_list.append(watchd[2])
@@ -423,6 +437,8 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None):
                         ltmpwords = len(tmpwords)
                         ltmp = 1
                         w+=1
+                    else:
+                        logger.fdebug("Determined to not be a Continuing series at this time.")    
         cnt = int(w-1)
         cntback = int(w-1)
         kp = []
@@ -436,12 +452,15 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None):
             while (cnt > -1):
                 lines[cnt] = lines[cnt].upper()
                 #llen[cnt] = str(llen[cnt])
-                #logger.fdebug("looking for : " + str(lines[cnt]))
-                sqlsearch = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\'\?\@]', ' ', lines[cnt])
-                sqlsearch = re.sub(r'\s', '%', sqlsearch) 
-                if 'THE' in sqlsearch: sqlsearch = re.sub('THE', '', sqlsearch)
+                logger.fdebug("looking for : " + lines[cnt])
+                sqlsearch = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\'\?\@]', ' ', lines[cnt])
+                sqlsearch = re.sub("\&", '%', sqlsearch)
+                sqlsearch = re.sub("\\bAND\\b", '%', sqlsearch)
+                sqlsearch = re.sub("\\bTHE\\b", '', sqlsearch)
                 if '+' in sqlsearch: sqlsearch = re.sub('\+', '%PLUS%', sqlsearch)
-                #logger.fdebug("searchsql: " + str(sqlsearch))
+                sqlsearch = re.sub(r'\s', '%', sqlsearch)
+                sqlsearch = sqlsearch + '%'
+                logger.fdebug("searchsql: " + sqlsearch)
                 weekly = myDB.select('SELECT PUBLISHER, ISSUE, COMIC, EXTRA, SHIPDATE FROM weekly WHERE COMIC LIKE (?)', [sqlsearch])
                 #cur.execute('SELECT PUBLISHER, ISSUE, COMIC, EXTRA, SHIPDATE FROM weekly WHERE COMIC LIKE (?)', [lines[cnt]])
                 for week in weekly:
@@ -462,22 +481,24 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None):
                                 comicnm = week['COMIC']
                                 #here's the tricky part, ie. BATMAN will match on
                                 #every batman comic, not exact
-                                #logger.fdebug("comparing" + str(comicnm) + "..to.." + str(unlines[cnt]).upper())
+                                logger.fdebug("comparing" + comicnm + "..to.." + unlines[cnt].upper())
 
                                 #-NEW-
                                 # strip out all special characters and compare
-                                watchcomic = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\'\?\@]', '', unlines[cnt])
-                                comicnm = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\&\'\?\@]', '', comicnm)
-                                watchcomic = re.sub(r'\s', '', watchcomic)
-                                comicnm = re.sub(r'\s', '', comicnm)
-                                #logger.fdebug("Revised_Watch: " + watchcomic)
-                                #logger.fdebug("ComicNM: " + comicnm)
-                                if 'THE' in watchcomic.upper():
-                                    modwatchcomic = re.sub('THE', '', watchcomic.upper())
-                                    modcomicnm = re.sub('THE', '', comicnm)
+                                watchcomic = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\'\?\@]', '', unlines[cnt])
+                                comicnm = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\'\?\@]', '', comicnm)
+                                if "THE" in watchcomic.upper() or "THE" in comicnm.upper():
+                                    modwatchcomic = re.sub("\\bTHE\\b", "", watchcomic.upper())
+                                    modcomicnm = re.sub("\\bTHE\\b", "", comicnm)
                                 else:
                                     modwatchcomic = watchcomic
                                     modcomicnm = comicnm
+                                if '&' in watchcomic.upper():
+                                    modwatchcomic = re.sub('\&', 'AND', modwatchcomic.upper())
+                                    modcomicnm = re.sub('\&', 'AND', modcomicnm)
+                                if '&' in comicnm:
+                                    modwatchcom = re.sub('\&', 'AND', modwatchcomic.upper())
+                                    modcomicnm = re.sub('\&', 'AND', modcomicnm)
                                 #thnx to A+X for this...
                                 if '+' in watchcomic:
                                     logger.fdebug("+ detected...adjusting.")
@@ -486,12 +507,23 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None):
                                     modwatchcomic = re.sub('\+', 'PLUS', modwatchcomic)
                                     #logger.fdebug("modcomicnm:" + modcomicnm)
                                     #logger.fdebug("modwatchcomic:" + modwatchcomic)
+
+                                #annuals!
+                                if 'ANNUAL' in comicnm.upper(): 
+                                    modcomicnm = re.sub("\\bANNUAL\\b", "", modcomicnm.upper())
+
+                                watchcomic = re.sub(r'\s', '', watchcomic)
+                                comicnm = re.sub(r'\s', '', comicnm)
+                                modwatchcomic = re.sub(r'\s', '', modwatchcomic)
+                                modcomicnm = re.sub(r'\s', '', modcomicnm)
+                                logger.fdebug("watchcomic : " + str(watchcomic) + " / mod :" + str(modwatchcomic))
+                                logger.fdebug("comicnm : " + str(comicnm) + " / mod :" + str(modcomicnm))
                                 if comicnm == watchcomic.upper() or modcomicnm == modwatchcomic.upper():
-                                    logger.fdebug("matched on:" + str(comicnm) + "..." + str(watchcomic).upper())
+                                    logger.fdebug("matched on:" + comicnm + "..." + watchcomic.upper())
                                     pass
-                                elif ("ANNUAL" in week['EXTRA']):
-                                    pass
-                                    #print ( row[3] + " matched on ANNUAL")
+#                                elif ("ANNUAL" in week['EXTRA']):
+#                                    pass
+#                                    print ( row[3] + " matched on ANNUAL")
                                 else:
                                     break
                                 if ("NA" not in week['ISSUE']) and ("HC" not in week['ISSUE']):
@@ -504,9 +536,11 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None):
                                             #kp.append(row[0])
                                             #ki.append(row[1])
                                             #kc.append(comicnm)
-                                            if ("ANNUAL" in week['EXTRA']):
+                                            if "ANNUAL" in comicnm.upper():
                                                 watchfndextra.append("annual")
+                                                ComicName = str(unlines[cnt]) + " Annual"
                                             else:
+                                                ComicName = str(unlines[cnt])
                                                 watchfndextra.append("none")
                                             watchfnd.append(comicnm)
                                             watchfndiss.append(week['ISSUE'])
@@ -516,7 +550,7 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None):
                                             else:
                                                 ComicIssue = str(watchfndiss[tot -1])
                                             ComicDate = str(week['SHIPDATE'])
-                                            ComicName = str(unlines[cnt])
+                                            #ComicName = str(unlines[cnt])
                                             logger.fdebug("Watchlist hit for : " + ComicName + " ISSUE: " + str(watchfndiss[tot -1]))
                                             # here we add to comics.latest
                                             updater.latest_update(ComicID=ComicID, LatestIssue=ComicIssue, LatestDate=ComicDate)

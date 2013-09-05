@@ -17,6 +17,7 @@ import time
 from operator import itemgetter
 import datetime
 import re
+import platform
 import itertools
 import os
 import mylar
@@ -150,6 +151,23 @@ def human_size(size_bytes):
 
     return "%s %s" % (formatted_size, suffix)
 
+def human2bytes(s):
+    """
+    >>> human2bytes('1M')
+    1048576
+    >>> human2bytes('1G')
+    1073741824
+    """
+    symbols = ('B', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y')
+    letter = s[-1:].strip().upper()
+    num = s[:-1]
+    assert num.isdigit() and letter in symbols
+    num = float(num)
+    prefix = {symbols[0]:1}
+    for i, s in enumerate(symbols[1:]):
+        prefix[s] = 1 << (i+1)*10
+    return int(num * prefix[letter])
+
 def replace_all(text, dic):
     for i, j in dic.iteritems():
         text = text.replace(i, j)
@@ -222,10 +240,10 @@ def decimal_issue(iss):
     return deciss, dec_except
 
 def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=None):
-            from mylar import db, logger
+            import db, logger
             myDB = db.DBConnection()
-            print ("comicid: " + str(comicid))
-            print ("issue#: " + str(issue))
+            logger.fdebug('comicid: ' + str(comicid))
+            logger.fdebug('issue#: ' + str(issue))
             # the issue here is a non-decimalized version, we need to see if it's got a decimal and if not, add '.00'
 #            iss_find = issue.find('.')
 #            if iss_find < 0:
@@ -250,10 +268,10 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                     #rechk chkissue against int value of issue #
                     chkissue = myDB.action("SELECT * from issues WHERE ComicID=? AND Issue_Number=?", [comicid, int(issue)]).fetchone()
                     if chkissue is None:
-                        logger.error("Invalid Issue_Number - please validate.")
+                        logger.error('Invalid Issue_Number - please validate.')
                         return
                     else:
-                        logger.info("Int Issue_number compare found. continuing...")
+                        logger.info('Int Issue_number compare found. continuing...')
                         issueid = chkissue['IssueID']
                 else:
                     issueid = chkissue['IssueID']
@@ -275,7 +293,7 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                     iss = iss_b4dec
                     issdec = int(iss_decval)
                     issueno = str(iss)
-                    logger.fdebug("Issue Number: " + str(issueno))
+                    logger.fdebug('Issue Number: ' + str(issueno))
                 else:
                     if len(iss_decval) == 1:
                         iss = iss_b4dec + "." + iss_decval
@@ -284,7 +302,7 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                         iss = iss_b4dec + "." + iss_decval.rstrip('0')
                         issdec = int(iss_decval.rstrip('0')) * 10
                     issueno = iss_b4dec
-                    logger.fdebug("Issue Number: " + str(iss))
+                    logger.fdebug('Issue Number: ' + str(iss))
             else:
                 iss = issuenum
                 issueno = str(iss)
@@ -296,11 +314,11 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                 elif mylar.ZERO_LEVEL_N == "0x": zeroadd = "0"
                 elif mylar.ZERO_LEVEL_N == "00x": zeroadd = "00"
 
-            logger.fdebug("Zero Suppression set to : " + str(mylar.ZERO_LEVEL_N))
+            logger.fdebug('Zero Suppression set to : ' + str(mylar.ZERO_LEVEL_N))
 
             if str(len(issueno)) > 1:
                 if int(issueno) < 10:
-                    logger.fdebug("issue detected less than 10")
+                    logger.fdebug('issue detected less than 10')
                     if '.' in iss:
                         if int(iss_decval) > 0:
                             issueno = str(iss)
@@ -311,9 +329,9 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                         prettycomiss = str(zeroadd) + str(iss)
                     if issue_except != 'None':
                         prettycomiss = str(prettycomiss) + issue_except
-                    logger.fdebug("Zero level supplement set to " + str(mylar.ZERO_LEVEL_N) + ". Issue will be set as : " + str(prettycomiss))
+                    logger.fdebug('Zero level supplement set to ' + str(mylar.ZERO_LEVEL_N) + '. Issue will be set as : ' + str(prettycomiss))
                 elif int(issueno) >= 10 and int(issueno) < 100:
-                    logger.fdebug("issue detected greater than 10, but less than 100")
+                    logger.fdebug('issue detected greater than 10, but less than 100')
                     if mylar.ZERO_LEVEL_N == "none":
                         zeroadd = ""
                     else:
@@ -328,32 +346,32 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                         prettycomiss = str(zeroadd) + str(iss)
                     if issue_except != 'None':
                         prettycomiss = str(prettycomiss) + issue_except
-                    logger.fdebug("Zero level supplement set to " + str(mylar.ZERO_LEVEL_N) + ".Issue will be set as : " + str(prettycomiss))
+                    logger.fdebug('Zero level supplement set to ' + str(mylar.ZERO_LEVEL_N) + '.Issue will be set as : ' + str(prettycomiss))
                 else:
-                    logger.fdebug("issue detected greater than 100")
+                    logger.fdebug('issue detected greater than 100')
                     if '.' in iss:
                         if int(iss_decval) > 0:
                             issueno = str(iss)
                     prettycomiss = str(issueno)
                     if issue_except != 'None':
                         prettycomiss = str(prettycomiss) + issue_except
-                    logger.fdebug("Zero level supplement set to " + str(mylar.ZERO_LEVEL_N) + ". Issue will be set as : " + str(prettycomiss))
+                    logger.fdebug('Zero level supplement set to ' + str(mylar.ZERO_LEVEL_N) + '. Issue will be set as : ' + str(prettycomiss))
             else:
                 prettycomiss = str(issueno)
-                logger.fdebug("issue length error - cannot determine length. Defaulting to None:  " + str(prettycomiss))
+                logger.fdebug('issue length error - cannot determine length. Defaulting to None:  ' + str(prettycomiss))
 
-            logger.fdebug("Pretty Comic Issue is : " + str(prettycomiss))
+            logger.fdebug('Pretty Comic Issue is : ' + str(prettycomiss))
             issueyear = issuenzb['IssueDate'][:4]
-            logger.fdebug("Issue Year : " + str(issueyear))
+            logger.fdebug('Issue Year : ' + str(issueyear))
             comicnzb= myDB.action("SELECT * from comics WHERE comicid=?", [comicid]).fetchone()
             publisher = comicnzb['ComicPublisher']
-            logger.fdebug("Publisher: " + str(publisher))
+            logger.fdebug('Publisher: ' + str(publisher))
             series = comicnzb['ComicName']
-            logger.fdebug("Series: " + str(series))
+            logger.fdebug('Series: ' + str(series))
             seriesyear = comicnzb['ComicYear']
-            logger.fdebug("Year: "  + str(seriesyear))
+            logger.fdebug('Year: '  + str(seriesyear))
             comlocation = comicnzb['ComicLocation']
-            logger.fdebug("Comic Location: " + str(comlocation))
+            logger.fdebug('Comic Location: ' + str(comlocation))
             comversion = comicnzb['ComicVersion']
             if comversion is None:
                 comversion = 'None'
@@ -362,7 +380,7 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                 chunk_f_f = re.sub('\$VolumeN','',mylar.FILE_FORMAT)
                 chunk_f = re.compile(r'\s+')
                 chunk_file_format = chunk_f.sub(' ', chunk_f_f)
-                logger.fdebug("No version # found for series, removing from filename")
+                logger.fdebug('No version # found for series, removing from filename')
                 print ("new format: " + str(chunk_file_format))
             else:
                 chunk_file_format = mylar.FILE_FORMAT
@@ -383,7 +401,7 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                 path, ext = os.path.splitext(ofilename)
 
             if mylar.FILE_FORMAT == '':
-                logger.fdebug("Rename Files isn't enabled - keeping original filename.")
+                logger.fdebug('Rename Files is not enabled - keeping original filename.')
                 #check if extension is in nzb_name - will screw up otherwise
                 if ofilename.lower().endswith(extensions):
                     nfilename = ofilename[:-4]
@@ -395,14 +413,14 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                     #mylar.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
                     nfilename = nfilename.replace(' ', mylar.REPLACE_CHAR)
             nfilename = re.sub('[\,\:]', '', nfilename) + ext.lower()
-            logger.fdebug("New Filename: " + str(nfilename))
+            logger.fdebug('New Filename: ' + str(nfilename))
 
             if mylar.LOWERCASE_FILENAMES:
                 dst = (comlocation + "/" + nfilename).lower()
             else:
                 dst = comlocation + "/" + nfilename
-            logger.fdebug("Source: " + str(ofilename))
-            logger.fdebug("Destination: " + str(dst))
+            logger.fdebug('Source: ' + str(ofilename))
+            logger.fdebug('Destination: ' + str(dst))
 
             rename_this = { "destination_dir" : dst, 
                             "nfilename" : nfilename,
@@ -466,7 +484,7 @@ def ComicSort(comicorder=None,sequence=None,imported=None):
                 comicorder['SortOrder'] = comicorderlist
                 comicorder['LastOrderNo'] = i-1
                 comicorder['LastOrderID'] = comicorder['SortOrder'][i-1]['ComicID']
-            logger.info("Sucessfully ordered " + str(i-1) + " series in your watchlist.")
+            logger.info('Sucessfully ordered ' + str(i-1) + ' series in your watchlist.')
             return comicorder
         elif sequence == 'update':
             mylar.COMICSORT['SortOrder'] = comicorderlist
@@ -510,17 +528,17 @@ def updateComicLocation():
     import db, logger
     myDB = db.DBConnection()
     if mylar.NEWCOM_DIR is not None:
-        logger.info("Performing a one-time mass update to Comic Location")
+        logger.info('Performing a one-time mass update to Comic Location')
         #create the root dir if it doesn't exist
         if os.path.isdir(mylar.NEWCOM_DIR):
-            logger.info(u"Directory (" + mylar.NEWCOM_DIR + ") already exists! Continuing...")
+            logger.info('Directory (' + mylar.NEWCOM_DIR + ') already exists! Continuing...')
         else:
-            logger.info("Directory doesn't exist!")
+            logger.info('Directory does not exist!')
             try:
                 os.makedirs(mylar.NEWCOM_DIR)
-                logger.info(u"Directory successfully created at: " + mylar.NEWCOM_DIR)
+                logger.info('Directory successfully created at: ' + mylar.NEWCOM_DIR)
             except OSError:
-                logger.error(u"Could not create comicdir : " + mylar.NEWCOM_DIR)
+                logger.error('Could not create comicdir : ' + mylar.NEWCOM_DIR)
                 return
 
         dirlist = myDB.select("SELECT * FROM comics")
@@ -539,7 +557,23 @@ def updateComicLocation():
                 else:
                     folderformat = mylar.FOLDER_FORMAT
 
-                values = {'$Series':        dl['ComicName'],
+                #remove all 'bad' characters from the Series Name in order to create directories.
+                u_comicnm = dl['ComicName']
+                u_comicname = u_comicnm.encode('ascii', 'ignore').strip()
+                if ':' in u_comicname or '/' in u_comicname or ',' in u_comicname or '?' in u_comicname:
+                    comicdir = u_comicname
+                if ':' in comicdir:
+                    comicdir = comicdir.replace(':','')
+                if '/' in comicdir:
+                    comicdir = comicdir.replace('/','-')
+                if ',' in comicdir:
+                    comicdir = comicdir.replace(',','')
+                if '?' in comicdir:
+                    comicdir = comicdir.replace('?','')
+                else: comicdir = u_comicname
+
+
+                values = {'$Series':        comicdir,
                           '$Publisher':     re.sub('!','',dl['ComicPublisher']),
                           '$Year':          dl['ComicYear'],
                           '$series':        dl['ComicName'].lower(),
@@ -547,10 +581,11 @@ def updateComicLocation():
                           '$VolumeY':       'V' + str(dl['ComicYear']),
                           '$VolumeN':       comversion
                           }
+
                 if mylar.FFTONEWCOM_DIR:
                     #if this is enabled (1) it will apply the Folder_Format to all the new dirs
                     if mylar.FOLDER_FORMAT == '':
-                        comlocation = re.sub(mylar.DESTINATION_DIR, mylar.NEWCOM_DIR, dl['ComicLocation'])
+                        comlocation = re.sub(mylar.DESTINATION_DIR, mylar.NEWCOM_DIR, comicdir)
                     else:
                         first = replace_all(folderformat, values)                    
                         if mylar.REPLACE_SPACES:
@@ -559,17 +594,17 @@ def updateComicLocation():
                         comlocation = os.path.join(mylar.NEWCOM_DIR,first)
 
                 else:
-                    comlocation = re.sub(mylar.DESTINATION_DIR, mylar.NEWCOM_DIR, dl['ComicLocation'])
+                    comlocation = re.sub(mylar.DESTINATION_DIR, mylar.NEWCOM_DIR, comicdir)
 
                 ctrlVal = {"ComicID":    dl['ComicID']}
                 newVal = {"ComicLocation": comlocation}
                 myDB.upsert("Comics", newVal, ctrlVal)
-                logger.fdebug("updated " + dl['ComicName'] + " to : " + comlocation)
+                logger.fdebug('updated ' + dl['ComicName'] + ' to : ' + comlocation)
         #set the value to 0 here so we don't keep on doing this...
         mylar.LOCMOVE = 0
         mylar.config_write()
     else:
-        logger.info("No new ComicLocation path specified - not updating.")
+        logger.info('No new ComicLocation path specified - not updating.')
         #raise cherrypy.HTTPRedirect("config")
     return
 
@@ -589,3 +624,156 @@ def cleanhtml(raw_html):
     flipflop = soup.renderContents()
     print flipflop
     return flipflop
+
+
+def issuedigits(issnum):
+    import db, logger
+    #print "issnum : " + str(issnum)
+    if issnum.isdigit():
+        int_issnum = int( issnum ) * 1000
+    else:
+        if 'au' in issnum.lower() and issnum[:1].isdigit():
+            int_issnum = (int(issnum[:-2]) * 1000) + ord('a') + ord('u')
+        elif 'ai' in issnum.lower() and issnum[:1].isdigit():
+            int_issnum = (int(issnum[:-2]) * 1000) + ord('a') + ord('i')
+        elif u'\xbd' in issnum:
+            issnum = .5
+            int_issnum = int(issnum) * 1000
+        elif u'\xbc' in issnum:
+            issnum = .25
+            int_issnum = int(issnum) * 1000
+        elif u'\xbe' in issnum:
+            issnum = .75
+            int_issnum = int(issnum) * 1000
+        elif '.' in issnum or ',' in issnum:
+            logger.fdebug('decimal detected.')
+            if ',' in issnum: issnum = re.sub(',','.', issnum)
+            issst = str(issnum).find('.')
+            issb4dec = str(issnum)[:issst]
+            decis = str(issnum)[issst+1:]
+            if len(decis) == 1:
+                decisval = int(decis) * 10
+                issaftdec = str(decisval)
+            if len(decis) == 2:
+                decisval = int(decis)
+                issaftdec = str(decisval)
+            try:
+                int_issnum = (int(issb4dec) * 1000) + (int(issaftdec) * 10)
+            except ValueError:
+                logger.error('This has no issue # for me to get - Either a Graphic Novel or one-shot.')
+                int_issnum = 999999999999999
+        else:
+            try:
+                x = float(issnum)
+                #validity check
+                if x < 0:
+                    #logger.info("I've encountered a negative issue #: " + str(issnum) + ". Trying to accomodate.")
+                    int_issnum = (int(x)*1000) - 1
+                else: raise ValueError
+            except ValueError, e:
+                #this will account for any alpha in a issue#, so long as it doesn't have decimals.
+                x = 0
+                tstord = None
+                issno = None
+                invchk = "false"
+                while (x < len(issnum)):
+                    if issnum[x].isalpha():
+                    #take first occurance of alpha in string and carry it through
+                        tstord = issnum[x:].rstrip()
+                        issno = issnum[:x].rstrip()
+                        try:
+                            isschk = float(issno)
+                        except ValueError, e:
+                            logger.fdebug('invalid numeric for issue - cannot be found. Ignoring.')
+                            issno = None
+                            tstord = None
+                            invchk = "true"
+                        break
+                    x+=1
+                if tstord is not None and issno is not None:
+                    logger.fdebug('tstord: ' + str(tstord))
+                    a = 0
+                    ordtot = 0
+                    while (a < len(tstord)):
+                        try:
+                            ordtot += ord(tstord[a].lower())  #lower-case the letters for simplicty
+                        except ValueError:
+                            break
+                        a+=1
+                    logger.fdebug('issno: ' + str(issno))
+                    int_issnum = (int(issno) * 1000) + ordtot
+                    logger.fdebug('intissnum : ' + str(int_issnum))
+                elif invchk == "true":
+                    logger.fdebug('this does not have an issue # that I can parse properly.')
+                    int_issnum = 999999999999999
+                else:
+                    logger.error(str(issnum) + 'this has an alpha-numeric in the issue # which I cannot account for.')
+                    int_issnum = 999999999999999
+    return int_issnum
+
+
+def checkthepub(ComicID):
+    import db, logger
+    myDB = db.DBConnection()
+    publishers = ['marvel', 'dc', 'darkhorse']
+    pubchk = myDB.action("SELECT * FROM comics WHERE ComicID=?", [ComicID]).fetchone()
+    if pubchk is None:
+        logger.fdebug('No publisher information found to aid in determining series..defaulting to base check of 55 days.')
+        return mylar.BIGGIE_PUB
+    else:
+        for publish in publishers:
+            if publish in str(pubchk['ComicPublisher']).lower():
+                logger.fdebug('Biggie publisher detected - ' + str(pubchk['ComicPublisher']))
+                return mylar.BIGGIE_PUB
+
+        logger.fdebug('Indie publisher detected - ' + str(pubchk['ComicPublisher']))
+        return mylar.INDIE_PUB
+
+def annual_update():
+    import db, logger
+    myDB = db.DBConnection()
+    annuallist = myDB.action('SELECT * FROM annuals')
+    if annuallist is None:
+        logger.info('no annuals to update.')
+        return
+
+    cnames = []
+    #populate the ComicName field with the corresponding series name from the comics table.
+    for ann in annuallist:
+        coms = myDB.action('SELECT * FROM comics WHERE ComicID=?', [ann['ComicID']]).fetchone()
+        cnames.append({'ComicID':     ann['ComicID'],
+                       'ComicName':   coms['ComicName']
+                      })
+
+    #write in a seperate loop to avoid db locks
+    i=0
+    for cns in cnames:
+        ctrlVal = {"ComicID":      cns['ComicID']}
+        newVal = {"ComicName":     cns['ComicName']}
+        myDB.upsert("annuals", newVal, ctrlVal)
+        i+=1
+
+    logger.info(str(i) + ' series have been updated in the annuals table.')
+    return 
+
+def replacetheslash(data):
+    # this is necessary for the cache directory to display properly in IE/FF.
+    # os.path.join will pipe in the '\' in windows, which won't resolve 
+    # when viewing through cherrypy - so convert it and viola.    
+    if platform.system() == "Windows":
+        slashreplaced = data.replace('\\', '/')
+    else:
+        slashreplaced = data
+    return slashreplaced
+
+def urlretrieve(urlfile, fpath):
+    chunk = 4096
+    f = open(fpath, "w")
+    while 1:
+        data = urlfile.read(chunk)
+        if not data:
+            print "done."
+            break
+        f.write(data)
+        print "Read %s bytes"%len(data)
+

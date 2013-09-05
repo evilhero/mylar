@@ -10,6 +10,7 @@
 			<a id="menu_link_delete" href="#" onclick="doAjaxCall('clearhistory?type=Processed',$(this),'table')" data-success="All Processed cleared">Clear Processed</a>
 			<a id="menu_link_delete" href="#" onclick="doAjaxCall('clearhistory?type=Unprocessed',$(this),'table')" data-success="All Unprocessed cleared">Clear Unprocessed</a>
 			<a id="menu_link_delete" href="#" onclick="doAjaxCall('clearhistory?type=Snatched',$(this),'table')" data-success="All Snatched cleared">Clear Snatched</a>
+                        <a id="menu_link_delete" href="#" onclick="doAjaxCall('wipenzblog',$(this),'table')" data-success="Wiped entire NZB DB">Wipe NZBLOG</a>
 		</div>
 	</div>	
 </%def>
@@ -18,9 +19,24 @@
 	<div id="paddingheader">
 		<h1 class="clearfix"><img src="interfaces/default/images/icon_history.png" alt="History"/>History</h1>
 	</div>
+
+        <form action="markissues" method="get" id="markissues">
+        <div id="markissue">Mark selected issues as
+                <select name="action" onChange="doAjaxCall('markissues',$(this),'table',true);" data-success="selected issues marked">
+                        <option disabled="disabled" selected="selected">Choose...</option>
+                        <option value="Retry">Retry</option>
+                        <option value="Clear">Clear</option>
+                </select>
+                selected issues
+                <input type="hidden" value="Go">
+        </div>
+
+     <div class="table_wrapper" id="history_table_wrapper">
+
 	<table class="display" id="history_table">
 		<thead>
 			<tr>
+                                <th id="select" align="left"><input type="checkbox" onClick="toggle(this)" class="checkbox" /></th>
 				<th id="dateadded">Date Added</th>
 				<th id="filename">Comic Name</th>
                                 <th id="issue">Issue</th>
@@ -42,15 +58,23 @@
 					
 			%>
 			<tr class="grade${grade}">
+                                <td id="select"><input type="checkbox" name="${item['IssueID']}" class="checkbox" /></td>
 				<td id="dateadded">${item['DateAdded']}</td>
 				<td id="filename">${item['ComicName']}</td>
                                 <td id="issue">${item['Issue_Number']}</td>
-				<td id="status">${item['Status']}</td>
+				<td id="status">${item['Status']}
+                                %if item['Provider'] == 'ComicBT' or item['Provider'] == 'KAT':
+                                    <img src="interfaces/default/images/torrent-icon.png" height="20" width="20" title="${item['Provider']}" />
+                                %endif
+                                </td>
 				<td id="action">[<a href="#" onclick="doAjaxCall('queueissue?IssueID=${item['IssueID']}&ComicName=${item['ComicName']}&ComicID=${item['ComicID']}&ComicIssue=${item['Issue_Number']}&mode=want&redirect=history', $(this),'table')"  data-success="Retrying download of '${item['ComicName']}' '${item['Issue_Number']}'">retry</a>]</td>
 			</tr>
 		%endfor
 		</tbody>
 	</table>
+      </div>
+
+        </form>
 </%def>
 
 <%def name="headIncludes()">
