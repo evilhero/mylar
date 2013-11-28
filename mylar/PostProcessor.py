@@ -141,7 +141,9 @@ class PostProcessor(object):
             logger.fdebug("nzb name: " + str(self.nzb_name))
             logger.fdebug("nzb folder: " + str(self.nzb_folder))
             if mylar.USE_SABNZBD==0:
-                logger.fdebug("Not using SABNzbd")
+                logger.fdebug("Not using SABnzbd")
+            elif mylar.USE_SABNZBD != 0 and self.nzb_name == 'Manual Run':
+                logger.fdebug('Not using SABnzbd : Manual Run')
             else:
                 # if the SAB Directory option is enabled, let's use that folder name and append the jobname.
                 if mylar.SAB_DIRECTORY is not None and mylar.SAB_DIRECTORY is not 'None' and len(mylar.SAB_DIRECTORY) > 4:
@@ -191,11 +193,13 @@ class PostProcessor(object):
                     watchvals = {}
                     for cs in comicseries:
                         watchvals = {"SeriesYear":   cs['ComicYear'],
+                                     "LatestDate":   cs['LatestDate'],
+                                     "ComicVersion": cs['ComicVersion'],
                                      "Total":        cs['Total']}
                         watchmatch = filechecker.listFiles(self.nzb_folder,cs['ComicName'],cs['AlternateSearch'], manual=watchvals)
                         if watchmatch is None:
                             nm+=1
-                            pass
+                            continue
                         else:
                             fn = 0
                             fccnt = int(watchmatch['comiccount'])
@@ -377,7 +381,9 @@ class PostProcessor(object):
                             #if from a StoryArc, check to see if we're appending the ReadingOrder to the filename
                             if mylar.READ2FILENAME:
                                 issuearcid = re.sub('S', '', issueid)
-                                arcdata = myDB.action("SELECT * FROM readinglist WHERE IssueARCID=?",[issuearcid]).fetchone()
+                                logger.fdebug('issuearcid:' + str(issuearcid))
+                                arcdata = myDB.action("SELECT * FROM readinglist WHERE IssueArcID=?",[issuearcid]).fetchone()
+                                logger.fdebug('readingorder#: ' + str(arcdata['ReadingOrder']))
                                 if int(arcdata['ReadingOrder']) < 10: readord = "00" + str(arcdata['ReadingOrder'])
                                 elif int(arcdata['ReadingOrder']) > 10 and int(arcdata['ReadingOrder']) < 99: readord = "0" + str(arcdata['ReadingOrder'])
                                 else: readord = str(arcdata['ReadingOrder'])
@@ -655,6 +661,7 @@ class PostProcessor(object):
                             ofilename = filename
                             path, ext = os.path.splitext(ofilename)
             else:
+                otofilename = ml['ComicLocation']
                 print "otofilename:" + str(otofilename)
                 odir, ofilename = os.path.split(otofilename)
                 print "ofilename: " + str(ofilename)
@@ -771,6 +778,11 @@ class PostProcessor(object):
                     logger.info(u"Pushover request")
                     pushover = notifiers.PUSHOVER()
                     pushover.notify(pushmessage, "Download and Post-Processing completed")
+
+                if mylar.BOXCAR_ENABLED:
+                    boxcar = notifiers.BOXCAR()
+                    boxcar.notify(series, str(issueyear), str(issuenumOG))
+
              
             # retrieve/create the corresponding comic objects
 

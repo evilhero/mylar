@@ -239,6 +239,9 @@
                                                 %endfor
                                                 </select>
                                               </div>
+                         <div class="row">
+                            <a href="#" style="float:right" type="button" onclick="doAjaxCall('SABtest',$(this))" data-success="Sucessfully tested SABnzbd connection" data-error="Error testing SABnzbd connection"><span class="ui-icon ui-icon-extlink"></span>Test SABnzbd</a>
+                         </div>
 
                          </div>
                          <div class="row checkbox">
@@ -368,6 +371,7 @@
                           <div class="config">
                             <label>RSS Inteval Feed Check</label>
                             <input type="text" name="rss_checkinterval" value="${config['rss_checkinterval']}" size="6" /><small>(Mins)</small>
+                            <a href="#" style="float:right" type="button" onclick="doAjaxCall('force_rss',$(this))" data-success="RSS Force now running" data-error="Error trying to retrieve RSS Feeds"><span class="ui-icon ui-icon-extlink"></span>Force RSS</a>
                           </div>
                         </fieldset>
                 	<fieldset>
@@ -484,7 +488,28 @@
                                     <input type="button" value="Add Newznab" class="add_newznab" id="add_newznab" />
                                 </div>
                         </fieldset>
+<!--
+                        <fieldset>
+                                 <div id="newznab providers">
+                                    <%
+                                        order_number = 1
+                                    %>
 
+                                     %for p_order in config['provider_order']:
+                                        <div class="config" id="p_order${order_number}">
+                                            <div class="row">
+                                               <label>${p_order[0]}</label>
+                                               <label>${p_order[1]}</label>
+                                            </div>
+                                        <div>                                        
+                                       <%
+                                            order_number += 1
+                                       %>
+    
+                                     %endfor
+                               </div>
+                        </fieldset>
+-->
                 </td>
 
             </tr>
@@ -625,7 +650,7 @@
                                                 </select>
                                                 </div>
                                                 <div class="row checkbox">
-                                                  <input id="zero_level" type="checkbox" onclick="initConfigCheckbox($(this));" name="zero_level" value="1" ${config['zero_level']} /><label>Zero level Suppression</label>
+                                                  <input id="zero_level" type="checkbox" onclick="initConfigCheckbox($(this));" name="zero_level" value="1" ${config['zero_level']} /><label>Issue Number Padding</label>
                                                 </div>
                                                 <div class="row">
                                                 <label>Format</label>
@@ -687,7 +712,7 @@
 					</fieldset>
                                         <h2>Notifications</h2>
                                         <fieldset>
-                                                <h3>Prowl</h3>
+                                                <h3><img src="interfaces/default/images/prowl_logo.png" style="vertical-align: middle; margin: 3px; margin-top: -1px;" height="30" width="30"/>Prowl</h3>
                                                 <div class="row checkbox">
                                                     <input type="checkbox" name="prowl_enabled" id="prowl" value="1" ${config['prowl_enabled']} /><label>Enable Prowl Notifications</label>
                                                  </div>
@@ -705,15 +730,15 @@
                                                  </div>
                                         </fieldset>
                      <fieldset>
-                        <h3>NotifyMyAndroid</h3>
+                        <h3><img src="interfaces/default/images/nma_logo.png" style="vertical-align: middle; margin: 3px; margin-top: -1px;" height="30" width="30"/>NotifyMyAndroid</h3>
                         <div class="checkbox row">
-                            <input type="checkbox" name="nma_enabled" id="nma" value="1" ${config['nma_enabled']} /><label>Enable NotifyMyAndroid</label>
+<input type="checkbox" name="nma_enabled" id="nma" value="1" ${config['nma_enabled']} /><label>Enable NotifyMyAndroid</label>
                         </div>
                         <div id="nmaoptions">
                             <div class="row">
                                     <div class="row checkbox">
-                                         <input type="checkbox" name="nma_onsnatch" value="1" ${config['nma_onsnatch']} /><label>Notify on snatch?</label>
-                                    </div>
+     <input type="checkbox" name="nma_onsnatch" value="1" ${config['nma_onsnatch']} /><label>Notify on snatch?</label>
+                                   </div>
                                     <label>NotifyMyAndroid API Key</label>
                                     <input type="text" name="nma_apikey" value="${config['nma_apikey']}" size="30">
                                     <small>Separate multiple api keys with commas</small>
@@ -747,7 +772,7 @@
                      </fieldset>
                                         
                                         <fieldset>
-                                                 <h3>Pushover</h3>
+                                                 <h3><img src="interfaces/default/images/pushover_logo.png" style="vertical-align: middle; margin: 3px; margin-top: -1px;" height="30" width="30"/>Pushover</h3>
                                                  <div class="row checkbox">
                                                     <input type="checkbox" name="pushover_enabled" id="pushover" value="1" ${config['pushover_enabled']} /><label>Enable Pushover Notifications</label>
                                                  </div>
@@ -767,8 +792,23 @@
                                                    </div>
                                                  </div>
                                         </fieldset>            
-				</td>
-			</tr>
+                     <fieldset>
+                        <h3><img src="interfaces/default/images/boxcar_logo.png" style="vertical-align: middle; margin: 3px; margin-top: -1px;" height="30" width="30"/>Boxcar.IO</h3>
+                        <div class="checkbox row">
+                           <input type="checkbox" name="boxcar_enabled" id="boxcar" value="1" ${config['boxcar_enabled']} /><label>Enable Boxcar.IO</label>
+                        </div>
+                        <div id="boxcaroptions">
+                            <div class="row">
+                                    <div class="row checkbox">
+                                            <input type="checkbox" name="boxcar_onsnatch" value="1" ${config['boxcar_onsnatch']} /><label>Notify on snatch?</label>
+                                    </div>
+                                    <label>Boxcar Username (email)</label>
+                                    <input type="text" name="boxcar_username" value="${config['boxcar_username']}" size="30">
+                            </div>
+                        </div>
+                     </fieldset>
+	       </td>
+             </tr>
         </table>
     </div>	
         <input type="button" value="Save Changes" onclick="doAjaxCall('configUpdate',$(this),'tabs',true);return false;" data-success="Changes saved successfully">
@@ -865,6 +905,27 @@
                                 $("#pushoveroptions").slideUp();
                         }
                 });
+
+                if ($("#boxcar").is(":checked"))
+                        {
+                                $("#boxcaroptions").show();
+                        }
+                else
+                        {
+                                $("#boxcaroptions").hide();
+                        }
+
+                $("#boxcar").click(function(){
+                        if ($("#boxcar").is(":checked"))
+                        {
+                                $("#boxcaroptions").slideDown();
+                        }
+                        else
+                        {
+                                $("#boxcaroptions").slideUp();
+                        }
+                });
+
 
                 var deletedNewznabs = 0;
 

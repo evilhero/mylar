@@ -27,7 +27,7 @@ def file2comicmatch(watchmatch):
     #print ("match: " + str(watchmatch))
     pass
 
-def listFiles(dir,watchcomic,AlternateSearch=None,manual=None):
+def listFiles(dir,watchcomic,AlternateSearch=None,manual=None,sarc=None):
 
     # use AlternateSearch to check for filenames that follow that naming pattern
     # ie. Star Trek TNG Doctor Who Assimilation won't get hits as the 
@@ -48,7 +48,7 @@ def listFiles(dir,watchcomic,AlternateSearch=None,manual=None):
                '\;',
                '.',
                '-',
-               '\!',
+               '!',
                '\$',
                '\%',
                '\+',
@@ -67,6 +67,7 @@ def listFiles(dir,watchcomic,AlternateSearch=None,manual=None):
         #print item
         #subname = os.path.join(basedir, item)
         subname = item
+
         #versioning - remove it
         subsplit = subname.replace('_', ' ').split()
         volrem = None
@@ -87,14 +88,55 @@ def listFiles(dir,watchcomic,AlternateSearch=None,manual=None):
                     subname = re.sub(subit, '', subname)
                     volrem = subit
 
+        #check if a year is present in series title (ie. spider-man 2099)
+        numberinseries = 'False'
+
+        for i in watchcomic.split():
+            if ('20' in i or '19' in i):
+                if i.isdigit():
+                    numberinseries = 'True'
+                else:
+                    find20 = i.find('20')
+                    if find20:
+                        stf = i[find20:4].strip()
+                    find19 = i.find('19')
+                    if find19:
+                        stf = i[find19:4].strip()
+                    logger.fdebug('stf is : ' + str(stf))
+                    if stf.isdigit():
+                        numberinseries = 'True'
+ 
+        logger.fdebug('numberinseries: ' + numberinseries)
+
         #remove the brackets..
         subnm = re.findall('[^()]+', subname)
-        if len(subnm):
-            logger.fdebug("detected invalid filename - attempting to detect year to continue")
-            subname = re.sub('(.*)\s+(19\d{2}|20\d{2})(.*)', '\\1 (\\2) \\3', subname)
-            subnm = re.findall('[^()]+', subname)
+        logger.fdebug('subnm len : ' + str(len(subnm)))
+        if len(subnm) == 1:
+            logger.fdebug(str(len(subnm)) + ': detected invalid filename - attempting to detect year to continue')
+            #if the series has digits this f's it up.
+            if numberinseries == 'True':
+                #we need to remove the series from the subname and then search the remainder.
+                watchname = re.sub('[-\:\;\!\'\/\?\+\=\_\%\.]', '', watchcomic)   #remove spec chars for watchcomic match.
+                logger.fdebug('watch-cleaned: ' + str(watchname))
+                subthis = re.sub('.cbr', '', subname)
+                subthis = re.sub('.cbz', '', subthis)
+                subthis = re.sub('[-\:\;\!\'\/\?\+\=\_\%\.]', '', subthis)
+                logger.fdebug('sub-cleaned: ' + str(subthis))
+                subthis = subthis[len(watchname):]  #remove watchcomic
+                #we need to now check the remainder of the string for digits assuming it's a possible year
+                logger.fdebug('new subname: ' + str(subthis))
+                subname = re.sub('(.*)\s+(19\d{2}|20\d{2})(.*)', '\\1 (\\2) \\3', subthis)
+                subname = watchcomic + subname
+                subnm = re.findall('[^()]+', subname)
+            else:
+                subname = re.sub('(.*)\s+(19\d{2}|20\d{2})(.*)', '\\1 (\\2) \\3', subname)
+                subnm = re.findall('[^()]+', subname)
 
         subname = subnm[0]
+
+        if len(subnm):
+            # if it still has no year (brackets), check setting and either assume no year needed.
+            subname = subname                
         logger.fdebug('subname no brackets: ' + str(subname))
         subname = re.sub('\_', ' ', subname)
         nonocount = 0
@@ -179,7 +221,7 @@ def listFiles(dir,watchcomic,AlternateSearch=None,manual=None):
                 AS_Alternate = re.sub('##','',calt)
                 #same = encode.
                 u_altsearchcomic = AS_Alternate.encode('ascii', 'ignore').strip()
-                altsearchcomic = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\+\'\?\@]', '', u_altsearchcomic)
+                altsearchcomic = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\+\'\?\@]', ' ', u_altsearchcomic)
                 altsearchcomic = re.sub('\&', ' and ', altsearchcomic)
                 altsearchcomic = re.sub('\s+', ' ', str(altsearchcomic)).strip()       
                 AS_Alt.append(altsearchcomic)
@@ -247,6 +289,12 @@ def listFiles(dir,watchcomic,AlternateSearch=None,manual=None):
             else:
                 jtd_len = len(cchk)# + nonocount
 
+            if sarc and mylar.READ2FILENAME:
+                removest = subname.find(' ') # the - gets removed above so we test for the first blank space...
+                if subname[:removest].isdigit():
+                    jtd_len += removest + 1  # +1 to account for space in place of - 
+                    logger.fdebug('adjusted jtd_len to : ' + str(removest) + ' because of story-arc reading order tags')
+
             logger.fdebug('nonocount [' + str(nonocount) + '] cchk [' + cchk + '] length [' + str(len(cchk)) + ']')
 
             #if detectand:
@@ -261,9 +309,9 @@ def listFiles(dir,watchcomic,AlternateSearch=None,manual=None):
             logger.fdebug('after title removed from FILENAME [' + str(item[jtd_len:]) + ']')
             logger.fdebug('creating just the digits using SUBNAME, pruning first [' + str(jtd_len) + '] chars from [' + subname + ']')
 
-            justthedigits = subname[jtd_len:].strip()
+            justthedigits_1 = subname[jtd_len:].strip()
 
-            logger.fdebug('after title removed from SUBNAME [' + justthedigits + ']')
+            logger.fdebug('after title removed from SUBNAME [' + justthedigits_1 + ']')
 
             #remove the title if it appears
             #findtitle = justthedigits.find('-')
@@ -271,90 +319,175 @@ def listFiles(dir,watchcomic,AlternateSearch=None,manual=None):
             #    justthedigits = justthedigits[:findtitle]
             #    logger.fdebug("removed title from name - is now : " + str(justthedigits))
 
-            tmpthedigits = justthedigits
-            justthedigits = justthedigits.split(' ', 1)[0]
+            justthedigits = justthedigits_1.split(' ', 1)[0]
 
- 
+            digitsvalid = "false"
+
+            try:
+                tmpthedigits = justthedigits_1.split(' ', 1)[1]
+                logger.fdebug('If the series has a decimal, this should be a number [' + tmpthedigits + ']')
+                if 'cbr' in tmpthedigits.lower() or 'cbz' in tmpthedigits.lower():
+                    tmpthedigits = tmpthedigits[:-3].strip()
+                    logger.fdebug('Removed extension - now we should just have a number [' + tmpthedigits + ']')
+                poss_alpha = tmpthedigits
+                if poss_alpha.isdigit():
+                    digitsvalid = "true"
+                    if justthedigits.lower() == 'annual':
+                        logger.fdebug('ANNUAL DETECTED ['  + poss_alpha + ']')
+                        justthedigits += ' ' + poss_alpha
+                    else:
+                        justthedigits += '.' + poss_alpha
+                        logger.fdebug('DECIMAL ISSUE DETECTED [' + justthedigits + ']')
+                else:
+                    for issexcept in issue_exceptions:
+                        if issexcept.lower() in poss_alpha.lower() and len(poss_alpha) <= len(issexcept):
+                            justthedigits += poss_alpha
+                            logger.fdebug('ALPHANUMERIC EXCEPTION. COMBINING : [' + justthedigits + ']')
+                            digitsvalid = "true"
+                            break
+            except:
+                tmpthedigits = None
+
+#            justthedigits = justthedigits.split(' ', 1)[0]
+
             #if the issue has an alphanumeric (issue_exceptions, join it and push it through)
             logger.fdebug('JUSTTHEDIGITS [' + justthedigits + ']' )
             if justthedigits.isdigit():
                 digitsvalid = "true"
             else:
                 if '.' in justthedigits:
-                    logger.fdebug("decimals")
-                    digitsvalid = "true"
-                else:
-                    logger.fdebug("no decimals")
-                    digitsvalid = "false"
+                    tmpdec = justthedigits.find('.')
+                    b4dec = justthedigits[:tmpdec]
+                    a4dec = justthedigits[tmpdec+1:]
+                    if a4dec.isdigit() and b4dec.isdigit():
+                        logger.fdebug('DECIMAL ISSUE DETECTED')
+                        digitsvalid = "true"
+#                else:
+#                    logger.fdebug('NO DECIMALS DETECTED')
+#                    digitsvalid = "false"
 
-            if justthedigits.lower() == 'annual':
-                logger.fdebug('ANNUAL ['  + tmpthedigits.split(' ', 1)[1] + ']')
-                justthedigits += ' ' + tmpthedigits.split(' ', 1)[1]
-                digitsvalid = "true"
-            else:
-                
-                try:
-                    if tmpthedigits.split(' ', 1)[1] is not None:
-                        poss_alpha = tmpthedigits.split(' ', 1)[1]
-                        if poss_alpha.isdigit():
-                            logger.fdebug("decimal issue detected (filename space seperate most likely '.')")
-                            digitsvalid = "true"
-                            justthedigits += '.' + poss_alpha
-                        for issexcept in issue_exceptions:
-                            if issexcept.lower() in poss_alpha.lower() and len(poss_alpha) <= len(issexcept):
-                                justthedigits += poss_alpha
-                                logger.fdebug('ALPHANUMERIC EXCEPTION. COMBINING : [' + justthedigits + ']')
-                                digitsvalid = "true"
-                                break
-                except:
-                    pass
+#            if justthedigits.lower() == 'annual':
+#                logger.fdebug('ANNUAL ['  + tmpthedigits.split(' ', 1)[1] + ']')
+#                justthedigits += ' ' + tmpthedigits.split(' ', 1)[1]
+#                digitsvalid = "true"
+#            else:               
+#                try:
+#                    if tmpthedigits.isdigit(): #.split(' ', 1)[1] is not None:
+#                        poss_alpha = tmpthedigits#.split(' ', 1)[1]
+#                        if poss_alpha.isdigit():
+#                            digitsvalid = "true"
+#                            justthedigits += '.' + poss_alpha
+#                            logger.fdebug('DECIMAL ISSUE DETECTED [' + justthedigits + ']')
+#                        for issexcept in issue_exceptions:
+#                            if issexcept.lower() in poss_alpha.lower() and len(poss_alpha) <= len(issexcept):
+#                                justthedigits += poss_alpha
+#                                logger.fdebug('ALPHANUMERIC EXCEPTION. COMBINING : [' + justthedigits + ']')
+#                                digitsvalid = "true"
+#                                break
+#                except:
+#                    pass
 
             logger.fdebug('final justthedigits [' + justthedigits + ']')
             if digitsvalid == "false": 
                 logger.fdebug('Issue number not properly detected...ignoring.')
+                comiccnt -=1  # remove the entry from the list count as it was incorrrectly tallied.
                 continue            
             
 
             if manual is not None:
                 #this is needed for Manual Run to determine matches
                 #without this Batman will match on Batman Incorporated, and Batman and Robin, etc..
+
+                # in case it matches on an Alternate Search pattern, set modwatchcomic to the cchk value
+                modwatchcomic = cchk
+                logger.fdebug('cchk = ' + cchk.lower())
                 logger.fdebug('modwatchcomic = ' + modwatchcomic.lower())
                 logger.fdebug('subname = ' + subname.lower())
                 comyear = manual['SeriesYear']
                 issuetotal = manual['Total']
+                comicvolume = manual['ComicVersion']
                 logger.fdebug('SeriesYear: ' + str(comyear))
                 logger.fdebug('IssueTotal: ' + str(issuetotal))
+                logger.fdebug('Comic Volume: ' + str(comicvolume))
+                logger.fdebug('volume detected: ' + str(volrem))
 
                 #set the issue/year threshold here.
                 #  2013 - (24issues/12) = 2011.
-                minyear = int(comyear) - (int(issuetotal) / 12)
+                #minyear = int(comyear) - (int(issuetotal) / 12)
                 
+                maxyear = manual['LatestDate'][:4]  # yyyy-mm-dd
+
                 #subnm defined at being of module.
                 len_sm = len(subnm)
 
                 #print ("there are " + str(lenm) + " words.")
                 cnt = 0
                 yearmatch = "false"
+                vers4year = "no"
+                vers4vol = "no"
 
-                while (cnt < len_sm):
-                    if subnm[cnt] is None: break
-                    if subnm[cnt] == ' ':
-                        pass
+                for ct in subsplit:
+                    if ct.lower().startswith('v') and ct[1:].isdigit():
+                        logger.fdebug("possible versioning..checking")
+                        #we hit a versioning # - account for it
+                        if ct[1:].isdigit():
+                            if len(ct[1:]) == 4:  #v2013
+                                logger.fdebug("Version detected as " + str(ct))
+                                vers4year = "yes" #re.sub("[^0-9]", " ", str(ct)) #remove the v
+                                break
+                            else:
+                                if len(ct) < 4:
+                                    logger.fdebug("Version detected as " + str(ct))
+                                    vers4vol = str(ct)
+                                    break
+                        logger.fdebug("false version detection..ignoring.")
+
+                if vers4year is not "no" or vers4vol is not "no":
+                    yearmatch = "false"
+
+                    if comicvolume: #is not "None" and comicvolume is not None:
+                        D_ComicVersion = re.sub("[^0-9]", "", comicvolume)
+                        if D_ComicVersion == '':
+                            D_ComicVersion = 0
                     else:
-                        logger.fdebug(str(cnt) + ". Bracket Word: " + str(subnm[cnt]))
+                        D_ComicVersion = 0
 
-                    if subnm[cnt][:-2] == '19' or subnm[cnt][:-2] == '20':
-                        logger.fdebug("year detected: " + str(subnm[cnt]))
-                        result_comyear = subnm[cnt]
-                        if int(result_comyear) >= int(minyear):
-                            logger.fdebug(str(result_comyear) + ' is within the series range of ' + str(minyear) + '-' + str(comyear))
-                            yearmatch = "true"
-                            break
+                    F_ComicVersion = re.sub("[^0-9]", "", volrem)
+                    S_ComicVersion = str(comyear)
+                    logger.fdebug("FCVersion: " + str(F_ComicVersion))
+                    logger.fdebug("DCVersion: " + str(D_ComicVersion))
+                    logger.fdebug("SCVersion: " + str(S_ComicVersion))
+
+                    #if annualize == "true" and int(ComicYear) == int(F_ComicVersion):
+                    #    logger.fdebug("We matched on versions for annuals " + str(volrem))
+
+                    if int(F_ComicVersion) == int(D_ComicVersion) or int(F_ComicVersion) == int(S_ComicVersion):
+                        logger.fdebug("We matched on versions..." + str(volrem))
+                        yearmatch = "true"
+                    else:
+                        logger.fdebug("Versions wrong. Ignoring possible match.")
+
+                else:
+                    while (cnt < len_sm):
+                        if subnm[cnt] is None: break
+                        if subnm[cnt] == ' ':
+                            pass
                         else:
-                            logger.fdebug(str(result_comyear) + ' - not right - year not within series range of ' + str(minyear) + '-' + str(comyear))
-                            yearmatch = "false"
-                            break
-                    cnt+=1
+                            logger.fdebug(str(cnt) + ". Bracket Word: " + str(subnm[cnt]))
+
+                        if subnm[cnt][:-2] == '19' or subnm[cnt][:-2] == '20':
+                            logger.fdebug("year detected: " + str(subnm[cnt]))
+                            result_comyear = subnm[cnt]
+                            if int(result_comyear) <= int(maxyear):
+                                logger.fdebug(str(result_comyear) + ' is within the series range of ' + str(comyear) + '-' + str(maxyear))
+                                #still possible for incorrect match if multiple reboots of series end/start in same year
+                                yearmatch = "true"
+                                break
+                            else:
+                                logger.fdebug(str(result_comyear) + ' - not right - year not within series range of ' + str(comyear) + '-' + str(maxyear))
+                                yearmatch = "false"
+                                break
+                        cnt+=1
 
                 if yearmatch == "false": continue
 
@@ -389,7 +522,7 @@ def listFiles(dir,watchcomic,AlternateSearch=None,manual=None):
                     logger.fdebug('number of words do not match...aborting.')
                 else:
                     while ( x > -1 ):
-                        print str(split_mod[x]) + ' comparing to ' + str(split_mod[x])
+                        print str(split_sub[x]) + ' comparing to ' + str(split_mod[x])
                         if str(split_sub[x]).lower() == str(split_mod[x]).lower():
                             scnt+=1
                             logger.fdebug('word match exact. ' + str(scnt) + '/' + str(len(split_mod)))

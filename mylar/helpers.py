@@ -645,8 +645,11 @@ def issuedigits(issnum):
         elif u'\xbe' in issnum:
             issnum = .75
             int_issnum = int(issnum) * 1000
+        elif u'\u221e' in issnum:
+            #issnum = utf-8 will encode the infinity symbol without any help
+            int_issnum = 9999999999 * 1000  # set 9999999999 for integer value of issue
         elif '.' in issnum or ',' in issnum:
-            logger.fdebug('decimal detected.')
+            #logger.fdebug('decimal detected.')
             if ',' in issnum: issnum = re.sub(',','.', issnum)
             issst = str(issnum).find('.')
             issb4dec = str(issnum)[:issst]
@@ -660,7 +663,7 @@ def issuedigits(issnum):
             try:
                 int_issnum = (int(issb4dec) * 1000) + (int(issaftdec) * 10)
             except ValueError:
-                logger.error('This has no issue # for me to get - Either a Graphic Novel or one-shot.')
+                logger.fdebug('This has no issue # for me to get - Either a Graphic Novel or one-shot.')
                 int_issnum = 999999999999999
         else:
             try:
@@ -776,4 +779,57 @@ def urlretrieve(urlfile, fpath):
             break
         f.write(data)
         print "Read %s bytes"%len(data)
+
+def renamefile_readingorder(readorder):
+    import logger
+    logger.fdebug('readingorder#: ' + str(readorder))
+    if int(readorder) < 10: readord = "00" + str(readorder)
+    elif int(readorder) > 10 and int(readorder) < 99: readord = "0" + str(readorder)
+    else: readord = str(readorder)
+
+    return readord
+
+def latestdate_fix():
+    import db, logger
+    datefix = []
+    myDB = db.DBConnection()
+    comiclist = myDB.action('SELECT * FROM comics')
+    if comiclist is None:
+        logger.fdebug('No Series in watchlist to correct latest date')
+        return
+    for cl in comiclist:
+        latestdate = cl['LatestDate']
+        #logger.fdebug("latestdate:  " + str(latestdate))
+        if latestdate[8:] == '':
+            #logger.fdebug("invalid date " + str(latestdate) + " appending 01 for day to avoid errors")
+            if len(latestdate) <= 7:
+                finddash = latestdate.find('-')
+                #logger.info('dash found at position ' + str(finddash))
+                if finddash != 4:  #format of mm-yyyy
+                    lat_month = latestdate[:finddash]
+                    lat_year = latestdate[finddash+1:]
+                else:  #format of yyyy-mm
+                    lat_month = latestdate[finddash+1:]
+                    lat_year = latestdate[:finddash]
+
+                latestdate = (lat_year) + '-' + str(lat_month) + '-01'
+                datefix.append({"comicid":    cl['ComicID'],
+                                "latestdate": latestdate})
+                #logger.info('latest date: ' + str(latestdate))
+
+    #now we fix.
+    if len(datefix) > 0:
+       for df in datefix:
+          newCtrl = {"ComicID":    df['comicid']}
+          newVal = {"LatestDate":  df['latestdate']}
+          myDB.upsert("comics", newVal, newCtrl)
+    return
+
+def checkFolder():
+    import PostProcessor, logger
+    #monitor a selected folder for 'snatched' files that haven't been processed
+    logger.info('Checking folder ' + mylar.CHECK_FOLDER + ' for newly snatched downloads')
+    PostProcess = PostProcessor.PostProcessor('Manual Run', mylar.CHECK_FOLDER)
+    result = PostProcess.Process()
+    logger.info('Finished checking for newly snatched downloads')
 
