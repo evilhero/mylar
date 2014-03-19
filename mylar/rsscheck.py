@@ -36,7 +36,7 @@ def tehMain(forcerss=None):
 
     #function for looping through nzbs/torrent feeds
     if mylar.ENABLE_TORRENTS:
-        logger.fdebug("[RSS] Initiating Torrent RSS Check.")
+        logger.fdebug('[RSS] Initiating Torrent RSS Check.')
         if mylar.ENABLE_KAT:
             logger.fdebug('[RSS] Initiating Torrent RSS Feed Check on KAT.')
             torrents(pickfeed='3')
@@ -44,7 +44,7 @@ def tehMain(forcerss=None):
             logger.fdebug('[RSS] Initiating Torrent RSS Feed Check on CBT.')
             torrents(pickfeed='1')
             torrents(pickfeed='4')
-    logger.fdebug('RSS] Initiating RSS Feed Check for NZB Providers.')
+    logger.fdebug('[RSS] Initiating RSS Feed Check for NZB Providers.')
     nzbs()    
     logger.fdebug('[RSS] RSS Feed Check/Update Complete')
     logger.fdebug('[RSS] Watchlist Check for new Releases')
@@ -271,7 +271,7 @@ def nzbs(provider=None):
             elif nzbprovider[nzbpr] == 'dognzb':
                 if mylar.DOGNZB_UID is None:
                     mylar.DOGNZB_UID = '1'
-                feed = 'http://dognzb.cr/rss?t=7030&dl=1&i=' + mylar.DOGNZB_UID + '&r=' + mylar.DOGNZB_APIKEY
+                feed = 'https://dognzb.cr/rss.cfm?r=' + mylar.DOGNZB_APIKEY + '&t=7030'
                 feedme = feedparser.parse(feed)
                 site = nzbprovider[nzbpr]
                 ft+=1
@@ -285,30 +285,49 @@ def nzbs(provider=None):
     if nonexp == "yes":
         #print str(ft) + " sites checked. There are " + str(totNum) + " entries to be updated."
         #print feedme
-        #i = 0
 
         for ft in feedthis:
+            sitei = 0
             site = ft['site']
-            #print str(site) + " now being updated..."
+            logger.fdebug(str(site) + " now being updated...")
+            logger.fdebug('feedthis:' + str(ft))
             for entry in ft['feed'].entries:
-                #print "entry: " + str(entry)
-                tmpsz = entry.enclosures[0]
-                feeddata.append({
-                           'Site':     site,
-                           'Title':    entry.title,
-                           'Link':     entry.link,
-                           'Pubdate':  entry.updated,
-                           'Size':     tmpsz['length']
-                           })
+                if site == 'dognzb':
+                    #because the rss of dog doesn't carry the enclosure item, we'll use the newznab size value
+                    tmpsz = 0
+                    #for attr in entry['newznab:attrib']:
+                    #    if attr('@name') == 'size':
+                    #        tmpsz = attr['@value']
+                    #        logger.fdebug('size retrieved as ' + str(tmpsz))
+                    #        break
+                    feeddata.append({
+                               'Site':     site,
+                               'Title':    entry.title,    #ft['feed'].entries[i].title,
+                               'Link':     entry.link,     #ft['feed'].entries[i].link,
+                               'Pubdate':  entry.updated,  #ft['feed'].entries[i].updated,
+                               'Size':     tmpsz
+                               })
+                else:
+                    #this should work for all newznabs (nzb.su included)
+                    #only difference is the size of the file between this and above (which is probably the same)
+                    tmpsz = entry.enclosures[0]  #ft['feed'].entries[i].enclosures[0]
+                    feeddata.append({
+                               'Site':     site,
+                               'Title':    entry.title,   #ft['feed'].entries[i].title,
+                               'Link':     entry.link,    #ft['feed'].entries[i].link,
+                               'Pubdate':  entry.updated, #ft['feed'].entries[i].updated,
+                               'Size':     tmpsz['length']
+                               })
 
-#               print ("Site: " + str(feeddata[i]['Site']))
-#               print ("Title: " + str(feeddata[i]['Title']))
-#               print ("Link: " + str(feeddata[i]['Link']))
-#               print ("pubdate: " + str(feeddata[i]['Pubdate']))
-#               print ("size: " + str(feeddata[i]['Size']))
-                i+=1
-            logger.info(str(site) + ' : ' + str(i) + ' entries indexed.')
-
+                #logger.fdebug("Site: " + str(feeddata[i]['Site']))
+                #logger.fdebug("Title: " + str(feeddata[i]['Title']))
+                #logger.fdebug("Link: " + str(feeddata[i]['Link']))
+                #logger.fdebug("pubdate: " + str(feeddata[i]['Pubdate']))
+                #logger.fdebug("size: " + str(feeddata[i]['Size']))
+                sitei+=1
+            logger.info(str(site) + ' : ' + str(sitei) + ' entries indexed.')
+            i+=sitei
+    logger.info('[RSS] ' + str(i) + ' entries have been indexed and are now going to be stored for caching.')
     rssdbupdate(feeddata,i,'usenet')
     return
 
@@ -428,10 +447,16 @@ def torrentdbsearch(seriesname,issue,comicid=None,nzbprov=None):
         while (i < len(torsplit)):
             #we'll rebuild the string here so that it's formatted accordingly to be passed back to the parser.
             logger.fdebug('section(' + str(i) + '): ' + str(torsplit[i]))
+            #remove extensions
+            titletemp = torsplit[i]
+            titletemp = re.sub('cbr', '', str(titletemp))
+            titletemp = re.sub('cbz', '', str(titletemp))
+            titletemp = re.sub('none', '', str(titletemp))
+
             if i == 0: 
-                rebuiltline = str(torsplit[i])
+                rebuiltline = str(titletemp)
             else:
-                rebuiltline = rebuiltline + ' (' + str(torsplit[i]) + ')'
+                rebuiltline = rebuiltline + ' (' + str(titletemp) + ')'
             i+=1
 
         logger.fdebug('rebuiltline is :' + str(rebuiltline))
@@ -446,13 +471,13 @@ def torrentdbsearch(seriesname,issue,comicid=None,nzbprov=None):
         seriesname_mod = re.sub('[\&]', ' ', seriesname_mod)
         foundname_mod = re.sub('[\&]', ' ', foundname_mod)
 
-        formatrem_seriesname = re.sub('[\'\!\@\#\$\%\:\;\=\?\.\-]', '',seriesname_mod)
-        formatrem_seriesname = re.sub('[\/]', '-', formatrem_seriesname)
+        formatrem_seriesname = re.sub('[\'\!\@\#\$\%\:\;\=\?\.\-\/]', '',seriesname_mod)
+        #formatrem_seriesname = re.sub('[\/]', '-', formatrem_seriesname)  #not necessary since seriesname in a torrent file won't have /
         formatrem_seriesname = re.sub('\s+', ' ', formatrem_seriesname)
         if formatrem_seriesname[:1] == ' ': formatrem_seriesname = formatrem_seriesname[1:]
 
-        formatrem_torsplit = re.sub('[\'\!\@\#\$\%\:\;\\=\?\.\-]', '',foundname_mod)
-        formatrem_torsplit = re.sub('[\/]', '-', formatrem_torsplit)
+        formatrem_torsplit = re.sub('[\'\!\@\#\$\%\:\;\\=\?\.\-\/]', '',foundname_mod)
+        #formatrem_torsplit = re.sub('[\/]', '-', formatrem_torsplit)  #not necessary since if has a /, should be removed in above line
         formatrem_torsplit = re.sub('\s+', ' ', formatrem_torsplit)
         logger.fdebug(str(len(formatrem_torsplit)) + ' - formatrem_torsplit : ' + formatrem_torsplit.lower())
         logger.fdebug(str(len(formatrem_seriesname)) + ' - formatrem_seriesname :' + formatrem_seriesname.lower())
@@ -462,9 +487,12 @@ def torrentdbsearch(seriesname,issue,comicid=None,nzbprov=None):
             logger.fdebug('matched on series title: ' + seriesname)
             titleend = formatrem_torsplit[len(formatrem_seriesname):]
             titleend = re.sub('\-', '', titleend)   #remove the '-' which is unnecessary
-
-            titleend = re.sub('cbr', '', str(titleend)) #remove extensions
+            #remove extensions
+            titleend = re.sub('cbr', '', str(titleend))
+            titleend = re.sub('cbz', '', str(titleend))
+            titleend = re.sub('none', '', str(titleend))
             logger.fdebug('titleend: ' + str(titleend))
+
             sptitle = titleend.split()
             extra = ''
 #            for sp in sptitle:
@@ -480,14 +508,16 @@ def torrentdbsearch(seriesname,issue,comicid=None,nzbprov=None):
             ctitle = tor['Title'].find('cbr')
             if ctitle == 0:
                 ctitle = tor['Title'].find('cbz')
-            if ctitle == 0:
-                logger.fdebug('cannot determine title properly - ignoring for now.')
-                continue
+                if ctitle == 0:
+                    ctitle = tor['Title'].find('none')
+                    if ctitle == 0:               
+                        logger.fdebug('cannot determine title properly - ignoring for now.')
+                        continue
             cttitle = tor['Title'][:ctitle]
             #print("change title to : " + str(cttitle))
 #           if extra == '':
             tortheinfo.append({
-                          'title':   cttitle, #tor['Title'],
+                          'title':   rebuiltline, #cttitle,
                           'link':    tor['Link'],
                           'pubdate': tor['Pubdate'],
                           'site':    tor['Site'],

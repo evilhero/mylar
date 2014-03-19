@@ -128,6 +128,16 @@ def libraryScan(dir=None, append=False, ComicID=None, ComicName=None, cron=None)
 
     watchfound = 0
 
+    datelist = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+#    datemonth = {'one':1,'two':2,'three':3,'four':4,'five':5,'six':6,'seven':7,'eight':8,'nine':9,'ten':10,'eleven':$
+#    #search for number as text, and change to numeric
+#    for numbs in basnumbs:
+#        #print ("numbs:" + str(numbs))
+#        if numbs in ComicName.lower():
+#            numconv = basnumbs[numbs]
+#            #print ("numconv: " + str(numconv))
+
+
     for i in comic_list:
         print i['ComicFilename']
 
@@ -138,17 +148,40 @@ def libraryScan(dir=None, append=False, ComicID=None, ComicName=None, cron=None)
         cfilename = re.sub('[\_\#\,\/\:\;\-\!\$\%\&\+\'\?\@]', ' ', comfilename)
         #cfilename = re.sub('\s', '_', str(cfilename))
 
+        #versioning - remove it
+        subsplit = cfilename.replace('_', ' ').split()
+        volno = None
+        volyr = None
+        for subit in subsplit:
+            if subit[0].lower() == 'v':
+                vfull = 0
+                if subit[1:].isdigit():
+                    #if in format v1, v2009 etc...
+                    if len(subit) > 3:
+                        # if it's greater than 3 in length, then the format is Vyyyy
+                        vfull = 1 # add on 1 character length to account for extra space
+                    cfilename = re.sub(subit, '', cfilename)
+                    volno = re.sub("[^0-9]", " ", subit)
+                elif subit.lower()[:3] == 'vol':
+                    #if in format vol.2013 etc
+                    #because the '.' in Vol. gets removed, let's loop thru again after the Vol hit to remove it entirely
+                    logger.fdebug('volume indicator detected as version #:' + str(subit))
+                    cfilename = re.sub(subit, '', cfilename)
+                    cfilename = " ".join(cfilename.split())
+                    volyr = re.sub("[^0-9]", " ", subit).strip()
+                    logger.fdebug('volume year set as : ' + str(volyr))
         cm_cn = 0
 
-        #we need to track the counter to make sure we are comparing the right array parts  
+        #we need to track the counter to make sure we are comparing the right array parts
         #this takes care of the brackets :)
         m = re.findall('[^()]+', cfilename)
         lenm = len(m)
-        print ("there are " + str(lenm) + " words.")
+        logger.fdebug("there are " + str(lenm) + " words.")
         cnt = 0
         yearmatch = "false"
         foundonwatch = "False"
         issue = 999999
+
 
         while (cnt < lenm):
             if m[cnt] is None: break
@@ -165,7 +198,7 @@ def libraryScan(dir=None, append=False, ComicID=None, ComicName=None, cron=None)
                     extensions = ('cbr', 'cbz')
                     if comic_andiss.lower().endswith(extensions):
                         comic_andiss = comic_andiss[:-4]
-                        print ("removed extension from filename.")
+                        logger.fdebug("removed extension from filename.")
                     #now we have to break up the string regardless of formatting.
                     #let's force the spaces.
                     comic_andiss = re.sub('_', ' ', comic_andiss)
@@ -177,42 +210,41 @@ def libraryScan(dir=None, append=False, ComicID=None, ComicName=None, cron=None)
                     decimaldetect = 'no'
                     for i in reversed(xrange(len(cs))):
                         #start at the end.
-                        print ("word: " + str(cs[i]))
+                        logger.fdebug("word: " + str(cs[i]))
                         #assume once we find issue - everything prior is the actual title
                         #idetected = no will ignore everything so it will assume all title                            
                         if cs[i][:-2] == '19' or cs[i][:-2] == '20' and idetected == 'no':
-                            print ("year detected: " + str(cs[i]))
+                            logger.fdebug("year detected: " + str(cs[i]))
                             ydetected = 'yes'
                             result_comyear = cs[i]
                         elif cs[i].isdigit() and idetected == 'no' or '.' in cs[i]:
                             issue = cs[i]
-                            print ("issue detected : " + str(issue))
+                            logger.fdebug("issue detected : " + str(issue))
                             idetected = 'yes'
                             if '.' in cs[i]:
                                 #make sure it's a number on either side of decimal and assume decimal issue.
                                 decst = cs[i].find('.')
                                 dec_st = cs[i][:decst]
                                 dec_en = cs[i][decst+1:]
-                                print ("st: " + str(dec_st))
-                                print ("en: " + str(dec_en))
+                                logger.fdebug("st: " + str(dec_st))
+                                logger.fdebug("en: " + str(dec_en))
                                 if dec_st.isdigit() and dec_en.isdigit():
-                                    print ("decimal issue detected...adjusting.")
+                                    logger.fdebug("decimal issue detected...adjusting.")
                                     issue = dec_st + "." + dec_en
-                                    print ("issue detected: " + str(issue))
+                                    logger.fdebug("issue detected: " + str(issue))
                                     idetected = 'yes'
                                 else:
-                                    print ("false decimal represent. Chunking to extra word.")
+                                    logger.fdebug("false decimal represent. Chunking to extra word.")
                                     cn = cn + cs[i] + " "
                                     break
                         elif '\#' in cs[i] or decimaldetect == 'yes':
-                            print ("issue detected: " + str(cs[i]))
+                            logger.fdebug("issue detected: " + str(cs[i]))
                             idetected = 'yes'
-
                         else: cn = cn + cs[i] + " "
                     if ydetected == 'no':
                         #assume no year given in filename...
                         result_comyear = "0000"
-                    print ("cm?: " + str(cn))
+                    logger.fdebug("cm?: " + str(cn))
                     if issue is not '999999':
                         comiss = issue
                     else:
@@ -230,20 +262,31 @@ def libraryScan(dir=None, append=False, ComicID=None, ComicName=None, cron=None)
                     print ("com_NAME : " + com_NAME)
                     yearmatch = "True"
                 else:
+                    logger.fdebug('checking ' + m[cnt])
                     # we're assuming that the year is in brackets (and it should be damnit)
                     if m[cnt][:-2] == '19' or m[cnt][:-2] == '20':
                         print ("year detected: " + str(m[cnt]))
                         ydetected = 'yes'
                         result_comyear = m[cnt]
+                    elif m[cnt][:3].lower() in datelist:
+                        logger.fdebug('possible issue date format given - verifying')
+                        #if the date of the issue is given as (Jan 2010) or (January 2010) let's adjust.
+                        #keeping in mind that ',' and '.' are already stripped from the string
+                        if m[cnt][-4:].isdigit():
+                            ydetected = 'yes'
+                            result_comyear = m[cnt][-4:]
+                            logger.fdebug('Valid Issue year of ' + str(result_comyear) + 'detected in format of ' + str(m[cnt]))
             cnt+=1
 
         splitit = []
         watchcomic_split = []
-        logger.fdebug("filename comic and issue: " + cfilename)
+        logger.fdebug("filename comic and issue: " + comic_andiss)
+
         #changed this from '' to ' '
-        comic_iss_b4 = re.sub('[\-\:\,]', ' ', com_NAME)
+        comic_iss_b4 = re.sub('[\-\:\,]', ' ', comic_andiss)
         comic_iss = comic_iss_b4.replace('.',' ')
-        logger.fdebug("adjusted  comic and issue: " + str(comic_iss))
+        comic_iss = re.sub('[\s+]', ' ', comic_iss).strip()
+        logger.fdebug("adjusted comic and issue: " + str(comic_iss))
         #remove 'the' from here for proper comparisons.
         if ' the ' in comic_iss.lower():
             comic_iss = comic_iss[-4:]
@@ -417,7 +460,20 @@ def libraryScan(dir=None, append=False, ComicID=None, ComicName=None, cron=None)
 #                    cmnam+=1
 #                logger.fdebug("comic: " + str(com_NAME))
 #            n+=1
-        if result_comyear is None: result_comyear = '0000' #no year in filename basically.
+        if volyr is None:
+            if result_comyear is None: 
+                result_comyear = '0000' #no year in filename basically.
+        else:
+            if result_comyear is None:
+                result_comyear = volyr
+        if volno is None:
+            if volyr is None:
+                vol_label = None
+            else:
+                vol_label = volyr
+        else:
+            vol_label = volno
+
         print ("adding " + com_NAME + " to the import-queue!")
         impid = com_NAME + "-" + str(result_comyear) + "-" + str(comiss)
         print ("impid: " + str(impid))
@@ -426,6 +482,7 @@ def libraryScan(dir=None, append=False, ComicID=None, ComicName=None, cron=None)
             "watchmatch": watchmatch,
             "comicname" : com_NAME,
             "comicyear" : result_comyear,
+            "volume"    : vol_label,
             "comfilename" : comfilename,
             "comlocation" : comlocation.decode(mylar.SYS_ENCODING)
                                    })

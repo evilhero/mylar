@@ -148,7 +148,8 @@ class PostProcessor(object):
                 # if the SAB Directory option is enabled, let's use that folder name and append the jobname.
                 if mylar.SAB_DIRECTORY is not None and mylar.SAB_DIRECTORY is not 'None' and len(mylar.SAB_DIRECTORY) > 4:
                     self.nzb_folder = os.path.join(mylar.SAB_DIRECTORY, self.nzb_name).encode(mylar.SYS_ENCODING)
-    
+                    logger.fdebug('SABnzbd Download folder option enabled. Directory set to : ' + self.nzb_folder)
+
                 #lookup nzb_name in nzblog table to get issueid
     
                 #query SAB to find out if Replace Spaces enabled / not as well as Replace Decimals
@@ -172,10 +173,14 @@ class PostProcessor(object):
             if mylar.USE_NZBGET==1:
                 logger.fdebug("Using NZBGET")
                 logger.fdebug("NZB name as passed from NZBGet: " + self.nzb_name)
+                # if the NZBGet Directory option is enabled, let's use that folder name and append the jobname.
+                if mylar.NZBGET_DIRECTORY is not None and mylar.NZBGET_DIRECTORY is not 'None' and len(mylar.NZBGET_DIRECTORY) > 4:
+                    self.nzb_folder = os.path.join(mylar.NZBGET_DIRECTORY, self.nzb_name).encode(mylar.SYS_ENCODING)
+                    logger.fdebug('NZBGET Download folder option enabled. Directory set to : ' + self.nzb_folder)
             myDB = db.DBConnection()
 
             if self.nzb_name == 'Manual Run':
-                print ("manual run initiated")
+                logger.fdebug ("manual run initiated")
                 #Manual postprocessing on a folder.
                 #use the nzb_folder to determine every file
                 #walk the dir,
@@ -195,9 +200,10 @@ class PostProcessor(object):
                         watchvals = {"SeriesYear":   cs['ComicYear'],
                                      "LatestDate":   cs['LatestDate'],
                                      "ComicVersion": cs['ComicVersion'],
+                                     "Publisher":    cs['ComicPublisher'],
                                      "Total":        cs['Total']}
-                        watchmatch = filechecker.listFiles(self.nzb_folder,cs['ComicName'],cs['AlternateSearch'], manual=watchvals)
-                        if watchmatch is None:
+                        watchmatch = filechecker.listFiles(self.nzb_folder,cs['ComicName'],cs['ComicPublisher'],cs['AlternateSearch'], manual=watchvals)
+                        if watchmatch['comiccount'] == 0: # is None:
                             nm+=1
                             continue
                         else:
@@ -211,7 +217,7 @@ class PostProcessor(object):
                                     break
                                 temploc= tmpfc['JusttheDigits'].replace('_', ' ')
                                 temploc = re.sub('[\#\']', '', temploc)
-                                logger.fdebug("temploc: " + str(temploc))
+                                #logger.fdebug("temploc: " + str(temploc))
 
                                 ww = shlex.split(temploc)
                                 lnw = len(ww)
@@ -260,17 +266,37 @@ class PostProcessor(object):
                                     if issuechk is None:
                                         logger.info("No corresponding issue # found for " + str(cs['ComicID']))
                                     else:
-                                        logger.info("Found matching issue # " + str(fcdigit) + " for ComicID: " + str(cs['ComicID']) + " / IssueID: " + str(issuechk['IssueID']))
-                                        manual_list.append({"ComicLocation":   tmpfc['ComicLocation'],
-                                                            "ComicID":         cs['ComicID'],
-                                                            "IssueID":         issuechk['IssueID'],
-                                                            "IssueNumber":     issuechk['Issue_Number'],
-                                                            "ComicName":       cs['ComicName']})
+                                        datematch = "True"
+                                        if len(watchmatch) > 1:
+                                            #if the # of matches is more than 1, we need to make sure we get the right series
+                                            #compare the ReleaseDate for the issue, to the found issue date in the filename.
+                                            #if ReleaseDate doesn't exist, use IssueDate
+                                            #if no issue date was found, then ignore.
+                                            if issuechk['ReleaseDate'] is not None:
+                                                if int(issuechk['ReleaseDate'][:4]) < int(tmpfc['ComicYear']):
+                                                    logger.fdebug(str(issuechk['ReleaseDate']) + ' is before the issue year of ' + str(tmpfc['ComicYear']) + ' that was discovered in the filename')
+                                                    datematch = "False"
+                                            else:
+                                                if int(issuechk['IssueDate'][:4]) < int(tmpfc['ComicYear']):
+                                                    logger.fdebug(str(issuechk['IssueDate']) + ' is before the issue year ' + str(tmpfc['ComicYear']) + ' that was discovered in the filename')
+                                                    datematch = "False"
+                                          
+                                        else:
+                                            logger.info("Found matching issue # " + str(fcdigit) + " for ComicID: " + str(cs['ComicID']) + " / IssueID: " + str(issuechk['IssueID']))
+                                            
+                                        if datematch == "True":
+                                            manual_list.append({"ComicLocation":   tmpfc['ComicLocation'],
+                                                                "ComicID":         cs['ComicID'],
+                                                                "IssueID":         issuechk['IssueID'],
+                                                                "IssueNumber":     issuechk['Issue_Number'],
+                                                                "ComicName":       cs['ComicName']})
+                                        else:
+                                            logger.fdebug('Incorrect series - not populating..continuing post-processing')
                                         ccnt+=1
-                                        print manual_list
+                                        #print manual_list
                                     wdc+=1
                                 fn+=1
-                    print("There are " + str(len(manual_list)) + " files found that match on your watchlist, " + str(nm) + " do not match anything and will be ignored.")    
+                    logger.fdebug("There are " + str(len(manual_list)) + " files found that match on your watchlist, " + str(nm) + " do not match anything and will be ignored.")    
                 
 
             else:
@@ -455,24 +481,30 @@ class PostProcessor(object):
             myDB = db.DBConnection()
             comicnzb = myDB.action("SELECT * from comics WHERE comicid=?", [comicid]).fetchone()
             issuenzb = myDB.action("SELECT * from issues WHERE issueid=? AND comicid=? AND ComicName NOT NULL", [issueid,comicid]).fetchone()
-            print "issueid: " + str(issueid)
-            print "issuenumOG: " + str(issuenumOG)
+            logger.fdebug('issueid: ' + str(issueid))
+            logger.fdebug('issuenumOG: ' + str(issuenumOG))
             if issuenzb is None:
-                print "chk1"
                 issuenzb = myDB.action("SELECT * from annuals WHERE issueid=? and comicid=?", [issueid,comicid]).fetchone()
-                print "chk2"
                 annchk = "yes"
-            print issuenzb
             #issueno = str(issuenum).split('.')[0]
             #new CV API - removed all decimals...here we go AGAIN!
             issuenum = issuenzb['Issue_Number']
             issue_except = 'None'
-            if 'au' in issuenum.lower():
+
+            if 'au' in issuenum.lower() and issuenum[:1].isdigit():
                 issuenum = re.sub("[^0-9]", "", issuenum)
                 issue_except = ' AU'
-            elif 'ai' in issuenum.lower():
+            elif 'ai' in issuenum.lower() and issuenum[:1].isdigit():
                 issuenum = re.sub("[^0-9]", "", issuenum)
                 issue_except = ' AI'
+            elif 'inh' in issuenum.lower() and issuenum[:1].isdigit():
+                issuenum = re.sub("[^0-9]", "", issuenum)
+                issue_except = '.INH'
+            elif 'now' in issuenum.lower() and issuenum[:1].isdigit():
+                if '!' in issuenum: issuenum = re.sub('\!', '', issuenum)
+                issuenum = re.sub("[^0-9]", "", issuenum)
+                issue_except = '.NOW'
+
             if '.' in issuenum:
                 iss_find = issuenum.find('.')
                 iss_b4dec = issuenum[:iss_find]
@@ -496,6 +528,7 @@ class PostProcessor(object):
             else:
                 iss = issuenum
                 issueno = str(iss)
+
             # issue zero-suppression here
             if mylar.ZERO_LEVEL == "0": 
                 zeroadd = ""
@@ -551,12 +584,13 @@ class PostProcessor(object):
                 self._log("issue length error - cannot determine length. Defaulting to None:  " + str(prettycomiss), logger.DEBUG)
 
             if annchk == "yes":
-                prettycomiss = "Annual " + str(prettycomiss)
                 self._log("Annual detected.")
             logger.fdebug("Pretty Comic Issue is : " + str(prettycomiss))
             issueyear = issuenzb['IssueDate'][:4]
             self._log("Issue Year: " + str(issueyear), logger.DEBUG)
             logger.fdebug("Issue Year : " + str(issueyear))
+            month = issuenzb['IssueDate'][5:7].replace('-','').strip()
+            month_name = helpers.fullmonth(month)
 #            comicnzb= myDB.action("SELECT * from comics WHERE comicid=?", [comicid]).fetchone()
             publisher = comicnzb['ComicPublisher']
             self._log("Publisher: " + publisher, logger.DEBUG)
@@ -586,6 +620,22 @@ class PostProcessor(object):
                 logger.fdebug("new format is now: " + str(chunk_file_format))
             else:
                 chunk_file_format = mylar.FILE_FORMAT
+
+            if annchk == "no":
+                chunk_f_f = re.sub('\$Annual','',chunk_file_format)
+                chunk_f = re.compile(r'\s+')
+                chunk_file_format = chunk_f.sub(' ', chunk_f_f)
+                logger.fdebug('not an annual - removing from filename paramaters')
+                logger.fdebug('new format: ' + str(chunk_file_format))
+
+            else:
+                logger.fdebug('chunk_file_format is: ' + str(chunk_file_format))
+                if '$Annual' not in chunk_file_format:
+                #if it's an annual, but $Annual isn't specified in file_format, we need to
+                #force it in there, by default in the format of $Annual $Issue
+                    prettycomiss = "Annual " + str(prettycomiss)
+                    logger.fdebug('prettycomiss: ' + str(prettycomiss))
+
 
             ofilename = None
 
@@ -652,7 +702,10 @@ class PostProcessor(object):
                            '$Publisher': publisher,
                            '$publisher': publisher.lower(),
                            '$VolumeY':   'V' + str(seriesyear),
-                           '$VolumeN':   comversion
+                           '$VolumeN':   comversion,
+                           '$monthname': month_name,
+                           '$month':     month,
+                           '$Annual':    'Annual'
                           }
 
 
@@ -667,12 +720,12 @@ class PostProcessor(object):
             else:
                 if pcheck == "fail":
                     otofilename = ml['ComicLocation']
-                print "otofilename:" + str(otofilename)
+                logger.fdebug('otofilename:' + str(otofilename))
                 odir, ofilename = os.path.split(otofilename)
-                print "ofilename: " + str(ofilename)
+                logger.fdebug('ofilename: ' + str(ofilename))
                 path, ext = os.path.splitext(ofilename)
-                print "path: " + str(path)
-                print "ext:" + str(ext)
+                logger.fdebug('path: ' + str(path))
+                logger.fdebug('ext:' + str(ext))
 
             if ofilename is None:
                 logger.error(u"Aborting PostProcessing - the filename doesn't exist in the location given. Make sure that " + str(self.nzb_folder) + " exists and is the correct location.")
@@ -696,6 +749,7 @@ class PostProcessor(object):
                     #mylar.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
                     nfilename = nfilename.replace(' ', mylar.REPLACE_CHAR)
             nfilename = re.sub('[\,\:\?]', '', nfilename)
+            nfilename = re.sub('[\/]', '-', nfilename)
             self._log("New Filename: " + nfilename, logger.DEBUG)
             logger.fdebug("New Filename: " + str(nfilename))
 
@@ -714,6 +768,9 @@ class PostProcessor(object):
 
             if ml is None:
                 #non-manual run moving/deleting...
+                logger.fdebug('self.nzb_folder: ' + self.nzb_folder)
+                logger.fdebug('ofilename:' + str(ofilename))
+                logger.fdebug('nfilename:' + str(nfilename + ext))
                 os.rename(os.path.join(self.nzb_folder, str(ofilename)), os.path.join(self.nzb_folder,str(nfilename + ext)))
                 src = os.path.join(self.nzb_folder, str(nfilename + ext))
                 try:
