@@ -117,7 +117,7 @@ def latest_update(ComicID, LatestIssue, LatestDate):
                     "LatestDate":       str(LatestDate)}
     myDB.upsert("comics", newlatestDict, latestCTRLValueDict)
 
-def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate, forcecheck=None, futurepull=None):
+def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate, forcecheck=None, futurepull=None, altissuenumber=None):
     # here we add to upcoming table...
     myDB = db.DBConnection()
     dspComicName = ComicName #to make sure that the word 'annual' will be displayed on screen
@@ -163,6 +163,9 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate, forcecheck=None,
     else:
         issuechk = myDB.action("SELECT * FROM issues WHERE ComicID=? AND Issue_Number=?", [ComicID, IssueNumber]).fetchone()
 
+    if issuechk is None and altissuenumber is not None:
+        logger.info('altissuenumber is : ' + str(altissuenumber))
+        issuechk = myDB.action("SELECT * FROM issues WHERE ComicID=? AND Int_IssueNumber=?", [ComicID, helpers.issuedigits(altissuenumber)]).fetchone()
     if issuechk is None:
         if futurepull is None:
             logger.fdebug(adjComicName + ' Issue: ' + str(IssueNumber) + ' not present in listings to mark for download...updating comic and adding to Upcoming Wanted Releases.')
@@ -176,7 +179,7 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate, forcecheck=None,
                 newVal = {"not_updated_db": str(upco_iss)}
                 myDB.upsert("comics", newVal, newKey)
             elif int(upco_iss) <=0 and lastupdatechk['not_updated_db']:
-                #if not_updated_db has a value, and upco_iss is > 0, let's zero it back out cause it's updated now.
+               #if not_updated_db has a value, and upco_iss is > 0, let's zero it back out cause it's updated now.
                 newKey = {"ComicID": ComicID}
                 newVal = {"not_updated_db": ""}
                 myDB.upsert("comics", newVal, newKey)
@@ -191,37 +194,39 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate, forcecheck=None,
                 return
         else:
             # if futurepull is not None, let's just update the status and ComicID
+            # NOTE: THIS IS CREATING EMPTY ENTRIES IN THE FUTURE TABLE. ???
             nKey = {"ComicID": ComicID}
             nVal = {"Status": "Wanted"}
             myDB.upsert("future", nVal, nKey)
 
-    elif issuechk['Issue_Number'] == IssueNumber:
-        logger.fdebug('Comic series already up-to-date ... no need to refresh at this time.')
-        logger.fdebug('Available to be marked for download - checking...' + adjComicName + ' Issue: ' + str(issuechk['Issue_Number']))
-        logger.fdebug('...Existing status: ' + str(issuechk['Status']))
-        control = {"IssueID":   issuechk['IssueID']}
-        newValue['IssueID'] = issuechk['IssueID']
-        if issuechk['Status'] == "Snatched":
-            values = { "Status":   "Snatched"}
-            newValue['Status'] = "Snatched"
-        elif issuechk['Status'] == "Downloaded":
-            values = { "Status":    "Downloaded"}
-            newValue['Status'] = "Downloaded"
-            #if the status is Downloaded and it's on the pullist - let's mark it so everyone can bask in the glory
+    if issuechk is not None:
+        if issuechk['Issue_Number'] == IssueNumber or issuechk['Issue_Number'] == altissuenumber:
+            logger.fdebug('Comic series already up-to-date ... no need to refresh at this time.')
+            logger.fdebug('Available to be marked for download - checking...' + adjComicName + ' Issue: ' + str(issuechk['Issue_Number']))
+            logger.fdebug('...Existing status: ' + str(issuechk['Status']))
+            control = {"IssueID":   issuechk['IssueID']}
+            newValue['IssueID'] = issuechk['IssueID']
+            if issuechk['Status'] == "Snatched":
+                values = { "Status":   "Snatched"}
+                newValue['Status'] = "Snatched"
+            elif issuechk['Status'] == "Downloaded":
+                values = { "Status":    "Downloaded"}
+                newValue['Status'] = "Downloaded"
+                #if the status is Downloaded and it's on the pullist - let's mark it so everyone can bask in the glory
 
-        elif issuechk['Status'] == "Wanted":
-            values = { "Status":    "Wanted"}
-            newValue['Status'] = "Wanted"            
-        elif issuechk['Status'] == "Archived":
-            values = { "Status":    "Archived"}
-            newValue['Status'] = "Archived"
+            elif issuechk['Status'] == "Wanted":
+                values = { "Status":    "Wanted"}
+                newValue['Status'] = "Wanted"            
+            elif issuechk['Status'] == "Archived":
+                values = { "Status":    "Archived"}
+                newValue['Status'] = "Archived"
+            else:
+                values = { "Status":    "Skipped"}
+                newValue['Status'] = "Skipped"
+            #was in wrong place :(
         else:
-            values = { "Status":    "Skipped"}
-            newValue['Status'] = "Skipped"
-        #was in wrong place :(
-    else:
-        logger.fdebug('Issues do not match for some reason...weekly new issue: ' + str(IssueNumber))
-        return
+            logger.fdebug('Issues do not match for some reason...weekly new issue: ' + str(IssueNumber))
+            return
 
     if mylar.AUTOWANT_UPCOMING:
         #for issues not in db - to be added to Upcoming table.
@@ -270,9 +275,15 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate, forcecheck=None,
             return downstats
 
 
-def weekly_update(ComicName,IssueNumber,CStatus,CID,futurepull=None):
-    logger.fdebug('weekly_update of table : ' + str(ComicName) + ' #:' + str(IssueNumber))
-    logger.fdebug('weekly_update of table : ' + str(CStatus))
+def weekly_update(ComicName,IssueNumber,CStatus,CID,futurepull=None,altissuenumber=None):
+    if futurepull:
+        logger.fdebug('future_update of table : ' + str(ComicName) + ' #:' + str(IssueNumber) + ' to a status of ' + str(CStatus))
+    else:
+        logger.fdebug('weekly_update of table : ' + str(ComicName) + ' #:' + str(IssueNumber) + ' to a status of ' + str(CStatus))
+
+    if altissuenumber:
+        logger.fdebug('weekly_update of table : ' + str(ComicName) + ' (Alternate Issue #):' + str(altissuenumber) + ' to a status of ' + str(CStatus))
+
     # here we update status of weekly table...
     # added Issue to stop false hits on series' that have multiple releases in a week
     # added CStatus to update status flags on Pullist screen
@@ -296,15 +307,17 @@ def weekly_update(ComicName,IssueNumber,CStatus,CID,futurepull=None):
         if futurepull is None:
             myDB.upsert("weekly", newValue, controlValue)
         else:
-            if issuecheck['ComicID'] is not None:
+            logger.info('checking ' + str(issuecheck['ComicID']) + ' status of : ' + str(CStatus))
+            if issuecheck['ComicID'] is not None and CStatus != None:
                 newValue = {"STATUS":       "Wanted",
                             "ComicID":      issuecheck['ComicID']}
-
+            logger.info('updating value: ' + str(newValue))
+            logger.info('updating control: ' + str(controlValue))
             myDB.upsert("future", newValue, controlValue)
 
-def newpullcheck(ComicName, ComicID):
+def newpullcheck(ComicName, ComicID, issue=None):
     # When adding a new comic, let's check for new issues on this week's pullist and update.
-    mylar.weeklypull.pullitcheck(ComicName, ComicID)
+    mylar.weeklypull.pullitcheck(ComicName, ComicID, issue)
     return
 
 def no_searchresults(ComicID):
@@ -794,11 +807,18 @@ def forceRescan(ComicID,archive=None):
     logger.info('Total files located: ' + str(havefiles))
     foundcount = havefiles
     arcfiles = 0
+    arcanns = 0
     # if filechecker returns 0 files (it doesn't find any), but some issues have a status of 'Archived'
     # the loop below won't work...let's adjust :)
     arcissues = myDB.action("SELECT count(*) FROM issues WHERE ComicID=? and Status='Archived'", [ComicID]).fetchall()
     if int(arcissues[0][0]) > 0:
         arcfiles = arcissues[0][0]
+    arcannuals = myDB.action("SELECT count(*) FROM annuals WHERE ComicID=? and Status='Archived'", [ComicID]).fetchall()
+    if int(arcissues[0][0]) > 0:
+        arcanns = arcannuals[0][0]
+
+    if arcfiles > 0 and arcanns > 0:
+        arcfiles = arcfiles + arcanns
         havefiles = havefiles + arcfiles
         logger.fdebug('Adjusting have total to ' + str(havefiles) + ' because of this many archive files:' + str(arcfiles))
 
@@ -814,6 +834,7 @@ def forceRescan(ComicID,archive=None):
     #adjust for issues that have been marked as Downloaded, but aren't found/don't exist.
     #do it here, because above loop only cycles though found comics using filechecker.
     downissues = myDB.select("SELECT * FROM issues WHERE ComicID=? and Status='Downloaded'", [ComicID])
+    downissues += myDB.select("SELECT * FROM annuals WHERE ComicID=? and Status='Downloaded'", [ComicID])
     if downissues is None:
         pass
     else:

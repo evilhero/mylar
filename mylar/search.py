@@ -17,7 +17,7 @@
 from __future__ import division
 
 import mylar
-from mylar import logger, db, updater, helpers, parseit, findcomicfeed, prov_nzbx, notifiers, rsscheck
+from mylar import logger, db, updater, helpers, parseit, findcomicfeed, notifiers, rsscheck
 
 LOG = mylar.LOG_DIR
 
@@ -40,7 +40,7 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueD
     if ComicYear == None: ComicYear = '2014'
     else: ComicYear = str(ComicYear)[:4]
     if Publisher == 'IDW Publishing': Publisher = 'IDW'
-    logger.info('Publisher is : ' + str(Publisher))
+    logger.fdebug('Publisher is : ' + str(Publisher))
     if mode == 'want_ann':
         logger.info("Annual issue search detected. Appending to issue #")
         #anything for mode other than None indicates an annual.
@@ -79,9 +79,6 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueD
         nzbp+=1
     if mylar.DOGNZB == 1:
         nzbprovider.append('dognzb')
-        nzbp+=1
-    if mylar.NZBX == 1:
-        nzbprovider.append('nzbx')
         nzbp+=1
     # -------- 
     #  Xperimental
@@ -122,6 +119,14 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueD
     if nzbpr < 0: 
         nzbpr == 0
     findit = 'no'
+
+    totalproviders = providercount + torp
+
+    if totalproviders == 0:
+        logger.error('[WARNING] You have ' + str(totalproviders) + ' search providers enabled. I need at least ONE provider to work. Aborting search.')
+        findit = "no"
+        nzbprov = None
+        return findit, nzbprov
 
     #provider order sequencing here.
     #prov_order = []
@@ -370,8 +375,6 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
         apikey = mylar.NZBSU_APIKEY
     elif nzbprov == 'dognzb':
         apikey = mylar.DOGNZB_APIKEY
-    elif nzbprov == 'nzbx':
-        apikey = 'none'
     elif nzbprov == 'experimental':
         apikey = 'none'
     elif nzbprov == 'newznab':
@@ -590,26 +593,23 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                     if nzbprov == 'dognzb':
                         findurl = "https://dognzb.cr/api?t=search&q=" + str(comsearch) + "&o=xml&cat=7030"
                     elif nzbprov == 'nzb.su':
-                        findurl = "https://nzb.su/api?t=search&q=" + str(comsearch) + "&o=xml&cat=7030"
+                        findurl = "https://api.nzb.su/api?t=search&q=" + str(comsearch) + "&o=xml&cat=7030"
                     elif nzbprov == 'newznab':
                         #let's make sure the host has a '/' at the end, if not add it.
                         if host_newznab[len(host_newznab)-1:len(host_newznab)] != '/':
                             host_newznab_fix = str(host_newznab) + "/"
                         else: host_newznab_fix = host_newznab
                         findurl = str(host_newznab_fix) + "api?t=search&q=" + str(comsearch) + "&o=xml&cat=" + str(category_newznab)
-                    elif nzbprov == 'nzbx':
-                        bb = prov_nzbx.searchit(comsearch)
                     if nzbprov != 'nzbx':
                         # helper function to replace apikey here so we avoid logging it ;)
                         findurl = findurl + "&apikey=" + str(apikey)
                         logsearch = helpers.apiremove(str(findurl),'nzb')
+                        logger.fdebug("search-url: " + str(logsearch))
 
                         ### IF USENET_RETENTION is set, honour it
                         ### For newznab sites, that means appending "&maxage=<whatever>" on the URL
                         if mylar.USENET_RETENTION != None:
                             findurl = findurl + "&maxage=" + str(mylar.USENET_RETENTION)
-
-                        logger.fdebug("search-url: " + str(findurl))
 
                         # Add a user-agent
                         #print ("user-agent:" + str(mylar.USER_AGENT))
@@ -666,7 +666,7 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                     #bb = parseit.MysterBinScrape(comsearch[findloop], comyear)
                     bb = findcomicfeed.Startit(u_ComicName, isssearch, comyear, ComicVersion, IssDateFix)
                     # since the regexs in findcomicfeed do the 3 loops, lets force the exit after
-                    cmloopit == 1
+                    #cmloopit == 1
 
             done = False
             foundc = "no"
@@ -730,8 +730,13 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                     #logger.fdebug('Posting date of : ' + str(pubdate))
                     # convert it to a tuple
                     dateconv = email.utils.parsedate_tz(pubdate)
+                    #logger.fdebug('dateconv of : ' + str(dateconv))
                     # convert it to a numeric time, then subtract the timezone difference (+/- GMT)
-                    postdate_int = time.mktime(dateconv[:len(dateconv)-1]) - dateconv[-1]
+                    if dateconv[-1] is not None:
+                        postdate_int = time.mktime(dateconv[:len(dateconv)-1]) - dateconv[-1]
+                    else:
+                        postdate_int = time.mktime(dateconv[:len(dateconv)-1])
+                    #logger.fdebug('postdate_int of : ' + str(postdate_int))
                     #logger.fdebug('Issue date of : ' + str(stdate))
                     #convert it to a Thu, 06 Feb 2014 00:00:00 format
                     issue_convert = datetime.datetime.strptime(stdate.rstrip(), '%Y-%m-%d')
@@ -1238,7 +1243,9 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                         #following is JUST for nzb.su
                             if nzbprov == 'nzb.su' or nzbprov == 'newznab':
                                 linkit = os.path.splitext(entry['link'])[1]
-                                linkit = linkit.replace("&", "%26")
+                                if mylar.USE_SABNZBD:
+                                    linkit = linkit.replace("&", "%26")
+                                logger.fdebug('new linkit:' + linkit)
                                 linkapi = str(linkstart) + str(linkit)
                             else:
                                 # this should work for every other provider
@@ -1329,12 +1336,6 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                                     nzbname = re.sub(str(ext), '', str(nzbname))
 
                                 logger.fdebug("nzbname used for post-processing:" + str(nzbname))
-
-                                #we need to change the nzbx string now to allow for the nzbname rename.
-                                if nzbprov == 'nzbx':
-                                    nzbxlink_st = linkapi.find("*|*")
-                                    linkapi = linkapi[:(nzbxlink_st + 3)] + str(nzbname)
-                                    logger.fdebug("new linkapi (this should =nzbname) :" + str(linkapi))
 
 #                               #test nzb.get
                                 if mylar.USE_NZBGET:                                
@@ -1500,7 +1501,7 @@ def searchforissue(issueid=None, new=False, rsscheck=None):
             else: 
                 ComicYear = str(result['IssueDate'])[:4]
             mode = result['mode']
-            if (mylar.NZBSU or mylar.DOGNZB or mylar.EXPERIMENTAL or mylar.NEWZNAB or mylar.NZBX or mylar.ENABLE_KAT or mylar.ENABLE_CBT) and (mylar.USE_SABNZBD or mylar.USE_NZBGET or mylar.ENABLE_TORRENTS or mylar.USE_BLACKHOLE):
+            if (mylar.NZBSU or mylar.DOGNZB or mylar.EXPERIMENTAL or mylar.NEWZNAB or mylar.ENABLE_KAT or mylar.ENABLE_CBT) and (mylar.USE_SABNZBD or mylar.USE_NZBGET or mylar.ENABLE_TORRENTS or mylar.USE_BLACKHOLE):
                     foundNZB, prov = search_init(comic['ComicName'], result['Issue_Number'], str(ComicYear), comic['ComicYear'], Publisher, IssueDate, StoreDate, result['IssueID'], AlternateSearch, UseFuzzy, ComicVersion, SARC=None, IssueArcID=None, mode=mode, rsscheck=rsscheck, ComicID=result['ComicID'])
                     if foundNZB == "yes": 
                         #print ("found!")
@@ -1532,7 +1533,7 @@ def searchforissue(issueid=None, new=False, rsscheck=None):
             IssueYear = str(result['IssueDate'])[:4]
 
         foundNZB = "none"
-        if (mylar.NZBSU or mylar.DOGNZB or mylar.EXPERIMENTAL or mylar.NEWZNAB or mylar.NZBX or mylar.ENABLE_KAT or mylar.ENABLE_CBT) and (mylar.USE_SABNZBD or mylar.USE_NZBGET or mylar.ENABLE_TORRENTS or mylar.USE_BLACKHOLE):
+        if (mylar.NZBSU or mylar.DOGNZB or mylar.EXPERIMENTAL or mylar.NEWZNAB or mylar.ENABLE_KAT or mylar.ENABLE_CBT) and (mylar.USE_SABNZBD or mylar.USE_NZBGET or mylar.ENABLE_TORRENTS or mylar.USE_BLACKHOLE):
             foundNZB, prov = search_init(comic['ComicName'], result['Issue_Number'], str(IssueYear), comic['ComicYear'], Publisher, IssueDate, StoreDate, result['IssueID'], AlternateSearch, UseFuzzy, ComicVersion, SARC=None, IssueArcID=None, mode=mode, rsscheck=rsscheck, ComicID=result['ComicID'])
             if foundNZB == "yes":
                 logger.fdebug("I found " + comic['ComicName'] + ' #:' + str(result['Issue_Number']))
@@ -1565,7 +1566,7 @@ def searchIssueIDList(issuelist):
             IssueYear = comic['ComicYear']
         else:
             IssueYear = str(issue['IssueDate'])[:4]
-        if (mylar.NZBSU or mylar.DOGNZB or mylar.EXPERIMENTAL or mylar.NEWZNAB or mylar.NZBX or mylar.ENABLE_CBT or mylar.ENABLE_KAT) and (mylar.USE_SABNZBD or mylar.USE_NZBGET or mylar.ENABLE_TORRENTS or mylar.USE_BLACKHOLE):
+        if (mylar.NZBSU or mylar.DOGNZB or mylar.EXPERIMENTAL or mylar.NEWZNAB or mylar.ENABLE_CBT or mylar.ENABLE_KAT) and (mylar.USE_SABNZBD or mylar.USE_NZBGET or mylar.ENABLE_TORRENTS or mylar.USE_BLACKHOLE):
                 foundNZB, prov = search_init(comic['ComicName'], issue['Issue_Number'], str(IssueYear), comic['ComicYear'], Publisher, issue['IssueDate'], issue['ReleaseDate'], issue['IssueID'], AlternateSearch, UseFuzzy, ComicVersion, SARC=None, IssueArcID=None, mode=mode, ComicID=issue['ComicID'])
                 if foundNZB == "yes":
                     #print ("found!")

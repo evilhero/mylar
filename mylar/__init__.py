@@ -185,8 +185,6 @@ DOGNZB = False
 DOGNZB_UID = None
 DOGNZB_APIKEY = None
 
-NZBX = False
-
 NEWZNAB = False
 NEWZNAB_NAME = None
 NEWZNAB_HOST = None
@@ -320,7 +318,7 @@ def initialize():
                 CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, USER_AGENT, DESTINATION_DIR, \
                 DOWNLOAD_DIR, USENET_RETENTION, SEARCH_INTERVAL, NZB_STARTUP_SEARCH, INTERFACE, AUTOWANT_ALL, AUTOWANT_UPCOMING, ZERO_LEVEL, ZERO_LEVEL_N, COMIC_COVER_LOCAL, HIGHCOUNT, \
                 LIBRARYSCAN, LIBRARYSCAN_INTERVAL, DOWNLOAD_SCAN_INTERVAL, NZB_DOWNLOADER, USE_SABNZBD, SAB_HOST, SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_PRIORITY, SAB_DIRECTORY, USE_BLACKHOLE, BLACKHOLE_DIR, ADD_COMICS, COMIC_DIR, IMP_MOVE, IMP_RENAME, IMP_METADATA, \
-                USE_NZBGET, NZBGET_HOST, NZBGET_PORT, NZBGET_USERNAME, NZBGET_PASSWORD, NZBGET_CATEGORY, NZBGET_PRIORITY, NZBGET_DIRECTORY, NZBSU, NZBSU_UID, NZBSU_APIKEY, DOGNZB, DOGNZB_UID, DOGNZB_APIKEY, NZBX,\
+                USE_NZBGET, NZBGET_HOST, NZBGET_PORT, NZBGET_USERNAME, NZBGET_PASSWORD, NZBGET_CATEGORY, NZBGET_PRIORITY, NZBGET_DIRECTORY, NZBSU, NZBSU_UID, NZBSU_APIKEY, DOGNZB, DOGNZB_UID, DOGNZB_APIKEY, \
                 NEWZNAB, NEWZNAB_NAME, NEWZNAB_HOST, NEWZNAB_APIKEY, NEWZNAB_UID, NEWZNAB_ENABLED, EXTRA_NEWZNABS, NEWZNAB_EXTRA, \
                 RAW, RAW_PROVIDER, RAW_USERNAME, RAW_PASSWORD, RAW_GROUPS, EXPERIMENTAL, ALTEXPERIMENTAL, \
                 ENABLE_META, CMTAGGER_PATH, INDIE_PUB, BIGGIE_PUB, IGNORE_HAVETOTAL, PROVIDER_ORDER, \
@@ -555,11 +553,6 @@ def initialize():
         DOGNZB_APIKEY = check_setting_str(CFG, 'DOGnzb', 'dognzb_apikey', '')
         if DOGNZB:
             PR.append('dognzb')
-            PR_NUM +=1
-
-        NZBX = bool(check_setting_int(CFG, 'nzbx', 'nzbx', 0))
-        if NZBX:
-            PR.append('nzbx')
             PR_NUM +=1
 
         RAW = bool(check_setting_int(CFG, 'Raw', 'raw', 0))
@@ -868,6 +861,7 @@ def launch_browser(host, port, root):
 def config_write():
     new_config = ConfigObj()
     new_config.filename = CONFIG_FILE
+
     new_config.encoding = 'UTF8'
     new_config['General'] = {}
     new_config['General']['config_version'] = CONFIG_VERSION
@@ -1015,9 +1009,6 @@ def config_write():
     new_config['DOGnzb']['dognzb_uid'] = DOGNZB_UID
     new_config['DOGnzb']['dognzb_apikey'] = DOGNZB_APIKEY
 
-    new_config['nzbx'] = {}
-    new_config['nzbx']['nzbx'] = int(NZBX)
-
     new_config['Experimental'] = {}
     new_config['Experimental']['experimental'] = int(EXPERIMENTAL)
     new_config['Experimental']['altexperimental'] = int(ALTEXPERIMENTAL)
@@ -1109,9 +1100,11 @@ def start():
         #run checkFolder every X minutes (basically Manual Run Post-Processing)
         logger.info('CHECK_FOLDER SET TO: ' + str(CHECK_FOLDER))
         if CHECK_FOLDER:
-            logger.info('Setting monitor on folder : ' + str(CHECK_FOLDER))
-            SCHED.add_interval_job(helpers.checkFolder, minutes=int(DOWNLOAD_SCAN_INTERVAL))
-
+            if DOWNLOAD_SCAN_INTERVAL >0:
+                logger.info('Setting monitor on folder : ' + str(CHECK_FOLDER))
+                SCHED.add_interval_job(helpers.checkFolder, minutes=int(DOWNLOAD_SCAN_INTERVAL))
+            else:
+                logger.error('You need to specify a monitoring time for the check folder option to work')
         SCHED.start()
         
         started = True
@@ -1128,7 +1121,7 @@ def dbcheck():
     c.execute('CREATE TABLE IF NOT EXISTS nzblog (IssueID TEXT, NZBName TEXT, SARC TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS weekly (SHIPDATE text, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text)')
 #    c.execute('CREATE TABLE IF NOT EXISTS sablog (nzo_id TEXT, ComicName TEXT, ComicYEAR TEXT, ComicIssue TEXT, name TEXT, nzo_complete TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS importresults (impID TEXT, ComicName TEXT, ComicYear TEXT, Status TEXT, ImportDate TEXT, ComicFilename TEXT, ComicLocation TEXT, WatchMatch TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS importresults (impID TEXT, ComicName TEXT, ComicYear TEXT, Status TEXT, ImportDate TEXT, ComicFilename TEXT, ComicLocation TEXT, WatchMatch TEXT, DisplayName TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS readlist (IssueID TEXT, ComicName TEXT, Issue_Number TEXT, Status TEXT, DateAdded TEXT, Location TEXT, inCacheDir TEXT, SeriesYear TEXT, ComicID TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS readinglist(StoryArcID TEXT, ComicName TEXT, IssueNumber TEXT, SeriesYear TEXT, IssueYEAR TEXT, StoryArc TEXT, TotalIssues TEXT, Status TEXT, inCacheDir TEXT, Location TEXT, IssueArcID TEXT, ReadingOrder INT, IssueID TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS annuals (IssueID TEXT, Issue_Number TEXT, IssueName TEXT, IssueDate TEXT, Status TEXT, ComicID TEXT, GCDComicID TEXT, Location TEXT, ComicSize TEXT, Int_IssueNumber INT, ComicName TEXT, ReleaseDate TEXT, ReleaseComicID TEXT, ReleaseComicName TEXT)')
@@ -1324,6 +1317,12 @@ def dbcheck():
         c.execute('SELECT ReleaseComicName from annuals')
     except:
         c.execute('ALTER TABLE annuals ADD COLUMN ReleaseComicName TEXT')
+
+    try:
+        c.execute('SELECT DisplayName from importresults')
+    except:
+        c.execute('ALTER TABLE importresults ADD COLUMN DisplayName TEXT')
+
 
     #if it's prior to Wednesday, the issue counts will be inflated by one as the online db's everywhere
     #prepare for the next 'new' release of a series. It's caught in updater.py, so let's just store the 
