@@ -53,7 +53,7 @@ def pullit(forcecheck=None):
         logger.info(u"No pullist found...I'm going to try and get a new list now.")
         pulldate = '00000000'
     if pulldate is None: pulldate = '00000000'
-    PULLURL = 'http://www.previewsworld.com/shipping/prevues/newreleases.txt'
+    PULLURL = 'http://www.previewsworld.com/shipping/newreleases.txt'
     #PULLURL = 'http://www.previewsworld.com/Archive/GetFile/1/1/71/994/081512.txt'
 
     #Prepare the Substitute name switch for pulllist to comic vine conversion
