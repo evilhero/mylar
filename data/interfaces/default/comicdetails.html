@@ -364,31 +364,25 @@
                                 </td>
                                 <td id="options">
                                 %if issue['Status'] == 'Skipped' or issue['Status'] == 'Ignored':
-                                        <a href="#" title="Mark issue as Wanted" onclick="doAjaxCall('queueissue?ComicID=${issue['ComicID']}&IssueID=${issue['IssueID']}&ComicIssue=${issue['Issue_Number']}&ComicYear=${issue['IssueDate']}&mode=want',$(this),'table')"><img src="interfaces/default/images/wanted_icon.png" height="25" width="25" /></a>
+                                        <a href="#" title="Mark issue as Wanted" onclick="doAjaxCall('queueissue?ComicID=${issue['ComicID']}&IssueID=${issue['IssueID']}&ComicIssue=${issue['Issue_Number']}&ComicYear=${issue['IssueDate']}&mode=want',$(this),'table')" data-success="Issue Marked as Wanted"><img src="interfaces/default/images/wanted_icon.png" height="25" width="25" /></a>
                                 %elif (issue['Status'] == 'Wanted'):
                                         <a href="#" title="Mark issue as Skipped" onclick="doAjaxCall('unqueueissue?IssueID=${issue['IssueID']}&ComicID=${issue['ComicID']}',$(this),'table')" data-success="'${issue['Issue_Number']}' has been marked as skipped"><img src="interfaces/default/images/skipped_icon.png" height="25" width="25" /></a>
                                 %elif (issue['Status'] == 'Snatched'):
                                        <a href="#" onclick="doAjaxCall('queueissue?ComicID=${issue['ComicID']}&IssueID=${issue['IssueID']}&ComicIssue=${issue['Issue_Number']}&mode=want', $(this),'table')" data-success="Retrying the same version of '${issue['ComicName']}' '${issue['Issue_Number']}'" title="Retry the same download again"><img src="interfaces/default/images/retry_icon.png" height="25" width="25" /></a>
                                        <a href="#" title="Mark issue as Skipped" onclick="doAjaxCall('unqueueissue?IssueID=${issue['IssueID']}&ComicID=${issue['ComicID']}',$(this),'table')" data-success="'${issue['Issue_Number']}' has been marked as skipped"><img src="interfaces/default/images/skipped_icon.png" height="25" width="25" /></a>                                    
                                 %elif (issue['Status'] == 'Downloaded'):
-
-                                      %if issue['inCacheDIR']:
-                                             <%
-                                                    try:
-                                                        with open(os.path.join(mylar.CACHE_DIR,issue['Location'])) as f:
-                                                            linky = issue['Location']
-                                                    except IOError as e:
-                                                        linky = None
-                                              %>
-                                              %if linky:
-                                                  <a href="cache/${linky}"><img src="interfaces/default/images/download_icon.png" height="25" width="25" title="Download the Issue" /></a>
-                                              %else:
-                                                  <a href="#" onclick="doAjaxCall('downloadLocal?IssueID=${issue['IssueID']}', $(this), 'table')" ><img src="interfaces/default/images/copy_icon.png" height="25" width="25" title="Copy issue to local cache (ready for download)" /></a>
-                                              %endif
-                                      %else:
-                                          <a href="#" onclick="doAjaxCall('downloadLocal?IssueID=${issue['IssueID']}', $(this), 'table')" ><img src="interfaces/default/images/copy_icon.png" height="25" width="25" title="Copy issue to local cache (ready for download)" /></a>
-                                      %endif
-                                       <a href="#" title="Add to Reading List" onclick="doAjaxCall('addtoreadlist?IssueID=${issue['IssueID']}',$(this),'table')" data-success="${issue['Issue_Number']} added to Reading List"><img src="interfaces/default/images/glasses-icon.png" height="25" width="25" /></a>
+                                       <%
+                                              if issue['Location'] is not None:
+                                                  linky = os.path.join(comic['ComicLocation'],issue['Location'])
+                                                  if not os.path.isfile(linky):
+                                                      linky = None
+                                              else:
+                                                  linky = None
+                                        %>
+                                        %if linky:
+                                            <a href="downloadthis?pathfile=${linky |u}"><img src="interfaces/default/images/download_icon.png" height="25" width="25" title="Download the Issue" /></a>
+                                        %endif
+                                        <a href="#" title="Add to Reading List" onclick="doAjaxCall('addtoreadlist?IssueID=${issue['IssueID']}',$(this),'table')" data-success="${issue['Issue_Number']} added to Reading List"><img src="interfaces/default/images/glasses-icon.png" height="25" width="25" /></a>
                                 %else:
                                 <a href="#" onclick="doAjaxCall('queueissue?ComicID=${issue['ComicID']}&IssueID=${issue['IssueID']}&ComicIssue=${issue['Issue_Number']}&mode=want', $(this),'table')" data-success="Retrying the same version of '${issue['ComicName']}' '${issue['Issue_Number']}'" title="Retry the same download again"><img src="interfaces/default/images/retry_icon.png" height="25" width="25" /></a>
                                 <a href="#" title="Mark issue as Skipped" onclick="doAjaxCall('unqueueissue?IssueID=${issue['IssueID']}&ComicID=${issue['ComicID']}',$(this),'table')" data-success="'${issue['Issue_Number']}' has been marked as skipped"><img src="interfaces/default/images/skipped_icon.png" height="25" width="25" /></a>
@@ -495,8 +489,10 @@
                             </tr>
                    %endfor
                    </tbody>
-                </form>
                 </table>
+                </form>
+            %endif
+            %if mylar.ANNUALS_ON:       
                         <div style="position:relative; width:960px; height:10px; margin:10px auto;">
                             <form action="manual_annual_add" method="GET">
                                  <input type="hidden" name="comicid" value=${comic['ComicID']}>

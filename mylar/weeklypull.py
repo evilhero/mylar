@@ -26,6 +26,7 @@ import os
 import time 
 import re
 import datetime
+import shutil
 
 import mylar 
 from mylar import db, updater, helpers, logger
@@ -35,26 +36,24 @@ def pullit(forcecheck=None):
     popit = myDB.select("SELECT count(*) FROM sqlite_master WHERE name='weekly' and type='table'")
     if popit:
         try:
-            pull_date = myDB.action("SELECT SHIPDATE from weekly").fetchone()
+            pull_date = myDB.selectone("SELECT SHIPDATE from weekly").fetchone()
             logger.info(u"Weekly pull list present - checking if it's up-to-date..")
             if (pull_date is None):
                 pulldate = '00000000'
             else:
                 pulldate = pull_date['SHIPDATE']
         except (sqlite3.OperationalError, TypeError),msg:
-            conn=sqlite3.connect(mylar.DB_FILE)
-            c=conn.cursor()
             logger.info(u"Error Retrieving weekly pull list - attempting to adjust")
-            c.execute('DROP TABLE weekly')    
-            c.execute('CREATE TABLE IF NOT EXISTS weekly (SHIPDATE text, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text, ComicID text)')
+            myDB.action("DROP TABLE weekly")    
+            myDB.action("CREATE TABLE IF NOT EXISTS weekly (SHIPDATE text, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text, ComicID text)")
             pulldate = '00000000'
             logger.fdebug(u"Table re-created, trying to populate")
     else:
         logger.info(u"No pullist found...I'm going to try and get a new list now.")
         pulldate = '00000000'
     if pulldate is None: pulldate = '00000000'
+    #PULLURL = 'http://www.previewsworld.com/shipping/prevues/newreleases.txt'
     PULLURL = 'http://www.previewsworld.com/shipping/newreleases.txt'
-    #PULLURL = 'http://www.previewsworld.com/Archive/GetFile/1/1/71/994/081512.txt'
 
     #Prepare the Substitute name switch for pulllist to comic vine conversion
     substitutes = os.path.join(mylar.DATA_DIR,"substitutes.csv")
@@ -328,7 +327,7 @@ def pullit(forcecheck=None):
                         if len(comicnm) >= len(repcheck):
                             #if the leftmost chars match the short text then replace them with the long text
                             if comicnm[:len(repcheck)]==repcheck:
-                                logger.info("Switch worked on "+comicnm + " replacing " + str(repcheck) + " with " + str(longrep[repindex]))
+                                logger.fdebug("Switch worked on "+comicnm + " replacing " + str(repcheck) + " with " + str(longrep[repindex]))
                                 comicnm = re.sub(repcheck, longrep[repindex], comicnm)
 
                 for excl in excludes:
@@ -346,15 +345,17 @@ def pullit(forcecheck=None):
     logger.info(u"Populating the NEW Weekly Pull list into Mylar.")
     newtxtfile.close()
 
-    mylardb = os.path.join(mylar.DATA_DIR, "mylar.db")
+    #mylardb = os.path.join(mylar.DATA_DIR, "mylar.db")
 
-    connection = sqlite3.connect(str(mylardb))
-    cursor = connection.cursor()
+    #connection = sqlite3.connect(str(mylardb))
+    #cursor = connection.cursor()
 
-    cursor.executescript('drop table if exists weekly;')
+    #cursor.execute('drop table if exists weekly;')
+    myDB.action("drop table if exists weekly")
+    myDB.action("CREATE TABLE IF NOT EXISTS weekly (SHIPDATE, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text, ComicID text)")
 
-    cursor.execute("CREATE TABLE IF NOT EXISTS weekly (SHIPDATE, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text, ComicID text);")
-    connection.commit()
+    #cursor.execute("CREATE TABLE IF NOT EXISTS weekly (SHIPDATE, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text, ComicID text);")
+    #connection.commit()
 
 
     csvfile = open(newfl, "rb")
@@ -368,14 +369,23 @@ def pullit(forcecheck=None):
         #print (row)
         try:
             logger.debug("Row: %s" % row)
-            cursor.execute("INSERT INTO weekly VALUES (?,?,?,?,?,?,null);", row)
+
+            controlValueDict = {'COMIC': row[3],
+                                'ISSUE': row[2],
+                                'EXTRA': row[4] }
+            newValueDict = {'SHIPDATE': row[0],
+                            'PUBLISHER': row[1],
+                            'STATUS': row[5],
+                            'COMICID': None }
+            myDB.upsert("weekly", newValueDict, controlValueDict)
+            #cursor.execute("INSERT INTO weekly VALUES (?,?,?,?,?,?,null);", row)
         except Exception, e:
             #print ("Error - invald arguments...-skipping")
             pass
         t+=1
     csvfile.close()
-    connection.commit()
-    connection.close()
+    #connection.commit()
+    #connection.close()
     logger.info(u"Weekly Pull List successfully loaded.")
     #let's delete the files
     pullpath = str(mylar.CACHE_DIR) + "/"
@@ -672,7 +682,7 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None, futurepul
                                                 latest_int = helpers.issuedigits(latestiss)
                                                 weekiss_int = helpers.issuedigits(week['ISSUE'])
                                                 logger.fdebug('comparing ' + str(latest_int) + ' to ' + str(weekiss_int))
-                                                if (latest_int > weekiss_int) or (latest_int == 0 or weekiss_int == 0):
+                                                if (latest_int > weekiss_int) and (latest_int != 0 or weekiss_int != 0):
                                                     logger.fdebug(str(week['ISSUE']) + ' should not be the next issue in THIS volume of the series.')
                                                     logger.fdebug('it should be either greater than ' + str(latestiss) + ' or an issue #0')
                                                     break
@@ -758,9 +768,11 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None, futurepul
 
 
 def check(fname, txt):
-    with open(fname) as dataf:
-        return any(txt in line for line in dataf)
-
+    try:
+        with open(fname) as dataf:
+            return any(txt in line for line in dataf)
+    except:
+        return None        
 
 def loaditup(comicname, comicid, issue, chktype):
     myDB = db.DBConnection()
@@ -768,11 +780,11 @@ def loaditup(comicname, comicid, issue, chktype):
     if chktype == 'annual':
         typedisplay = 'annual issue'
         logger.fdebug('[' + comicname + '] trying to locate ' + str(typedisplay) + ' ' + str(issue) + ' to do comparitive issue analysis for pull-list')
-        issueload = myDB.action('SELECT * FROM annuals WHERE ComicID=? AND Int_IssueNumber=?', [comicid, issue_number]).fetchone()
+        issueload = myDB.selectone('SELECT * FROM annuals WHERE ComicID=? AND Int_IssueNumber=?', [comicid, issue_number]).fetchone()
     else:
         typedisplay = 'issue'
         logger.fdebug('[' + comicname + '] trying to locate ' + str(typedisplay) + ' ' + str(issue) + ' to do comparitive issue analysis for pull-list')
-        issueload = myDB.action('SELECT * FROM issues WHERE ComicID=? AND Int_IssueNumber=?', [comicid, issue_number]).fetchone()
+        issueload = myDB.selectone('SELECT * FROM issues WHERE ComicID=? AND Int_IssueNumber=?', [comicid, issue_number]).fetchone()
 
     if issueload is None:
         logger.fdebug('No results matched for Issue number - either this is a NEW issue with no data yet, or something is wrong')
@@ -786,13 +798,14 @@ def loaditup(comicname, comicid, issue, chktype):
     if releasedate == '0000-00-00':
         logger.fdebug('Store date of 0000-00-00 returned for ' + str(typedisplay) + ' # ' + str(issue) + '. Refreshing series to see if valid date present')
         mismatch = 'no'
-        issuerecheck = mylar.importer.addComictoDB(comicid,mismatch,calledfrom='weekly',issuechk=issue_number,issuetype=chktype)
+        #issuerecheck = mylar.importer.addComictoDB(comicid,mismatch,calledfrom='weekly',issuechk=issue_number,issuetype=chktype)
+        issuerecheck = mylar.importer.updateissuedata(comicid,comicname,calledfrom='weekly',issuechk=issue_number,issuetype=chktype)
         if issuerecheck is not None:
             for il in issuerecheck:
                 #this is only one record..
                 releasedate = il['IssueDate']
                 storedate = il['ReleaseDate']
-                status = il['Status']
+                #status = il['Status']
             logger.fdebug('issue-recheck releasedate is : ' + str(releasedate))
             logger.fdebug('issue-recheck storedate of : ' + str(storedate))
 
@@ -819,7 +832,8 @@ def checkthis(datecheck,datestatus,usedate):
     logger.fdebug('Using a compare date (usedate) of ' + str(usedate))
     logger.fdebug('Status of ' + str(datestatus))
 
-    if int(datecheck) >= int(usedate):
+    #give an allowance of 10 days to datecheck for late publishs (+1.5 weeks)
+    if int(datecheck) + 10 >= int(usedate):
         logger.fdebug('Store Date falls within acceptable range - series MATCH')
         valid_check = True
     elif int(datecheck) < int(usedate):
@@ -827,3 +841,49 @@ def checkthis(datecheck,datestatus,usedate):
         valid_check = False
 
     return valid_check
+
+def weekly_singlecopy(comicid, issuenum, file, path):
+    myDB = db.DBConnection()
+    try:
+        pull_date = myDB.selectone("SELECT SHIPDATE from weekly").fetchone()
+        if (pull_date is None):
+            pulldate = '00000000'
+        else:
+            pulldate = pull_date['SHIPDATE']
+
+        logger.fdebug(u"Weekly pull list detected as : " + str(pulldate))
+
+    except (sqlite3.OperationalError, TypeError),msg:
+        logger.info(u"Error determining current weekly pull-list date - you should refresh the pull-list manually probably.")
+        return
+
+    chkit = myDB.selectone('SELECT * FROM weekly WHERE ComicID=? AND ISSUE=?',[comicid, issuenum]).fetchone()
+    if chkit is None:
+        logger.fdebug(file + ' is not on the weekly pull-list or it is a one-off download that is not supported as of yet.')
+        return
+
+    logger.info('issue on weekly pull-list.')
+
+    if mylar.WEEKFOLDER:
+        desdir = os.path.join(mylar.DESTINATION_DIR, pulldate)
+        dircheck = mylar.filechecker.validateAndCreateDirectory(desdir, True)
+        if dircheck:
+            pass
+        else:
+            desdir = mylar.DESTINATION_DIR
+
+    else:
+        desdir = mylar.GRABBAG_DIR
+
+    desfile = os.path.join(desdir, file)
+    srcfile = os.path.join(path)
+
+    try:
+        shutil.copy2(srcfile, desfile)
+    except IOError as e:
+        logger.error('Could not copy ' + str(srcfile) + ' to ' + str(desfile))
+        return
+
+    logger.debug('sucessfully copied to ' + desfile.encode('utf-8').strip() )
+    return
+

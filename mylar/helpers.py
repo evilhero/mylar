@@ -267,13 +267,13 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
             if issueid is None:
                 logger.fdebug('annualize is ' + str(annualize))
                 if annualize is None:
-                    chkissue = myDB.action("SELECT * from issues WHERE ComicID=? AND Issue_Number=?", [comicid, issue]).fetchone()
+                    chkissue = myDB.selectone("SELECT * from issues WHERE ComicID=? AND Issue_Number=?", [comicid, issue]).fetchone()
                 else:
-                    chkissue = myDB.action("SELECT * from annuals WHERE ComicID=? AND Issue_Number=?", [comicid, issue]).fetchone()
+                    chkissue = myDB.selectone("SELECT * from annuals WHERE ComicID=? AND Issue_Number=?", [comicid, issue]).fetchone()
 
                 if chkissue is None:
                     #rechk chkissue against int value of issue #
-                    chkissue = myDB.action("SELECT * from issues WHERE ComicID=? AND Int_IssueNumber=?", [comicid, issuedigits(issue)]).fetchone()
+                    chkissue = myDB.selectone("SELECT * from issues WHERE ComicID=? AND Int_IssueNumber=?", [comicid, issuedigits(issue)]).fetchone()
                     if chkissue is None:
                         if chkissue is None:
                             logger.error('Invalid Issue_Number - please validate.')
@@ -286,16 +286,15 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
 
             #use issueid to get publisher, series, year, issue number
             logger.fdebug('issueid is now : ' + str(issueid))
-            issuenzb = myDB.action("SELECT * from issues WHERE ComicID=? AND IssueID=?", [comicid,issueid]).fetchone()
+            issuenzb = myDB.selectone("SELECT * from issues WHERE ComicID=? AND IssueID=?", [comicid,issueid]).fetchone()
             if issuenzb is None:
                 logger.fdebug('not an issue, checking against annuals')
-                issuenzb = myDB.action("SELECT * from annuals WHERE ComicID=? AND IssueID=?", [comicid,issueid]).fetchone()
+                issuenzb = myDB.selectone("SELECT * from annuals WHERE ComicID=? AND IssueID=?", [comicid,issueid]).fetchone()
                 if issuenzb is None:
                     logger.fdebug('Unable to rename - cannot locate issue id within db')
                     return
                 else:
                     annualize = True
-            logger.fdebug('blah')
             #comicid = issuenzb['ComicID']
             issuenum = issuenzb['Issue_Number']
             #issueno = str(issuenum).split('.')[0]
@@ -337,7 +336,10 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
             logger.fdebug('Zero Suppression set to : ' + str(mylar.ZERO_LEVEL_N))
 
             if str(len(issueno)) > 1:
-                if int(issueno) < 10:
+                if int(issueno) < 0:
+                    self._log("issue detected is a negative")
+                    prettycomiss = '-' + str(zeroadd) + str(abs(issueno))
+                elif int(issueno) < 10:
                     logger.fdebug('issue detected less than 10')
                     if '.' in iss:
                         if int(iss_decval) > 0:
@@ -385,7 +387,7 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
             month = issuenzb['IssueDate'][5:7].replace('-','').strip()
             month_name = fullmonth(month)
             logger.fdebug('Issue Year : ' + str(issueyear))
-            comicnzb= myDB.action("SELECT * from comics WHERE comicid=?", [comicid]).fetchone()
+            comicnzb= myDB.selectone("SELECT * from comics WHERE comicid=?", [comicid]).fetchone()
             publisher = comicnzb['ComicPublisher']
             logger.fdebug('Publisher: ' + str(publisher))
             series = comicnzb['ComicName']
@@ -416,11 +418,54 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
 
             else:
                 logger.fdebug('chunk_file_format is: ' + str(chunk_file_format))
-                if '$Annual' not in chunk_file_format:
-                #if it's an annual, but $annual isn't specified in file_format, we need to
-                #force it in there, by default in the format of $Annual $Issue
-                    prettycomiss = "Annual " + str(prettycomiss)
-                    logger.fdebug('prettycomiss: ' + str(prettycomiss))
+                if mylar.ANNUALS_ON:
+                    if 'annual' in series.lower():
+                        if '$Annual' not in chunk_file_format: # and 'annual' not in ofilename.lower():
+                        #if it's an annual, but $annual isn't specified in file_format, we need to
+                        #force it in there, by default in the format of $Annual $Issue
+                            #prettycomiss = "Annual " + str(prettycomiss)
+                            logger.fdebug('[' + series + '][ANNUALS-ON][ANNUAL IN SERIES][NOT $ANNUAL] prettycomiss: ' + str(prettycomiss))
+                        else:
+                            #because it exists within title, strip it then use formatting tag for placement of wording.
+                            chunk_f_f = re.sub('\$Annual','',chunk_file_format)
+                            chunk_f = re.compile(r'\s+')
+                            chunk_file_format = chunk_f.sub(' ', chunk_f_f)
+                            logger.fdebug('[' + series + '][ANNUALS-ON][ANNUAL IN SERIES][$ANNUAL] prettycomiss: ' + str(prettycomiss))
+                    else:
+                        if '$Annual' not in chunk_file_format: # and 'annual' not in ofilename.lower():
+                        #if it's an annual, but $annual isn't specified in file_format, we need to
+                        #force it in there, by default in the format of $Annual $Issue
+                            prettycomiss = "Annual " + str(prettycomiss)
+                            logger.fdebug('[' + series + '][ANNUALS-ON][ANNUAL NOT IN SERIES][NOT $ANNUAL] prettycomiss: ' + str(prettycomiss))
+                        else:
+                            logger.fdebug('[' + series + '][ANNUALS-ON][ANNUAL NOT IN SERIES][$ANNUAL] prettycomiss: ' + str(prettycomiss))
+
+                else:
+                    #if annuals aren't enabled, then annuals are being tracked as independent series.
+                    #annualize will be true since it's an annual in the seriesname.
+                    if 'annual' in series.lower():
+                        if '$Annual' not in chunk_file_format: # and 'annual' not in ofilename.lower():
+                        #if it's an annual, but $annual isn't specified in file_format, we need to
+                        #force it in there, by default in the format of $Annual $Issue
+                            #prettycomiss = "Annual " + str(prettycomiss)
+                            logger.fdebug('[' + series + '][ANNUALS-OFF][ANNUAL IN SERIES][NOT $ANNUAL] prettycomiss: ' + str(prettycomiss))
+                        else:
+                            #because it exists within title, strip it then use formatting tag for placement of wording.
+                            chunk_f_f = re.sub('\$Annual','',chunk_file_format)
+                            chunk_f = re.compile(r'\s+')
+                            chunk_file_format = chunk_f.sub(' ', chunk_f_f)
+                            logger.fdebug('[' + series + '][ANNUALS-OFF][ANNUAL IN SERIES][$ANNUAL] prettycomiss: ' + str(prettycomiss))
+                    else:
+                        if '$Annual' not in chunk_file_format: # and 'annual' not in ofilename.lower():
+                            #if it's an annual, but $annual isn't specified in file_format, we need to
+                            #force it in there, by default in the format of $Annual $Issue
+                            prettycomiss = "Annual " + str(prettycomiss)
+                            logger.fdebug('[' + series + '][ANNUALS-OFF][ANNUAL NOT IN SERIES][NOT $ANNUAL] prettycomiss: ' + str(prettycomiss))
+                        else:
+                            logger.fdebug('[' + series + '][ANNUALS-OFF][ANNUAL NOT IN SERIES][$ANNUAL] prettycomiss: ' + str(prettycomiss))
+
+
+                    logger.fdebug('Annual detected within series title of ' + series + '. Not auto-correcting issue #')
 
             file_values = {'$Series':    series,
                            '$Issue':     prettycomiss,
@@ -490,7 +535,7 @@ def ComicSort(comicorder=None,sequence=None,imported=None):
         i = 0
         import db, logger
         myDB = db.DBConnection()
-        comicsort = myDB.action("SELECT * FROM comics ORDER BY ComicSortName COLLATE NOCASE")
+        comicsort = myDB.select("SELECT * FROM comics ORDER BY ComicSortName COLLATE NOCASE")
         comicorderlist = []
         comicorder = {}
         comicidlist = []
@@ -672,6 +717,14 @@ def issuedigits(issnum):
     if str(issnum).isdigit():
         int_issnum = int( issnum ) * 1000
     else:
+        count = 0
+        for char in issnum:
+            if char.isalpha():
+                count += 1
+        if count  > 5:
+            logger.error('This is not an issue number - not enough numerics to parse')
+            int_issnum = 999999999999999
+            return int_issnum
         if 'au' in issnum.lower() and issnum[:1].isdigit():
             int_issnum = (int(issnum[:-2]) * 1000) + ord('a') + ord('u')
         elif 'ai' in issnum.lower() and issnum[:1].isdigit():
@@ -779,7 +832,7 @@ def checkthepub(ComicID):
     import db, logger
     myDB = db.DBConnection()
     publishers = ['marvel', 'dc', 'darkhorse']
-    pubchk = myDB.action("SELECT * FROM comics WHERE ComicID=?", [ComicID]).fetchone()
+    pubchk = myDB.selectone("SELECT * FROM comics WHERE ComicID=?", [ComicID]).fetchone()
     if pubchk is None:
         logger.fdebug('No publisher information found to aid in determining series..defaulting to base check of 55 days.')
         return mylar.BIGGIE_PUB
@@ -795,7 +848,7 @@ def checkthepub(ComicID):
 def annual_update():
     import db, logger
     myDB = db.DBConnection()
-    annuallist = myDB.action('SELECT * FROM annuals')
+    annuallist = myDB.select('SELECT * FROM annuals')
     if annuallist is None:
         logger.info('no annuals to update.')
         return
@@ -803,7 +856,7 @@ def annual_update():
     cnames = []
     #populate the ComicName field with the corresponding series name from the comics table.
     for ann in annuallist:
-        coms = myDB.action('SELECT * FROM comics WHERE ComicID=?', [ann['ComicID']]).fetchone()
+        coms = myDB.selectone('SELECT * FROM comics WHERE ComicID=?', [ann['ComicID']]).fetchone()
         cnames.append({'ComicID':     ann['ComicID'],
                        'ComicName':   coms['ComicName']
                       })
@@ -853,7 +906,7 @@ def latestdate_fix():
     import db, logger
     datefix = []
     myDB = db.DBConnection()
-    comiclist = myDB.action('SELECT * FROM comics')
+    comiclist = myDB.select('SELECT * FROM comics')
     if comiclist is None:
         logger.fdebug('No Series in watchlist to correct latest date')
         return
@@ -924,3 +977,93 @@ def LoadAlternateSearchNames(seriesname_alt, comicid):
         #logger.info('AlternateNames returned:' + str(Alternate_Names))
 
         return Alternate_Names
+
+def havetotals():
+        import db, logger
+
+        comics = []
+
+        myDB = db.DBConnection()
+        comiclist = myDB.select('SELECT * from comics order by ComicSortName COLLATE NOCASE')
+        for comic in comiclist:
+            issue = myDB.select("SELECT * FROM issues WHERE ComicID=?", [comic['ComicID']])
+            if mylar.ANNUALS_ON:
+                annuals_on = True
+                annual = myDB.selectone("SELECT COUNT(*) as count FROM annuals WHERE ComicID=?", [comic['ComicID']]).fetchone()
+                annualcount = annual[0]
+                if not annualcount:
+                    annualcount = 0
+            else:
+                annuals_on = False
+                annual = None
+                annualcount = 0
+            try:
+                totalissues = comic['Total'] + annualcount
+                haveissues = comic['Have']
+            except TypeError:
+                logger.warning('[Warning] ComicID: ' + str(comic['ComicID']) + ' is incomplete - Removing from DB. You should try to re-add the series.')
+                myDB.action("DELETE from COMICS WHERE ComicID=? AND ComicName LIKE 'Comic ID%'", [comic['ComicID']])
+                myDB.action("DELETE from ISSUES WHERE ComicID=? AND ComicName LIKE 'Comic ID%'", [comic['ComicID']])
+                continue
+
+            if not haveissues:
+               havetracks = 0
+
+            try:
+                percent = (haveissues*100.0)/totalissues
+                if percent > 100:
+                    percent = 100
+            except (ZeroDivisionError, TypeError):
+                percent = 0
+                totalissuess = '?'
+
+            if comic['ComicPublished'] is None or comic['ComicPublished'] == '':
+                recentstatus = 'Unknown'
+            elif comic['ForceContinuing'] == 1:
+                recentstatus = 'Continuing'
+            elif 'present' in comic['ComicPublished'].lower() or ( today()[:4] in comic['LatestDate']):
+                latestdate = comic['LatestDate']
+                c_date = datetime.date(int(latestdate[:4]),int(latestdate[5:7]),1)
+                n_date = datetime.date.today()
+                recentchk = (n_date - c_date).days
+                if recentchk < 55:
+                    recentstatus = 'Continuing'
+                else:
+                    recentstatus = 'Ended'
+            else:
+                recentstatus = 'Ended'
+
+            comics.append({"ComicID":         comic['ComicID'],
+                           "ComicName":       comic['ComicName'],
+                           "ComicSortName":   comic['ComicSortName'],
+                           "ComicPublisher":  comic['ComicPublisher'],
+                           "ComicYear":       comic['ComicYear'],
+                           "ComicImage":      comic['ComicImage'],
+                           "LatestIssue":     comic['LatestIssue'],
+                           "LatestDate":      comic['LatestDate'],
+                           "ComicPublished":  comic['ComicPublished'],
+                           "Status":          comic['Status'],
+                           "recentstatus":    recentstatus,
+                           "percent":         percent,
+                           "totalissues":     totalissues,
+                           "haveissues":      haveissues,
+                           "DateAdded":       comic['LastUpdated']})
+
+        return comics
+
+from threading import Thread
+
+class ThreadWithReturnValue(Thread):
+    def __init__(self, group=None, target=None, name=None,
+                 args=(), kwargs={}, Verbose=None):
+        Thread.__init__(self, group, target, name, args, kwargs, Verbose)
+        self._return = None
+    def run(self):
+        if self._Thread__target is not None:
+            self._return = self._Thread__target(*self._Thread__args,
+                                                **self._Thread__kwargs)
+    def join(self):
+        Thread.join(self)
+        return self._return
+
+

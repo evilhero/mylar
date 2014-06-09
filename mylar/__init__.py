@@ -18,6 +18,7 @@ from __future__ import with_statement
 import os, sys, subprocess
 
 import threading
+import datetime
 import webbrowser
 import sqlite3
 import itertools
@@ -25,13 +26,14 @@ import csv
 import shutil
 import platform
 import locale
+from threading import Lock, Thread
 
 from lib.apscheduler.scheduler import Scheduler
 from lib.configobj import ConfigObj
 
 import cherrypy
 
-from mylar import versioncheck, logger, version, rsscheck
+from mylar import versioncheck, logger, versioncheck, rsscheck, search, PostProcessor, weeklypull, helpers #versioncheckit, searchit, weeklypullit, dbupdater, scheduler
 
 FULL_PATH = None
 PROG_DIR = None
@@ -46,15 +48,29 @@ OS_LANG, OS_ENCODING = locale.getdefaultlocale()
 VERBOSE = 1
 DAEMON = False
 PIDFILE= None
+CREATEPID = False
+SAFESTART = False
 
 SCHED = Scheduler()
 
 INIT_LOCK = threading.Lock()
 __INITIALIZED__ = False
 started = False
+WRITELOCK = False
+
+## for use with updated scheduler (not working atm)
+#INIT_LOCK = Lock()
+#dbUpdateScheduler = None
+#searchScheduler = None
+#RSSScheduler = None
+#WeeklyScheduler = None
+#VersionScheduler = None
+#FolderMonitorScheduler = None
 
 DATA_DIR = None
 DBLOCK = False
+
+UMASK = None
 
 CONFIG_FILE = None
 CFG = None
@@ -64,6 +80,7 @@ DB_FILE = None
 
 LOG_DIR = None
 LOG_LIST = []
+MAX_LOGSIZE = None
 
 CACHE_DIR = None
 SYNO_FIX = False
@@ -78,7 +95,7 @@ HTTP_ROOT = None
 API_ENABLED = False
 API_KEY = None
 LAUNCH_BROWSER = False
-LOGVERBOSE = 1
+LOGVERBOSE = None
 GIT_PATH = None
 INSTALL_TYPE = None
 CURRENT_VERSION = None
@@ -86,6 +103,9 @@ LATEST_VERSION = None
 COMMITS_BEHIND = None
 USER_AGENT = None
 SEARCH_DELAY = 1
+
+COMICVINE_API = None
+DEFAULT_CVAPI = '583939a3df0a25fc4e8b7a29934a13078002dc27'
 
 CHECK_GITHUB = False
 CHECK_GITHUB_ON_STARTUP = False
@@ -144,8 +164,12 @@ PUSHOVER_APIKEY = None
 PUSHOVER_USERKEY = None
 PUSHOVER_ONSNATCH = False
 BOXCAR_ENABLED = False
-BOXCAR_USERNAME = None
 BOXCAR_ONSNATCH = False
+BOXCAR_TOKEN = None
+PUSHBULLET_ENABLED = False
+PUSHBULLET_APIKEY = None
+PUSHBULLET_DEVICEID = None
+PUSHBULLET_ONSNATCH = False
 
 SKIPPED2WANTED = False
 CVINFO = False
@@ -246,6 +270,7 @@ RSS_CHECKINTERVAL = 20
 RSS_LASTRUN = None
 
 ENABLE_TORRENTS = 0
+MINSEEDS = 0
 TORRENT_LOCAL = 0
 LOCAL_WATCHDIR = None
 TORRENT_SEEDBOX = 0
@@ -261,7 +286,7 @@ KAT_PROXY = None
 ENABLE_CBT = 0
 CBT_PASSKEY = None
 
-
+SNATCHEDTORRENT_NOTIFY = 0
 
 def CheckSection(sec):
     """ Check if INI section exists, if not create it """
@@ -313,8 +338,8 @@ def initialize():
 
     with INIT_LOCK:
     
-        global __INITIALIZED__, FULL_PATH, PROG_DIR, VERBOSE, DAEMON, COMICSORT, DATA_DIR, CONFIG_FILE, CFG, CONFIG_VERSION, LOG_DIR, CACHE_DIR, LOGVERBOSE, OLDCONFIG_VERSION, OS_DETECT, OS_LANG, OS_ENCODING, \
-                HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, API_ENABLED, API_KEY, LAUNCH_BROWSER, GIT_PATH, \
+        global __INITIALIZED__, COMICVINE_API, DEFAULT_CVAPI, FULL_PATH, PROG_DIR, VERBOSE, DAEMON, COMICSORT, DATA_DIR, CONFIG_FILE, CFG, CONFIG_VERSION, LOG_DIR, CACHE_DIR, MAX_LOGSIZE, LOGVERBOSE, OLDCONFIG_VERSION, OS_DETECT, OS_LANG, OS_ENCODING, \
+                HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, API_ENABLED, API_KEY, LAUNCH_BROWSER, GIT_PATH, SAFESTART, \
                 CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, USER_AGENT, DESTINATION_DIR, \
                 DOWNLOAD_DIR, USENET_RETENTION, SEARCH_INTERVAL, NZB_STARTUP_SEARCH, INTERFACE, AUTOWANT_ALL, AUTOWANT_UPCOMING, ZERO_LEVEL, ZERO_LEVEL_N, COMIC_COVER_LOCAL, HIGHCOUNT, \
                 LIBRARYSCAN, LIBRARYSCAN_INTERVAL, DOWNLOAD_SCAN_INTERVAL, NZB_DOWNLOADER, USE_SABNZBD, SAB_HOST, SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_PRIORITY, SAB_DIRECTORY, USE_BLACKHOLE, BLACKHOLE_DIR, ADD_COMICS, COMIC_DIR, IMP_MOVE, IMP_RENAME, IMP_METADATA, \
@@ -322,11 +347,13 @@ def initialize():
                 NEWZNAB, NEWZNAB_NAME, NEWZNAB_HOST, NEWZNAB_APIKEY, NEWZNAB_UID, NEWZNAB_ENABLED, EXTRA_NEWZNABS, NEWZNAB_EXTRA, \
                 RAW, RAW_PROVIDER, RAW_USERNAME, RAW_PASSWORD, RAW_GROUPS, EXPERIMENTAL, ALTEXPERIMENTAL, \
                 ENABLE_META, CMTAGGER_PATH, INDIE_PUB, BIGGIE_PUB, IGNORE_HAVETOTAL, PROVIDER_ORDER, \
-                ENABLE_TORRENTS, TORRENT_LOCAL, LOCAL_WATCHDIR, TORRENT_SEEDBOX, SEEDBOX_HOST, SEEDBOX_PORT, SEEDBOX_USER, SEEDBOX_PASS, SEEDBOX_WATCHDIR, \
-                ENABLE_RSS, RSS_CHECKINTERVAL, RSS_LASTRUN, ENABLE_TORRENT_SEARCH, ENABLE_KAT, KAT_PROXY, ENABLE_CBT, CBT_PASSKEY, \
-                PROWL_ENABLED, PROWL_PRIORITY, PROWL_KEYS, PROWL_ONSNATCH, NMA_ENABLED, NMA_APIKEY, NMA_PRIORITY, NMA_ONSNATCH, PUSHOVER_ENABLED, PUSHOVER_PRIORITY, PUSHOVER_APIKEY, PUSHOVER_USERKEY, PUSHOVER_ONSNATCH, BOXCAR_ENABLED, BOXCAR_USERNAME, BOXCAR_ONSNATCH, LOCMOVE, NEWCOM_DIR, FFTONEWCOM_DIR, \
+                dbUpdateScheduler, searchScheduler, RSSScheduler, WeeklyScheduler, VersionScheduler, FolderMonitorScheduler, \
+                ENABLE_TORRENTS, MINSEEDS, TORRENT_LOCAL, LOCAL_WATCHDIR, TORRENT_SEEDBOX, SEEDBOX_HOST, SEEDBOX_PORT, SEEDBOX_USER, SEEDBOX_PASS, SEEDBOX_WATCHDIR, \
+                ENABLE_RSS, RSS_CHECKINTERVAL, RSS_LASTRUN, ENABLE_TORRENT_SEARCH, ENABLE_KAT, KAT_PROXY, ENABLE_CBT, CBT_PASSKEY, SNATCHEDTORRENT_NOTIFY, \
+                PROWL_ENABLED, PROWL_PRIORITY, PROWL_KEYS, PROWL_ONSNATCH, NMA_ENABLED, NMA_APIKEY, NMA_PRIORITY, NMA_ONSNATCH, PUSHOVER_ENABLED, PUSHOVER_PRIORITY, PUSHOVER_APIKEY, PUSHOVER_USERKEY, PUSHOVER_ONSNATCH, BOXCAR_ENABLED, BOXCAR_ONSNATCH, BOXCAR_TOKEN, \
+                PUSHBULLET_ENABLED, PUSHBULLET_APIKEY, PUSHBULLET_DEVICEID, PUSHBULLET_ONSNATCH, LOCMOVE, NEWCOM_DIR, FFTONEWCOM_DIR, \
                 PREFERRED_QUALITY, MOVE_FILES, RENAME_FILES, LOWERCASE_FILENAMES, USE_MINSIZE, MINSIZE, USE_MAXSIZE, MAXSIZE, CORRECT_METADATA, FOLDER_FORMAT, FILE_FORMAT, REPLACE_CHAR, REPLACE_SPACES, ADD_TO_CSV, CVINFO, LOG_LEVEL, POST_PROCESSING, SEARCH_DELAY, GRABBAG_DIR, READ2FILENAME, STORYARCDIR, CVURL, CVAPIFIX, CHECK_FOLDER, \
-                COMIC_LOCATION, QUAL_ALTVERS, QUAL_SCANNER, QUAL_TYPE, QUAL_QUALITY, ENABLE_EXTRA_SCRIPTS, EXTRA_SCRIPTS, ENABLE_PRE_SCRIPTS, PRE_SCRIPTS, PULLNEW, COUNT_ISSUES, COUNT_HAVES, COUNT_COMICS, SYNO_FIX, CHMOD_FILE, CHMOD_DIR, ANNUALS_ON, CV_ONLY, CV_ONETIMER, WEEKFOLDER
+                COMIC_LOCATION, QUAL_ALTVERS, QUAL_SCANNER, QUAL_TYPE, QUAL_QUALITY, ENABLE_EXTRA_SCRIPTS, EXTRA_SCRIPTS, ENABLE_PRE_SCRIPTS, PRE_SCRIPTS, PULLNEW, COUNT_ISSUES, COUNT_HAVES, COUNT_COMICS, SYNO_FIX, CHMOD_FILE, CHMOD_DIR, ANNUALS_ON, CV_ONLY, CV_ONETIMER, WEEKFOLDER, UMASK
                 
         if __INITIALIZED__:
             return False
@@ -351,6 +378,9 @@ def initialize():
             HTTP_PORT = 8090
             
         CONFIG_VERSION = check_setting_str(CFG, 'General', 'config_version', '')
+        COMICVINE_API = check_setting_str(CFG, 'General', 'comicvine_api', '')
+        if not COMICVINE_API:
+            COMICVINE_API = None
         HTTP_HOST = check_setting_str(CFG, 'General', 'http_host', '0.0.0.0')
         HTTP_USERNAME = check_setting_str(CFG, 'General', 'http_username', '')
         HTTP_PASSWORD = check_setting_str(CFG, 'General', 'http_password', '')
@@ -358,7 +388,14 @@ def initialize():
         API_ENABLED = bool(check_setting_int(CFG, 'General', 'api_enabled', 0))
         API_KEY = check_setting_str(CFG, 'General', 'api_key', '') 
         LAUNCH_BROWSER = bool(check_setting_int(CFG, 'General', 'launch_browser', 1))
-        LOGVERBOSE = bool(check_setting_int(CFG, 'General', 'logverbose', 1))
+        LOGVERBOSE = bool(check_setting_int(CFG, 'General', 'logverbose', 0))
+        if LOGVERBOSE:
+            VERBOSE = 2
+        else:
+            VERBOSE = 1
+        MAX_LOGSIZE = check_setting_str(CFG, 'General', 'max_logsize', '')
+        if not MAX_LOGSIZE:
+            MAX_LOGSIZE = 1000000        
         GIT_PATH = check_setting_str(CFG, 'General', 'git_path', '')
         LOG_DIR = check_setting_str(CFG, 'General', 'log_dir', '')
         if not CACHE_DIR:
@@ -440,9 +477,13 @@ def initialize():
         PUSHOVER_ONSNATCH = bool(check_setting_int(CFG, 'PUSHOVER', 'pushover_onsnatch', 0))
 
         BOXCAR_ENABLED = bool(check_setting_int(CFG, 'BOXCAR', 'boxcar_enabled', 0))
-        BOXCAR_USERNAME = check_setting_str(CFG, 'BOXCAR', 'boxcar_username', '')
         BOXCAR_ONSNATCH = bool(check_setting_int(CFG, 'BOXCAR', 'boxcar_onsnatch', 0))
+        BOXCAR_TOKEN = check_setting_str(CFG, 'BOXCAR', 'boxcar_token', '')
 
+        PUSHBULLET_ENABLED = bool(check_setting_int(CFG, 'PUSHBULLET', 'pushbullet_enabled', 0))
+        PUSHBULLET_APIKEY = check_setting_str(CFG, 'PUSHBULLET', 'pushbullet_apikey', '')
+        PUSHBULLET_DEVICEID = check_setting_str(CFG, 'PUSHBULLET', 'pushbullet_deviceid', '')
+        PUSHBULLET_ONSNATCH = bool(check_setting_int(CFG, 'PUSHBULLET', 'pushbullet_onsnatch', 0))
 
         USE_MINSIZE = bool(check_setting_int(CFG, 'General', 'use_minsize', 0))
         MINSIZE = check_setting_str(CFG, 'General', 'minsize', '')
@@ -480,6 +521,7 @@ def initialize():
         RSS_LASTRUN = check_setting_str(CFG, 'General', 'rss_lastrun', '')
 
         ENABLE_TORRENTS = bool(check_setting_int(CFG, 'Torrents', 'enable_torrents', 0))
+        MINSEEDS = check_setting_str(CFG, 'Torrents', 'minseeds', '0')
         TORRENT_LOCAL = bool(check_setting_int(CFG, 'Torrents', 'torrent_local', 0))
         LOCAL_WATCHDIR = check_setting_str(CFG, 'Torrents', 'local_watchdir', '')
         TORRENT_SEEDBOX = bool(check_setting_int(CFG, 'Torrents', 'torrent_seedbox', 0))
@@ -494,13 +536,18 @@ def initialize():
         KAT_PROXY = check_setting_str(CFG, 'Torrents', 'kat_proxy', '')
         ENABLE_CBT = bool(check_setting_int(CFG, 'Torrents', 'enable_cbt', 0))
         CBT_PASSKEY = check_setting_str(CFG, 'Torrents', 'cbt_passkey', '')
-
+        SNATCHEDTORRENT_NOTIFY = bool(check_setting_int(CFG, 'Torrents', 'snatchedtorrent_notify', 0))
+   
         #this needs to have it's own category - for now General will do.
         NZB_DOWNLOADER = check_setting_int(CFG, 'General', 'nzb_downloader', 0)
         #legacy support of older config - reload into old values for consistency.
         if NZB_DOWNLOADER == 0: USE_SABNZBD = True
         elif NZB_DOWNLOADER == 1: USE_NZBGET = True
         elif NZB_DOWNLOADER == 2: USE_BLACKHOLE = True
+        else:
+            #default to SABnzbd
+            NZB_DOWNLOADER = 0
+            USE_SABNZBD = True
         #USE_SABNZBD = bool(check_setting_int(CFG, 'SABnzbd', 'use_sabnzbd', 0))
         SAB_HOST = check_setting_str(CFG, 'SABnzbd', 'sab_host', '')
         SAB_USERNAME = check_setting_str(CFG, 'SABnzbd', 'sab_username', '')
@@ -545,7 +592,7 @@ def initialize():
         NZBSU_UID = check_setting_str(CFG, 'NZBsu', 'nzbsu_uid', '')
         NZBSU_APIKEY = check_setting_str(CFG, 'NZBsu', 'nzbsu_apikey', '')
         if NZBSU:
-            PR.append('nzbsu')
+            PR.append('nzb.su')
             PR_NUM +=1
 
         DOGNZB = bool(check_setting_int(CFG, 'DOGnzb', 'dognzb', 0))
@@ -567,7 +614,7 @@ def initialize():
             PR.append('Experimental')
             PR_NUM +=1
 
-        print 'PR_NUM::' + str(PR_NUM)
+        #print 'PR_NUM::' + str(PR_NUM)
 
         NEWZNAB = bool(check_setting_int(CFG, 'Newznab', 'newznab', 0))
 
@@ -617,18 +664,19 @@ def initialize():
         #to counteract the loss of the 1st newznab entry because of a switch, let's rewrite to the tuple
         if NEWZNAB_HOST and CONFIG_VERSION:
             EXTRA_NEWZNABS.append((NEWZNAB_NAME, NEWZNAB_HOST, NEWZNAB_APIKEY, NEWZNAB_UID, int(NEWZNAB_ENABLED)))
-            PR_NUM +=1
+            #PR_NUM +=1
             # Need to rewrite config here and bump up config version
             CONFIG_VERSION = '5'
             config_write()        
 
         #print 'PR_NUM:' + str(PR_NUM)
-        for ens in EXTRA_NEWZNABS:
-            #print ens[0]
-            #print 'enabled:' + str(ens[4])
-            if ens[4] == '1': # if newznabs are enabled
-                PR.append(ens[0])
-                PR_NUM +=1
+        if NEWZNAB:
+            for ens in EXTRA_NEWZNABS:
+                #print ens[0]
+                #print 'enabled:' + str(ens[4])
+                if ens[4] == '1': # if newznabs are enabled
+                    PR.append(ens[0])
+                    PR_NUM +=1
 
 
         #print('Provider Number count: ' + str(PR_NUM))
@@ -642,12 +690,50 @@ def initialize():
             TMPPR_NUM = 0
             PROV_ORDER = []
             while TMPPR_NUM < PR_NUM :
-                PROV_ORDER.append((TMPPR_NUM, PR[TMPPR_NUM]))
+                PROV_ORDER.append({"order_seq":  TMPPR_NUM,
+                                   "provider":   str(PR[TMPPR_NUM])})
                 TMPPR_NUM +=1
             PROVIDER_ORDER = PROV_ORDER
 
+        else:
+            #if provider order exists already, load it and then append to end any NEW entries.
+            TMPPR_NUM = 0
+            PROV_ORDER = []
+            for PRO in PROVIDER_ORDER:
+                PROV_ORDER.append({"order_seq":  PRO[0],
+                                   "provider":   str(PRO[1])})
+                #print 'Provider is : ' + str(PRO)
+                TMPPR_NUM +=1
+
+            if PR_NUM != TMPPR_NUM:
+                #print 'existing Order count does not match New Order count'
+                if PR_NUM > TMPPR_NUM:
+                    #print 'New entries exist, appending to end as default ordering'
+                    TMPPR_NUM = 0
+                    while (TMPPR_NUM < PR_NUM):
+                        #print 'checking entry #' + str(TMPPR_NUM) + ': ' + str(PR[TMPPR_NUM])
+                        if not any(d.get("provider",None) == str(PR[TMPPR_NUM]) for d in PROV_ORDER):
+                            #print 'new provider should be : ' + str(TMPPR_NUM) + ' -- ' + str(PR[TMPPR_NUM])
+                            PROV_ORDER.append({"order_seq":  TMPPR_NUM,
+                                               "provider":   str(PR[TMPPR_NUM])})
+                        #else:
+                            #print 'provider already exists at : ' + str(TMPPR_NUM) + ' -- ' + str(PR[TMPPR_NUM])
+                        TMPPR_NUM +=1
+
+                 
         #this isn't ready for primetime just yet...
-        #logger.info('Provider Order is:' + str(PROVIDER_ORDER))
+        #print 'Provider Order is:' + str(PROV_ORDER)
+
+        if PROV_ORDER is None:
+            flatt_providers = None
+        else:
+            flatt_providers = []
+            for pro in PROV_ORDER:
+                for key, value in pro.items():
+                    flatt_providers.append(str(value))
+
+        PROVIDER_ORDER = list(itertools.izip(*[itertools.islice(flatt_providers, i, None, 2) for i in range(2)]))
+        #print 'text provider order is: ' + str(PROVIDER_ORDER)
         config_write()
 
         # update folder formats in the config & bump up config version
@@ -701,7 +787,7 @@ def initialize():
                     print 'Unable to create the log directory. Logging to screen only.'
 
         # Start the logger, silence console logging if we need to
-        logger.mylar_log.initLogger(verbose=VERBOSE)
+        logger.initLogger(verbose=VERBOSE) #logger.mylar_log.initLogger(verbose=VERBOSE)
 
         # Put the cache dir in the data dir for now
         if not CACHE_DIR:
@@ -712,6 +798,10 @@ def initialize():
                os.makedirs(CACHE_DIR)
             except OSError:
                 logger.error('Could not create cache dir. Check permissions of datadir: ' + DATA_DIR)
+
+        #ComicVine API Check
+        if COMICVINE_API is None or COMICVINE_API == '':
+            logger.error('No User Comicvine API key specified. I will not work very well due to api limits - http://api.comicvine.com/ and get your own free key.')
 
         # Sanity check for search interval. Set it to at least 6 hours
         if SEARCH_INTERVAL < 360:
@@ -795,6 +885,55 @@ def initialize():
         #Ordering comics here
         logger.info('Remapping the sorting to allow for new additions.')
         COMICSORT = helpers.ComicSort(sequence='startup')
+
+        #start the db write only thread here.
+        #this is a thread that continually runs in the background as the ONLY thread that can write to the db.
+#        logger.info('Starting Write-Only thread.')
+        #db.WriteOnly()
+
+        #initialize the scheduler threads here.
+        #dbUpdateScheduler = scheduler.Scheduler(action=dbupdater.dbUpdate(),
+#                                                cycleTime=datetime.timedelta(hours=48),
+#                                                runImmediately=False,
+#                                                threadName="DBUPDATE")
+
+#        if NZB_STARTUP_SEARCH:
+#            searchrunmode = True
+#        else:
+#            searchrunmode = False
+
+        #searchScheduler = scheduler.Scheduler(searchit.CurrentSearcher(),
+#                                              cycleTime=datetime.timedelta(minutes=SEARCH_INTERVAL),
+#                                              threadName="SEARCH",
+#                                              runImmediately=searchrunmode)
+
+        #RSSScheduler = scheduler.Scheduler(rsscheckit.tehMain(),
+ #                                          cycleTime=datetime.timedelta(minutes=int(RSS_CHECKINTERVAL)),
+ #                                          threadName="RSSCHECK",
+ #                                          runImmediately=True,
+ #                                          delay=30)
+
+        #WeeklyScheduler = scheduler.Scheduler(weeklypullit.Weekly(),
+ #                                             cycleTime=datetime.timedelta(hours=24),
+ #                                             threadName="WEEKLYCHECK",
+ #                                             runImmediately=True,
+ #                                             delay=10)
+
+        #VersionScheduler = scheduler.Scheduler(versioncheckit.CheckVersion(),
+ #                                              cycleTime=datetime.timedelta(minutes=CHECK_GITHUB_INTERVAL),
+ #                                              threadName="VERSIONCHECK",
+ #                                              runImmediately=True)
+
+
+        #FolderMonitorScheduler = scheduler.Scheduler(PostProcessor.FolderCheck(),
+#                                                     cycleTime=datetime.timedelta(minutes=int(DOWNLOAD_SCAN_INTERVAL)),
+#                                                     threadName="FOLDERMONITOR",
+#                                                     runImmediately=True,
+#                                                     delay=60)
+
+        # Store the original umask
+        UMASK = os.umask(0)
+        os.umask(UMASK)
                                     
         __INITIALIZED__ = True
         return True
@@ -822,6 +961,10 @@ def daemonize():
         
     os.setsid()
 
+    # Make sure I can read my own files and shut out others
+    prev = os.umask(0)  # @UndefinedVariable - only available in UNIX
+    os.umask(prev and int('077', 8))
+
     # Do second fork
     try:
         pid = os.fork()
@@ -831,9 +974,9 @@ def daemonize():
     except OSError, e:
         sys.exit("2nd fork failed: %s [%d]" % (e.strerror, e.errno))
 
-    os.chdir("/")
-    os.umask(0)
-    
+    dev_null = file('/dev/null', 'r')
+    os.dup2(dev_null.fileno(), sys.stdin.fileno())
+
     si = open('/dev/null', "r")
     so = open('/dev/null', "a+")
     se = open('/dev/null', "a+")
@@ -844,9 +987,10 @@ def daemonize():
 
     pid = os.getpid()
     logger.info('Daemonized to PID: %s' % pid)
-    if PIDFILE:
-        logger.info('Writing PID %s to %s' % (pid, PIDFILE))
-        file(PIDFILE, 'w').write("%s\n" % pid)
+    if CREATEPID:
+        logger.info("Writing PID %d to %s", pid, PIDFILE)
+        with file(PIDFILE, 'w') as fp:
+            fp.write("%s\n" % pid)
 
 def launch_browser(host, port, root):
 
@@ -865,6 +1009,7 @@ def config_write():
     new_config.encoding = 'UTF8'
     new_config['General'] = {}
     new_config['General']['config_version'] = CONFIG_VERSION
+    new_config['General']['comicvine_api'] = COMICVINE_API
     new_config['General']['http_port'] = HTTP_PORT
     new_config['General']['http_host'] = HTTP_HOST
     new_config['General']['http_username'] = HTTP_USERNAME
@@ -874,6 +1019,7 @@ def config_write():
     new_config['General']['api_key'] = API_KEY   
     new_config['General']['launch_browser'] = int(LAUNCH_BROWSER)
     new_config['General']['log_dir'] = LOG_DIR
+    new_config['General']['max_logsize'] = MAX_LOGSIZE
     new_config['General']['logverbose'] = int(LOGVERBOSE)
     new_config['General']['git_path'] = GIT_PATH
     new_config['General']['cache_dir'] = CACHE_DIR
@@ -950,20 +1096,23 @@ def config_write():
     new_config['General']['rss_checkinterval'] = RSS_CHECKINTERVAL
     new_config['General']['rss_lastrun'] = RSS_LASTRUN
 
-    # Need to unpack the extra newznabs for saving in config.ini
+    # Need to unpack the providers for saving in config.ini
     if PROVIDER_ORDER is None:
         flattened_providers = None
     else:
         flattened_providers = []
-        for prov_order in PROVIDER_ORDER:
-            for item in prov_order:
-                flattened_providers.append(item)
+        for pro in PROVIDER_ORDER:
+            #for key, value in pro.items():
+            for item in pro:
+                flattened_providers.append(str(item))
+                #flattened_providers.append(str(value))
 
     new_config['General']['provider_order'] = flattened_providers
-    new_config['General']['nzb_downloader'] = NZB_DOWNLOADER
+    new_config['General']['nzb_downloader'] = int(NZB_DOWNLOADER)
 
     new_config['Torrents'] = {}
     new_config['Torrents']['enable_torrents'] = int(ENABLE_TORRENTS)
+    new_config['Torrents']['minseeds'] = int(MINSEEDS)
     new_config['Torrents']['torrent_local'] = int(TORRENT_LOCAL)
     new_config['Torrents']['local_watchdir'] = LOCAL_WATCHDIR
     new_config['Torrents']['torrent_seedbox'] = int(TORRENT_SEEDBOX)
@@ -978,7 +1127,7 @@ def config_write():
     new_config['Torrents']['kat_proxy'] = KAT_PROXY
     new_config['Torrents']['enable_cbt'] = int(ENABLE_CBT)
     new_config['Torrents']['cbt_passkey'] = CBT_PASSKEY
-
+    new_config['Torrents']['snatchedtorrent_notify'] = int(SNATCHEDTORRENT_NOTIFY)
     new_config['SABnzbd'] = {}
     #new_config['SABnzbd']['use_sabnzbd'] = int(USE_SABNZBD)
     new_config['SABnzbd']['sab_host'] = SAB_HOST
@@ -1045,9 +1194,14 @@ def config_write():
 
     new_config['BOXCAR'] = {}
     new_config['BOXCAR']['boxcar_enabled'] = int(BOXCAR_ENABLED)
-    new_config['BOXCAR']['boxcar_username'] = BOXCAR_USERNAME
     new_config['BOXCAR']['boxcar_onsnatch'] = int(BOXCAR_ONSNATCH)
+    new_config['BOXCAR']['boxcar_token'] = BOXCAR_TOKEN
 
+    new_config['PUSHBULLET'] = {}
+    new_config['PUSHBULLET']['pushbullet_enabled'] = int(PUSHBULLET_ENABLED)
+    new_config['PUSHBULLET']['pushbullet_apikey'] = PUSHBULLET_APIKEY
+    new_config['PUSHBULLET']['pushbullet_deviceid'] = PUSHBULLET_DEVICEID
+    new_config['PUSHBULLET']['pushbullet_onsnatch'] = int(PUSHBULLET_ONSNATCH)
 
     new_config['Raw'] = {}
     new_config['Raw']['raw'] = int(RAW)
@@ -1061,51 +1215,63 @@ def config_write():
 def start():
     
     global __INITIALIZED__, started
+        #dbUpdateScheduler, searchScheduler, RSSScheduler, \
+        #WeeklyScheduler, VersionScheduler, FolderMonitorScheduler
+
+    with INIT_LOCK:
+
+        if __INITIALIZED__:
     
-    if __INITIALIZED__:
-    
-        # Start our scheduled background tasks
-        #from mylar import updater, searcher, librarysync, postprocessor
+            # Start our scheduled background tasks
+            #from mylar import updater, search, PostProcessor
 
-        from mylar import updater, search, weeklypull, PostProcessor
 
-        SCHED.add_interval_job(updater.dbUpdate, hours=48)
-        SCHED.add_interval_job(search.searchforissue, minutes=SEARCH_INTERVAL)
+            SCHED.add_interval_job(updater.dbUpdate, hours=48)
+            SCHED.add_interval_job(search.searchforissue, minutes=SEARCH_INTERVAL)
 
-        helpers.latestdate_fix()
+            #start the db updater scheduler
+            #logger.info('Initializing the DB Updater.')
+            #dbUpdateScheduler.thread.start()
 
-        #initiate startup rss feeds for torrents/nzbs here...
-        if ENABLE_RSS:
-            SCHED.add_interval_job(rsscheck.tehMain, minutes=int(RSS_CHECKINTERVAL))
+            #start the search scheduler
+            #searchScheduler.thread.start()
 
-            logger.info('Initiating startup-RSS feed checks.')
-            rsscheck.tehMain()
+            helpers.latestdate_fix()
+
+            #initiate startup rss feeds for torrents/nzbs here...
+            if ENABLE_RSS:
+                SCHED.add_interval_job(rsscheck.tehMain, minutes=int(RSS_CHECKINTERVAL))
+                #RSSScheduler.thread.start()
+                logger.info('Initiating startup-RSS feed checks.')
+                rsscheck.tehMain()
         
-        #SCHED.add_interval_job(librarysync.libraryScan, minutes=LIBRARYSCAN_INTERVAL)
 
-        #weekly pull list gets messed up if it's not populated first, so let's populate it then set the scheduler.
-        logger.info('Checking for existance of Weekly Comic listing...')
-        PULLNEW = 'no'  #reset the indicator here.
-        threading.Thread(target=weeklypull.pullit).start()
-        #now the scheduler (check every 24 hours)
-        SCHED.add_interval_job(weeklypull.pullit, hours=24)
+            #weekly pull list gets messed up if it's not populated first, so let's populate it then set the scheduler.
+            logger.info('Checking for existance of Weekly Comic listing...')
+            PULLNEW = 'no'  #reset the indicator here.
+            threading.Thread(target=weeklypull.pullit).start()
+            #now the scheduler (check every 24 hours)
+            SCHED.add_interval_job(weeklypull.pullit, hours=24)
+            #WeeklyScheduler.thread.start()
         
-        #let's do a run at the Wanted issues here (on startup) if enabled.
-        if NZB_STARTUP_SEARCH:
-            threading.Thread(target=search.searchforissue).start()
+            #let's do a run at the Wanted issues here (on startup) if enabled.
+            if NZB_STARTUP_SEARCH:
+                threading.Thread(target=search.searchforissue).start()
 
-        if CHECK_GITHUB:
-            SCHED.add_interval_job(versioncheck.checkGithub, minutes=CHECK_GITHUB_INTERVAL)
+            if CHECK_GITHUB:
+                #VersionScheduler.thread.start()
+                SCHED.add_interval_job(versioncheck.checkGithub, minutes=CHECK_GITHUB_INTERVAL)
         
-        #run checkFolder every X minutes (basically Manual Run Post-Processing)
-        logger.info('CHECK_FOLDER SET TO: ' + str(CHECK_FOLDER))
-        if CHECK_FOLDER:
-            if DOWNLOAD_SCAN_INTERVAL >0:
-                logger.info('Setting monitor on folder : ' + str(CHECK_FOLDER))
-                SCHED.add_interval_job(helpers.checkFolder, minutes=int(DOWNLOAD_SCAN_INTERVAL))
-            else:
-                logger.error('You need to specify a monitoring time for the check folder option to work')
-        SCHED.start()
+            #run checkFolder every X minutes (basically Manual Run Post-Processing)
+            logger.info('CHECK_FOLDER SET TO: ' + str(CHECK_FOLDER))
+            if CHECK_FOLDER:
+                if DOWNLOAD_SCAN_INTERVAL >0:
+                    logger.info('Setting monitor on folder : ' + str(CHECK_FOLDER))
+                    #FolderMonitorScheduler.thread.start()
+                    SCHED.add_interval_job(helpers.checkFolder, minutes=int(DOWNLOAD_SCAN_INTERVAL))
+                else:
+                    logger.error('You need to specify a monitoring time for the check folder option to work')
+            SCHED.start()
         
         started = True
     
@@ -1415,9 +1581,68 @@ def csv_load():
     conn.commit()
     c.close()    
 
+#def halt():
+#    global __INITIALIZED__, dbUpdateScheduler, seachScheduler, RSSScheduler, WeeklyScheduler, \
+#        VersionScheduler, FolderMonitorScheduler, started
+
+#    with INIT_LOCK:
+
+#        if __INITIALIZED__:
+
+#            logger.info(u"Aborting all threads")
+
+            # abort all the threads
+
+#            dbUpdateScheduler.abort = True
+#            logger.info(u"Waiting for the DB UPDATE thread to exit")
+#            try:
+#                dbUpdateScheduler.thread.join(10)
+#            except:
+#                pass
+
+#            searchScheduler.abort = True
+#            logger.info(u"Waiting for the SEARCH thread to exit")
+#            try:
+#                searchScheduler.thread.join(10)
+#            except:
+#                pass
+
+#            RSSScheduler.abort = True
+#            logger.info(u"Waiting for the RSS CHECK thread to exit")
+#            try:
+#                RSSScheduler.thread.join(10)
+#            except:
+#                pass
+
+#            WeeklyScheduler.abort = True
+#            logger.info(u"Waiting for the WEEKLY CHECK thread to exit")
+#            try:
+#                WeeklyScheduler.thread.join(10)
+#            except:
+#                pass
+
+#            VersionScheduler.abort = True
+#            logger.info(u"Waiting for the VERSION CHECK thread to exit")
+#            try:
+#                VersionScheduler.thread.join(10)
+#            except:
+#                pass
+
+#            FolderMonitorScheduler.abort = True
+#            logger.info(u"Waiting for the FOLDER MONITOR thread to exit")
+#            try:
+#                FolderMonitorScheduler.thread.join(10)
+#            except:
+#                pass
+
+#            __INITIALIZED__ = False
+
 def shutdown(restart=False, update=False):
 
+    #halt()
+
     cherrypy.engine.exit()
+
     SCHED.shutdown(wait=False)
     
     config_write()
@@ -1431,8 +1656,8 @@ def shutdown(restart=False, update=False):
         except Exception, e:
             logger.warn('Mylar failed to update: %s. Restarting.' % e) 
 
-    if PIDFILE :
-        logger.info ('Removing pidfile %s' % PIDFILE)
+    if CREATEPID:
+        logger.info('Removing pidfile %s' % PIDFILE)
         os.remove(PIDFILE)
         
     if restart:

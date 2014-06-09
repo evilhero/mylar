@@ -16,11 +16,14 @@
 
 import os
 import os.path
+import zlib
 import pprint
 import subprocess
 import re
-import logger
+#import logger
 import mylar
+from mylar import logger, helpers
+import unicodedata
 import sys
 import platform
 
@@ -35,8 +38,8 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
     # checker looks for Star Trek TNG Doctor Who Assimilation2 (according to CV)
     
     # we need to convert to ascii, as watchcomic is utf-8 and special chars f'it up
-    u_watchcomic = watchcomic.encode('ascii', 'ignore').strip()    
-    logger.fdebug('[FILECHECKER] comic: ' + watchcomic)
+    u_watchcomic = unicodedata.normalize('NFKD', watchcomic).encode('ASCII', 'ignore') #watchcomic.encode('ascii', 'ignore').strip()
+    logger.fdebug('[FILECHECKER] comic: ' + u_watchcomic)
     basedir = dir
     logger.fdebug('[FILECHECKER] Looking in: ' + dir)
     watchmatch = {}
@@ -84,15 +87,21 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
             moddir = basedir.replace(dir,'')[1:].rstrip()
 
         item = fname['filename']
+
+        #for mac OS metadata ignoring.
+        if item.startswith('._'):
+            logger.info('ignoring os metadata for ' + item)
+            continue
              
         if item == 'cover.jpg' or item == 'cvinfo': continue
-        if not item.endswith(extensions):
+        if not item.lower().endswith(extensions):
             logger.fdebug('[FILECHECKER] filename not a valid cbr/cbz - ignoring: ' + item)
             continue
 
         #print item
         #subname = os.path.join(basedir, item)
         subname = item
+        subname = re.sub('\_', ' ', subname)
 
         #Remove html code for ( )
         subname = re.sub(r'%28', '(', subname)
@@ -157,12 +166,16 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
             #if the series has digits this f's it up.
             if numberinseries == 'True' or decimalinseries == 'True':
                 #we need to remove the series from the subname and then search the remainder.
-                watchname = re.sub('[-\:\;\!\'\/\?\+\=\_\%\.]', '', watchcomic)   #remove spec chars for watchcomic match.
+                watchname = re.sub('[\:\;\!\'\/\?\+\=\_\%\.]', '', watchcomic)   #remove spec chars for watchcomic match.
                 logger.fdebug('[FILECHECKER] watch-cleaned: ' + str(watchname))
                 subthis = re.sub('.cbr', '', subname)
                 subthis = re.sub('.cbz', '', subthis)
-                subthis = re.sub('[-\:\;\!\'\/\?\+\=\_\%\.]', '', subthis)
+                subthis = re.sub('[\:\;\!\'\/\?\+\=\_\%\.]', '', subthis)
                 logger.fdebug('[FILECHECKER] sub-cleaned: ' + str(subthis))
+                #we need to make sure the file is part of the correct series or else will match falsely 
+                if watchname not in subthis:
+                    logger.fdebug('[FILECHECKER] this is a false match. Ignoring this result.')
+                    continue
                 subthis = subthis[len(watchname):]  #remove watchcomic
                 #we need to now check the remainder of the string for digits assuming it's a possible year
                 logger.fdebug('[FILECHECKER] new subname: ' + str(subthis))
@@ -170,71 +183,77 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
                 subname = watchcomic + subname
                 subnm = re.findall('[^()]+', subname)
             else:
-                subit = re.sub('(.*)[\s+|_+](19\d{2}|20\d{2})(.*)', '\\1 (\\2) \\3', subname)
+                subit = re.sub('(.*)[\s+|_+](19\d{2}|20\d{2})(.*)', '\\1 \\3 (\\2)', subname).replace('( )', '')
                 subthis2 = re.sub('.cbr', '', subit)
                 subthis1 = re.sub('.cbz', '', subthis2)
-                subname = re.sub('[-\:\;\!\'\/\?\+\=\_\%\-]', '', subthis1)
+                subname = re.sub('[\:\;\!\'\/\?\+\=\_\%]', '', subthis1)
                 #if '.' appears more than once at this point, then it's being used in place of spaces.
                 #if '.' only appears once at this point, it's a decimal issue (since decimalinseries is False within this else stmt).
                 if len(str(subname.count('.'))) == 1:
-                    logger.fdebug('decimal issue detected, not removing decimals')
+                    logger.fdebug('[FILECHECKER] decimal issue detected, not removing decimals')
                 else:
-                    logger.fdebug('more than one decimal detected, and the series does not have decimals - assuming in place of spaces.')
+                    logger.fdebug('[FILECHECKER] more than one decimal detected, and the series does not have decimals - assuming in place of spaces.')
                     subname = re.sub('[\.]', '', subname)
                
                 subnm = re.findall('[^()]+', subname)
 
-        if Publisher.lower() in subname.lower():
-            #if the Publisher is given within the title or filename even (for some reason, some people
-            #have this to distinguish different titles), let's remove it entirely.
-            lenm = len(subnm)
+        subsplit = subname.replace('_', ' ').split()
 
-            cnt = 0
-            pub_removed = None
+        if sarc is None:
+            if Publisher.lower() in re.sub('_', ' ', subname.lower()):
+                #if the Publisher is given within the title or filename even (for some reason, some people
+                #have this to distinguish different titles), let's remove it entirely.
+                lenm = len(subnm)
 
-            while (cnt < lenm):
-                if subnm[cnt] is None: break
-                if subnm[cnt] == ' ':
-                    pass
-                else:
-                    logger.fdebug(str(cnt) + ". Bracket Word: " + str(subnm[cnt]))
+                cnt = 0
+                pub_removed = None
 
-                if Publisher.lower() in subnm[cnt].lower() and cnt >= 1:
-                    logger.fdebug('Publisher detected within title : ' + str(subnm[cnt]))
-                    logger.fdebug('cnt is : ' + str(cnt) + ' --- Publisher is: ' + Publisher)
-                    pub_removed = subnm[cnt]
-                    #-strip publisher if exists here-
-                    logger.fdebug('removing publisher from title')
-                    subname_pubremoved = re.sub(pub_removed, '', subname)
-                    logger.fdebug('pubremoved : ' + str(subname_pubremoved))
-                    subname_pubremoved = re.sub('\(\)', '', subname_pubremoved) #remove empty brackets
-                    subname_pubremoved = re.sub('\s+', ' ', subname_pubremoved) #remove spaces > 1
-                    logger.fdebug('blank brackets removed: ' + str(subname_pubremoved))
-                    subnm = re.findall('[^()]+', subname_pubremoved)
-                    break
-                cnt+=1
+                while (cnt < lenm):
+                    submod = re.sub('_', ' ', subnm[cnt])
+                    if submod is None: break
+                    if submod == ' ':
+                        pass
+                    else:
+                        logger.fdebug('[FILECHECKER] ' + str(cnt) + ". Bracket Word: " + str(submod))
+
+                    if Publisher.lower() in submod.lower() and cnt >= 1:
+                        logger.fdebug('[FILECHECKER] Publisher detected within title : ' + str(submod))
+                        logger.fdebug('[FILECHECKER] cnt is : ' + str(cnt) + ' --- Publisher is: ' + Publisher)
+                        #-strip publisher if exists here-
+                        pub_removed = submod
+                        logger.fdebug('[FILECHECKER] removing publisher from title')
+                        subname_pubremoved = re.sub(pub_removed, '', subname)
+                        logger.fdebug('[FILECHECKER] pubremoved : ' + str(subname_pubremoved))
+                        subname_pubremoved = re.sub('\(\)', '', subname_pubremoved) #remove empty brackets
+                        subname_pubremoved = re.sub('\s+', ' ', subname_pubremoved) #remove spaces > 1
+                        logger.fdebug('[FILECHECKER] blank brackets removed: ' + str(subname_pubremoved))
+                        subnm = re.findall('[^()]+', subname_pubremoved)
+                        break
+                    cnt+=1
 
         #If the Year comes before the Issue # the subname is passed with no Issue number.
         #This logic checks for numbers before the extension in the format of 1 01 001 
         #and adds to the subname. (Cases where comic name is $Series_$Year_$Issue)
         if len(subnm) > 1:
-            if (re.search('[0-9]{0,1}[0-9]{0,1}[0-9]{1,1}\.cb.',subnm[2]) is not None):
-                subname = str(subnm[0])+str(subnm[2])
-            else:
-                subname = subnm[0]
-        else:
-            subname = subnm[0]
+            if (re.search('(19\d{2}|20\d{2})',subnm[1]) is not None):
+                logger.fdebug('[FILECHECKER] subnm0: ' + str(subnm[0]))
+                logger.fdebug('[FILECHECKER] subnm1: ' + str(subnm[1]))
+#                logger.fdebug('subnm2: ' + str(subnm[2]))
+                subname = str(subnm[0]).lstrip() + ' (' + str(subnm[1]).strip() + ') '
+                subnm = re.findall('[^()]+', subname)  # we need to regenerate this here.
+
+        subname = subnm[0]
 
         if len(subnm):
             # if it still has no year (brackets), check setting and either assume no year needed.
             subname = subname                
         logger.fdebug('[FILECHECKER] subname no brackets: ' + str(subname))
-        subname = re.sub('\_', ' ', subname)
         nonocount = 0
         charpos = 0
         detneg = "no"
         leavehyphen = False
         should_restart = True
+        lenwatch = len(watchcomic)  # because subname gets replaced dynamically, the length will change and things go wrong.
         while should_restart:
             should_restart = False
             for nono in not_these:
@@ -254,7 +273,8 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
                                     logger.fdebug('[FILECHECKER] possible negative issue detected.')
                                     nonocount = nonocount + subcnt - 1
                                     detneg = "yes"                                
-                                elif '-' in watchcomic and i < len(watchcomic):
+                                elif '-' in watchcomic and j < lenwatch:
+                                    lenwatch -=1
                                     logger.fdebug('[FILECHECKER] - appears in series title.')
                                     logger.fdebug('[FILECHECKER] up to - :' + subname[:j+1].replace('-', ' '))
                                     logger.fdebug('[FILECHECKER] after -  :' + subname[j+1:])
@@ -263,7 +283,7 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
                                     should_restart = True
                                     leavehyphen = True
                             i+=1
-                        if detneg == "no" or leavehyphen == False: 
+                        if detneg == "no" and leavehyphen == False: 
                             subname = re.sub(str(nono), ' ', subname)
                             nonocount = nonocount + subcnt
                 #logger.fdebug('[FILECHECKER] (str(nono) + " detected " + str(subcnt) + " times.")
@@ -335,7 +355,7 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
                 #same = encode.
                 u_altsearchcomic = AS_Alternate.encode('ascii', 'ignore').strip()
                 altsearchcomic = re.sub('[\_\#\,\/\:\;\.\!\$\%\+\'\?\@]', ' ', u_altsearchcomic)
-                altsearchcomic = re.sub('[\-]', '', altsearchcomic)
+                altsearchcomic = re.sub('[\-]', ' ', altsearchcomic)  #because this is a watchcomic registered, use same algorithim for watchcomic
                 altsearchcomic = re.sub('\&', ' and ', altsearchcomic)
                 altsearchcomic = re.sub('\s+', ' ', str(altsearchcomic)).strip()       
                 AS_Alt.append(altsearchcomic)
@@ -374,23 +394,23 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
                     i=0
                     while (i < len(charpos)):
                         for i,j in enumerate(charpos):
-                            #print i,j
-                            #print subname
-                            #print "digitchk: " + str(subname[j:])
+                            #logger.fdebug('i,j:' + str(i) + ',' + str(j))
+                            #logger.fdebug(str(len(subname)) + ' - subname: ' + subname)
+                            #logger.fdebug("digitchk: " + str(subname[j:]))
                             if j >= len(subname):
                                 logger.fdebug('[FILECHECKER] end reached. ignoring remainder.')
                                 break
                             elif subname[j:] == '-':
-                                if i <= len(subname) and subname[i+1].isdigit():
+                                if j <= len(subname) and subname[j+1].isdigit():
                                     logger.fdebug('[FILECHECKER] negative issue detected.')
                                     #detneg = "yes"
                             elif j > findtitlepos:
                                 if subname[j:] == '#':
-                                   if subname[i+1].isdigit():
+                                   if subname[j+1].isdigit():
                                         logger.fdebug('[FILECHECKER] # detected denoting issue#, ignoring.')
                                    else: 
                                         nonocount-=1
-                                elif '-' in watchcomic and i < len(watchcomic):
+                                elif '-' in watchcomic and j < len(watchcomic):
                                    logger.fdebug('[FILECHECKER] - appears in series title, ignoring.')
                                 else:                             
                                    logger.fdebug('[FILECHECKER] special character appears outside of title - ignoring @ position: ' + str(charpos[i]))
@@ -746,6 +766,8 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
                      'JusttheDigits':           justthedigits
                      })
                 #print('appended.')
+#               watchmatch['comiclist'] = comiclist
+#               break
             else:
                 if moddir is not None:
                     item = os.path.join(moddir, item)
@@ -755,10 +777,12 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
                      'ComicSize':               comicsize,
                      'JusttheDigits':           justthedigits
                      })
+            #crcvalue = crc(comicpath)
+            #logger.fdebug('[FILECHECKER] CRC is calculated as ' + str(crcvalue) + ' for : ' + item)
             watchmatch['comiclist'] = comiclist
         else:
+            #directory found - ignoring
             pass
-            #print ("directory found - ignoring")
 
     logger.fdebug('[FILECHECKER] you have a total of ' + str(comiccnt) + ' ' + watchcomic + ' comics')
     watchmatch['comiccount'] = comiccnt
@@ -778,7 +802,7 @@ def validateAndCreateDirectory(dir, create=False):
                     os.umask(0) # this is probably redudant, but it doesn't hurt to clear the umask here.
                     os.makedirs(dir.rstrip(), permission )
                 except OSError:
-                    raise SystemExit('Could not create data directory: ' + mylar.DATA_DIR + '. Exiting....')
+                    raise SystemExit('Could not create directory: ' + dir + '. Exiting....')
                 return True
             else:
                 logger.warn('Provided directory is blank, aborting')
@@ -807,3 +831,13 @@ def traverse_directories(dir):
     #logger.fdeubg(filelist)
 
     return filelist
+
+def crc(filename):
+    #memory in lieu of speed (line by line)
+    #prev = 0
+    #for eachLine in open(filename,"rb"):
+    #    prev = zlib.crc32(eachLine, prev)
+    #return "%X"%(prev & 0xFFFFFFFF)
+
+    #speed in lieu of memory (file into memory entirely)
+    return "%X" % (zlib.crc32(open(filename,"rb").read()) & 0xFFFFFFFF)

@@ -29,10 +29,15 @@ def pulldetails(comicid,type,issueid=None,offset=1):
     #import easy to use xml parser called minidom:
     from xml.dom.minidom import parseString
 
-    comicapi='583939a3df0a25fc4e8b7a29934a13078002dc27'
+    if mylar.COMICVINE_API == 'None' or mylar.COMICVINE_API is None or mylar.COMICVINE_API == mylar.DEFAULT_CVAPI:
+        logger.warn('You have not specified your own ComicVine API key - alot of things will be limited. Get your own @ http://api.comicvine.com.')
+        comicapi = mylar.DEFAULT_CVAPI
+    else:
+        comicapi = mylar.COMICVINE_API
+
     if type == 'comic':
         if not comicid.startswith('4050-'): comicid = '4050-' + comicid
-        PULLURL= mylar.CVURL + 'volume/' + str(comicid) + '/?api_key=' + str(comicapi) + '&format=xml&field_list=name,count_of_issues,issues,start_year,site_detail_url,image,publisher,description,first_issue,deck'
+        PULLURL= mylar.CVURL + 'volume/' + str(comicid) + '/?api_key=' + str(comicapi) + '&format=xml&field_list=name,count_of_issues,issues,start_year,site_detail_url,image,publisher,description,first_issue,deck,aliases'
     elif type == 'issue':
         if mylar.CV_ONLY:
             cv_type = 'issues'
@@ -46,6 +51,7 @@ def pulldetails(comicid,type,issueid=None,offset=1):
         PULLURL = mylar.CVURL + 'issues/?api_key=' + str(comicapi) + '&format=xml&filter=id:' + str(issueid) + '&field_list=cover_date'
     elif type == 'storyarc':
        PULLURL =  mylar.CVURL + 'story_arc/?api_key=' + str(comicapi) + '&format=xml&filter=id:' + str(issueid) + '&field_list=cover_date'
+
 
     #download the file:
     file = urllib2.urlopen(PULLURL)
@@ -125,8 +131,12 @@ def GetComicInfo(comicid,dom):
     cntit = int(cntit)
     #retrieve the first xml tag (<tag>data</tag>)
     #that the parser finds with name tagName:
-    comic['ComicName'] = dom.getElementsByTagName('name')[trackcnt+1].firstChild.wholeText
-    comic['ComicName'] = comic['ComicName'].rstrip() 
+    try:
+        comic['ComicName'] = dom.getElementsByTagName('name')[trackcnt+1].firstChild.wholeText
+        comic['ComicName'] = comic['ComicName'].rstrip() 
+    except:
+        logger.error('There was a problem retrieving the given data from ComicVine. Ensure that www.comicvine.com is accessible AND that you have provided your OWN ComicVine API key.')
+        return
     try:
         comic['ComicYear'] = dom.getElementsByTagName('start_year')[0].firstChild.wholeText
     except:
@@ -149,6 +159,12 @@ def GetComicInfo(comicid,dom):
         desdeck +=1
     except:
         comic_deck = 'None'
+
+    try:
+        comic['Aliases'] = dom.getElementsByTagName('aliases')[0].firstChild.wholeText
+        #logger.fdebug('Aliases: ' + str(aliases))
+    except:
+        comic['Aliases'] = 'None'
 
     comic['ComicVersion'] = 'noversion'
     #logger.info('comic_desc:' + comic_desc)
@@ -177,19 +193,19 @@ def GetComicInfo(comicid,dom):
                 #sometimes it's volume 5 and ocassionally it's fifth volume.
                 if i == 0:
                     vfind = comicDes[v_find:v_find+15]   #if it's volume 5 format
-                    basenums = {'zero':'0','one':'1','two':'2','three':'3','four':'4','five':'5','six':'6','seven':'7','eight':'8','nine':'9','ten':'10'}
-                    #logger.fdebug(str(i) + ': ' + str(vfind))
+                    basenums = {'zero':'0','one':'1','two':'2','three':'3','four':'4','five':'5','six':'6','seven':'7','eight':'8','nine':'9','ten':'10','i':'1','ii':'2','iii':'3','iv':'4','v':'5'}
+                    logger.fdebug('volume X format - ' + str(i) + ': ' + vfind)
                 else:
                     vfind = comicDes[:v_find]   # if it's fifth volume format
-                    basenums = {'zero':'0','first':'1','second':'2','third':'3','fourth':'4','fifth':'5','sixth':'6','seventh':'7','eighth':'8','nineth':'9','tenth':'10'}
-                    #logger.fdebug(str(i) + ': ' + str(vfind))
+                    basenums = {'zero':'0','first':'1','second':'2','third':'3','fourth':'4','fifth':'5','sixth':'6','seventh':'7','eighth':'8','nineth':'9','tenth':'10','i':'1','ii':'2','iii':'3','iv':'4','v':'5'}
+                    logger.fdebug('X volume format - ' + str(i) + ': ' + vfind)
                 volconv = ''
                 for nums in basenums:
                     if nums in vfind.lower():
                         sconv = basenums[nums]
                         vfind = re.sub(nums, sconv, vfind.lower())
                         break        
-                #logger.fdebug('volconv: ' + str(volconv))
+                #logger.info('volconv: ' + str(volconv))
 
                 #now we attempt to find the character position after the word 'volume'
                 if i == 0:
@@ -208,14 +224,14 @@ def GetComicInfo(comicid,dom):
                 ledigit = re.sub("[^0-9]", "", vf[0])
                 if ledigit != '':
                     comic['ComicVersion'] = ledigit
-                    logger.info("Volume information found! Adding to series record : volume " + comic['ComicVersion'])
+                    logger.fdebug("Volume information found! Adding to series record : volume " + comic['ComicVersion'])
                     break
                 i+=1
             else:
                 i+=1
 
         if comic['ComicVersion'] == 'noversion':
-            logger.info('comic[ComicVersion]:' + str(comic['ComicVersion']))
+            logger.fdebug('comic[ComicVersion]:' + str(comic['ComicVersion']))
             desdeck -=1
         else:
             break
@@ -224,7 +240,9 @@ def GetComicInfo(comicid,dom):
         comic['ComicIssues'] = str(cntit)
     else:
         comic['ComicIssues'] = dom.getElementsByTagName('count_of_issues')[0].firstChild.wholeText
+
     comic['ComicImage'] = dom.getElementsByTagName('super_url')[0].firstChild.wholeText
+    comic['ComicImageALT'] = dom.getElementsByTagName('small_url')[0].firstChild.wholeText
 
     try:
         comic['ComicPublisher'] = dom.getElementsByTagName('name')[trackcnt+2].firstChild.wholeText
