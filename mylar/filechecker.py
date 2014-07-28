@@ -167,11 +167,11 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
             if numberinseries == 'True' or decimalinseries == 'True':
                 #we need to remove the series from the subname and then search the remainder.
                 watchname = re.sub('[\:\;\!\'\/\?\+\=\_\%\.]', '', watchcomic)   #remove spec chars for watchcomic match.
-                logger.fdebug('[FILECHECKER] watch-cleaned: ' + str(watchname))
+                logger.fdebug('[FILECHECKER] watch-cleaned: ' + watchname)
                 subthis = re.sub('.cbr', '', subname)
                 subthis = re.sub('.cbz', '', subthis)
                 subthis = re.sub('[\:\;\!\'\/\?\+\=\_\%\.]', '', subthis)
-                logger.fdebug('[FILECHECKER] sub-cleaned: ' + str(subthis))
+                logger.fdebug('[FILECHECKER] sub-cleaned: ' + subthis)
                 #we need to make sure the file is part of the correct series or else will match falsely 
                 if watchname not in subthis:
                     logger.fdebug('[FILECHECKER] this is a false match. Ignoring this result.')
@@ -788,24 +788,27 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
     watchmatch['comiccount'] = comiccnt
     return watchmatch
 
-def validateAndCreateDirectory(dir, create=False):
+def validateAndCreateDirectory(dir, create=False, module=None):
+    if module is None:
+        module = ''
+    module += '[DIRECTORY-CHECK]'
     if os.path.exists(dir):
-        logger.info('Found comic directory: ' + dir)
+        logger.info(module + ' Found comic directory: ' + dir)
         return True
     else:
-        logger.warn('Could not find comic directory: ' + dir)
+        logger.warn(module + ' Could not find comic directory: ' + dir)
         if create:
             if dir.strip():
-                logger.info('Creating comic directory (' + str(mylar.CHMOD_DIR) + ') : ' + dir)
+                logger.info(module + ' Creating comic directory (' + str(mylar.CHMOD_DIR) + ') : ' + dir)
                 try:
                     permission = int(mylar.CHMOD_DIR, 8)
                     os.umask(0) # this is probably redudant, but it doesn't hurt to clear the umask here.
                     os.makedirs(dir.rstrip(), permission )
                 except OSError:
-                    raise SystemExit('Could not create directory: ' + dir + '. Exiting....')
+                    raise SystemExit(module + ' Could not create directory: ' + dir + '. Exiting....')
                 return True
             else:
-                logger.warn('Provided directory is blank, aborting')
+                logger.warn(module + ' Provided directory is blank, aborting')
                 return False
     return False
 

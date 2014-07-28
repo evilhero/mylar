@@ -467,6 +467,17 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
 
                     logger.fdebug('Annual detected within series title of ' + series + '. Not auto-correcting issue #')
 
+            series = series.encode('ascii', 'ignore').strip()
+            filebad = [':',',','/','?','!','\''] #in u_comicname or '/' in u_comicname or ',' in u_comicname or '?' in u_comicname:
+            for dbd in filebad:
+                if dbd in series:
+                    if dbd == '/': repthechar = '-'
+                    else: repthechar = ''
+                    series = series.replace(dbd,repthechar)
+                    logger.fdebug('Altering series name due to filenaming restrictions: ' + series)
+           
+            publisher = re.sub('!','', publisher)
+
             file_values = {'$Series':    series,
                            '$Issue':     prettycomiss,
                            '$Year':      issueyear,
@@ -497,13 +508,15 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                 if mylar.REPLACE_SPACES:
                     #mylar.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
                     nfilename = nfilename.replace(' ', mylar.REPLACE_CHAR)
+
             nfilename = re.sub('[\,\:]', '', nfilename) + ext.lower()
             logger.fdebug('New Filename: ' + str(nfilename))
 
             if mylar.LOWERCASE_FILENAMES:
-                dst = (comlocation + "/" + nfilename).lower()
+                dst = os.path.join(comlocation, nfilename.lower())
             else:
-                dst = comlocation + "/" + nfilename
+                dst = os.path.join(comlocation, nfilename)
+
             logger.fdebug('Source: ' + str(ofilename))
             logger.fdebug('Destination: ' + str(dst))
 
@@ -978,15 +991,30 @@ def LoadAlternateSearchNames(seriesname_alt, comicid):
 
         return Alternate_Names
 
-def havetotals():
+def havetotals(refreshit=None):
         import db, logger
 
         comics = []
 
         myDB = db.DBConnection()
-        comiclist = myDB.select('SELECT * from comics order by ComicSortName COLLATE NOCASE')
+
+        if refreshit is None:
+            comiclist = myDB.select('SELECT * from comics order by ComicSortName COLLATE NOCASE')
+        else:
+            comiclist = []
+            comicref = myDB.selectone("SELECT * from comics WHERE ComicID=?", [refreshit]).fetchone()
+            #refreshit is the ComicID passed from the Refresh Series to force/check numerical have totals
+            comiclist.append({"ComicID":  comicref[0],
+                              "Have":     comicref[7],
+                              "Total":   comicref[8]})
         for comic in comiclist:
-            issue = myDB.select("SELECT * FROM issues WHERE ComicID=?", [comic['ComicID']])
+            issue = myDB.selectone("SELECT COUNT(*) as count FROM issues WHERE ComicID=?", [comic['ComicID']]).fetchone()
+            if issue is None:
+                if refreshit is not None:
+                    logger.fdebug(str(comic['ComicID']) + ' has no issuedata available. Forcing complete Refresh/Rescan')
+                    return True                    
+                else:
+                    continue
             if mylar.ANNUALS_ON:
                 annuals_on = True
                 annual = myDB.selectone("SELECT COUNT(*) as count FROM annuals WHERE ComicID=?", [comic['ComicID']]).fetchone()
@@ -1007,7 +1035,13 @@ def havetotals():
                 continue
 
             if not haveissues:
-               havetracks = 0
+                havetracks = 0
+
+            if refreshit is not None:
+                if haveissues > totalissues:
+                    return True   # if it's 5/4, send back to updater and don't restore previous status'
+                else:
+                    return False  # if it's 5/5 or 4/5, send back to updater and restore previous status'
 
             try:
                 percent = (haveissues*100.0)/totalissues
@@ -1050,6 +1084,41 @@ def havetotals():
                            "DateAdded":       comic['LastUpdated']})
 
         return comics
+
+def cvapi_check(web=None):
+    import logger
+    if web is None: logger.fdebug('[ComicVine API] ComicVine API Check Running...')
+    if mylar.CVAPI_TIME is None or mylar.CVAPI_TIME == '':
+        c_date = now()
+        c_obj_date = datetime.datetime.strptime(c_date,"%Y-%m-%d %H:%M:%S")
+        mylar.CVAPI_TIME = c_obj_date
+    else:
+        if isinstance(mylar.CVAPI_TIME, unicode):
+            c_obj_date = datetime.datetime.strptime(mylar.CVAPI_TIME,"%Y-%m-%d %H:%M:%S")
+        else:
+            c_obj_date = mylar.CVAPI_TIME
+    if web is None: logger.fdebug('[ComicVine API] API Start Monitoring Time (~15mins): ' + str(mylar.CVAPI_TIME))
+    now_date = now()
+    n_date = datetime.datetime.strptime(now_date,"%Y-%m-%d %H:%M:%S")
+    if web is None: logger.fdebug('[ComicVine API] Time now: ' + str(n_date))
+    absdiff = abs(n_date - c_obj_date)
+    mins = round(((absdiff.days * 24 * 60 * 60 + absdiff.seconds) / 60.0),2)
+    if mins < 15:
+        if web is None: logger.info('[ComicVine API] Comicvine API count now at : ' + str(mylar.CVAPI_COUNT) + ' / ' + str(mylar.CVAPI_MAX) + ' in ' + str(mins) + ' minutes.')
+        if mylar.CVAPI_COUNT > mylar.CVAPI_MAX:
+            cvleft = 15 - mins
+            if web is None: logger.warn('[ComicVine API] You have already hit your API limit (' + str(mylar.CVAPI_MAX) + ' with ' + str(cvleft) + ' minutes. Best be slowing down, cowboy.')
+    elif mins > 15:
+        mylar.CVAPI_COUNT = 0
+        c_date = now()
+        mylar.CVAPI_TIME = datetime.datetime.strptime(c_date,"%Y-%m-%d %H:%M:%S")
+        if web is None: logger.info('[ComicVine API] 15 minute API interval resetting [' + str(mylar.CVAPI_TIME) + ']. Resetting API count to : ' + str(mylar.CVAPI_COUNT))
+
+    if web is None:
+        return        
+    else:
+        line = str(mylar.CVAPI_COUNT) + ' hits / ' + str(mins) + ' minutes'
+        return line
 
 from threading import Thread
 

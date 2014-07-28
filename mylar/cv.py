@@ -21,6 +21,8 @@ import string
 import urllib
 import lib.feedparser
 import mylar
+from mylar.helpers import cvapi_check
+
 from bs4 import BeautifulSoup as Soup
 
 def pulldetails(comicid,type,issueid=None,offset=1):
@@ -52,9 +54,13 @@ def pulldetails(comicid,type,issueid=None,offset=1):
     elif type == 'storyarc':
        PULLURL =  mylar.CVURL + 'story_arc/?api_key=' + str(comicapi) + '&format=xml&filter=id:' + str(issueid) + '&field_list=cover_date'
 
-
+    #CV API Check here.
+    if mylar.CVAPI_COUNT == 0 or mylar.CVAPI_COUNT >= mylar.CVAPI_MAX:
+        cvapi_check()
     #download the file:
     file = urllib2.urlopen(PULLURL)
+    #increment CV API counter.
+    mylar.CVAPI_COUNT +=1
     #convert to string:
     data = file.read()
     #close file because we dont need it anymore:
@@ -131,12 +137,32 @@ def GetComicInfo(comicid,dom):
     cntit = int(cntit)
     #retrieve the first xml tag (<tag>data</tag>)
     #that the parser finds with name tagName:
+    # to return the parent name of the <name> node : dom.getElementsByTagName('name')[0].parentNode.nodeName
+    # where [0] denotes the number of the name field(s)
+    # where nodeName denotes the parentNode : ComicName = results, publisher = publisher, issues = issue
     try:
-        comic['ComicName'] = dom.getElementsByTagName('name')[trackcnt+1].firstChild.wholeText
-        comic['ComicName'] = comic['ComicName'].rstrip() 
+        names = len( dom.getElementsByTagName('name') )
+        n = 0
+        while ( n < names ):
+            if dom.getElementsByTagName('name')[n].parentNode.nodeName == 'results':
+                try:
+                    comic['ComicName'] = dom.getElementsByTagName('name')[n].firstChild.wholeText
+                    comic['ComicName'] = comic['ComicName'].rstrip() 
+                except:
+                    logger.error('There was a problem retrieving the given data from ComicVine. Ensure that www.comicvine.com is accessible AND that you have provided your OWN ComicVine API key.')
+                    return
+
+            elif dom.getElementsByTagName('name')[n].parentNode.nodeName == 'publisher':
+                try:
+                    comic['ComicPublisher'] = dom.getElementsByTagName('name')[n].firstChild.wholeText
+                except:
+                    comic['ComicPublisher'] = "Unknown"
+
+            n+=1  
     except:
-        logger.error('There was a problem retrieving the given data from ComicVine. Ensure that www.comicvine.com is accessible AND that you have provided your OWN ComicVine API key.')
+        logger.warn('Something went wrong retrieving from ComicVine. Ensure your API is up-to-date and that comicvine is accessible')
         return
+
     try:
         comic['ComicYear'] = dom.getElementsByTagName('start_year')[0].firstChild.wholeText
     except:
@@ -243,11 +269,6 @@ def GetComicInfo(comicid,dom):
 
     comic['ComicImage'] = dom.getElementsByTagName('super_url')[0].firstChild.wholeText
     comic['ComicImageALT'] = dom.getElementsByTagName('small_url')[0].firstChild.wholeText
-
-    try:
-        comic['ComicPublisher'] = dom.getElementsByTagName('name')[trackcnt+2].firstChild.wholeText
-    except:
-        comic['ComicPublisher'] = "Unknown"
 
     comic['FirstIssueID'] = dom.getElementsByTagName('id')[0].firstChild.wholeText
 

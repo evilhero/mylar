@@ -34,7 +34,7 @@ import email.utils
 import datetime
 from wsgiref.handlers import format_date_time
 
-def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDate, StoreDate, IssueID, AlternateSearch=None, UseFuzzy=None, ComicVersion=None, SARC=None, IssueArcID=None, mode=None, rsscheck=None, ComicID=None):
+def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDate, StoreDate, IssueID, AlternateSearch=None, UseFuzzy=None, ComicVersion=None, SARC=None, IssueArcID=None, mode=None, rsscheck=None, ComicID=None, manualsearch=None):
     if ComicYear == None: ComicYear = '2014'
     else: ComicYear = str(ComicYear)[:4]
     if Publisher == 'IDW Publishing': Publisher = 'IDW'
@@ -93,14 +93,10 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueD
         for newznab_host in mylar.EXTRA_NEWZNABS:
             if newznab_host[4] == '1' or newznab_host[4] == 1:
                 newznab_hosts.append(newznab_host)              
-                if newznab_host[0] == newznab_host[1]:
-                    nzbprovider.append('newznab')
-                else:
-                    nzbprovider.append('newznab:' + str(newznab_host[0]))
-#                except:
-#                    nzbprovider.append('newznab')
-#                    logger.error("newznab name not given for " + str(newznab_host[0]) + ". Defaulting name to newznab.")
-
+                #if newznab_host[0] == newznab_host[1]:
+                #    nzbprovider.append('newznab')
+                #else:
+                nzbprovider.append('newznab:' + str(newznab_host[0]))
                 newznabs+=1
                 logger.fdebug("newznab name:" + str(newznab_host[0]) + " @ " + str(newznab_host[1]))
 
@@ -238,11 +234,11 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueD
         if findit == 'yes': 
             return findit, searchprov        
         else:
-            logger.fdebug("Finished searching via : " + str(searchmode))
+            if manualsearch is None:
+                logger.info('Finished searching via :' + str(searchmode) + '. Issue not found - status kept as Wanted.')
+            else:
+                logger.info('Could not find issue doing a manual search via : ' + str(searchmode))
             i+=1
-
-        if findit == 'no':
-            logger.info('Issue not found. Status kept as Wanted.')
 
     return findit, 'None'
 
@@ -603,7 +599,11 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                                 continue
                     #use store date instead of publication date for comparisons since publication date is usually +2 months 
                     if StoreDate is None or StoreDate == '0000-00-00':
-                        stdate = IssueDate
+                        if IssueDate is None or IssueDate == '0000-00-00':
+                            logger.fdebug('Invalid store date & issue date detected - you probably should refresh the series or wait for CV to correct the data')
+                            continue
+                        else:
+                            stdate = IssueDate
                     else:
                         stdate = StoreDate
                     #logger.fdebug('Posting date of : ' + str(pubdate))
@@ -1210,11 +1210,16 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                                 logger.fdebug("link to retrieve via api:" + str(helpers.apiremove(linkapi,'$')))
                            
                                 #let's change all space to decimals for simplicity
-                                nzbname = re.sub(" ", ".", str(entry['title']))
+                                nzbname = re.sub('\s+',' ', entry['title'])  #make sure we remove the extra spaces.
+                                logger.fdebug('[SEARCHER] entry[title]: ' + entry['title'])
+                                logger.fdebug('[SEARCHER] nzbname (\s): ' + nzbname)
+                                nzbname = re.sub(' ', '.', nzbname)
+                                logger.fdebug('[SEARCHER] nzbname (space to .): ' + nzbname)
                                 #gotta replace & or escape it
-                                nzbname = re.sub("\&", 'and', str(nzbname))
-                                nzbname = re.sub('[\,\:\?]', '', str(nzbname))
+                                nzbname = re.sub("\&", 'and', nzbname)
+                                nzbname = re.sub('[\,\:\?]', '', nzbname)
                                 extensions = ('.cbr', '.cbz')
+                                logger.fdebug('[SEARCHER] end nzbname: ' + nzbname)
 
                                 if nzbname.lower().endswith(extensions):
                                     fd, ext = os.path.splitext(nzbname)
@@ -1386,6 +1391,9 @@ def searchforissue(issueid=None, new=False, rsscheck=None):
             comic = myDB.selectone("SELECT * from comics WHERE ComicID=? AND ComicName != 'None'", [result['ComicID']]).fetchone()
             if comic is None:
                 logger.fdebug(str(result['ComicID']) + ' has no associated comic information. Skipping searching for this series.')
+                continue
+            if result['StoreDate'] == '0000-00-00':
+                logger.fdebug(str(result['ComicID']) + ' has an invalid Store Date. Skipping searching for this series.')
                 continue
             foundNZB = "none"
             SeriesYear = comic['ComicYear']

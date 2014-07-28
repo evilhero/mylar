@@ -59,6 +59,16 @@ def dbUpdate(ComicIDList=None):
                 logger.fdebug("Gathering the status of all issues for the series.")
                 issues = myDB.select('SELECT * FROM issues WHERE ComicID=?', [ComicID])
 
+                if not issues:
+                    #if issues are None it's probably a bad refresh/maxed out API that resulted in the issue data
+                    #getting wiped out and not refreshed. Setting whack=True will force a complete refresh.
+                    logger.info('No issue data available. This is Whack.')
+                    whack = True
+                else:
+                    #check for series that are numerically out of whack (ie. 5/4)
+                    logger.info('Checking how out of whack the series is.')
+                    whack = helpers.havetotals(refreshit=ComicID)
+
                 annload = []  #initiate the list here so we don't error out below.
 
                 if mylar.ANNUALS_ON:
@@ -82,85 +92,90 @@ def dbUpdate(ComicIDList=None):
                 myDB.action('DELETE FROM issues WHERE ComicID=?', [ComicID])
                 myDB.action('DELETE FROM annuals WHERE ComicID=?', [ComicID])
                 logger.fdebug("Refreshing the series and pulling in new data using only CV.")
-                mylar.importer.addComictoDB(ComicID,mismatch,calledfrom='dbupdate',annload=annload)
-                #reload the annuals here.
 
-                issues_new = myDB.select('SELECT * FROM issues WHERE ComicID=?', [ComicID])
-                annuals = []
-                ann_list = []
-                if mylar.ANNUALS_ON:
-                    annuals_list = myDB.select('SELECT * FROM annuals WHERE ComicID=?', [ComicID])
-                    ann_list += annuals_list
-                    issues_new += annuals_list
+                if whack == False:
+                    mylar.importer.addComictoDB(ComicID,mismatch,calledfrom='dbupdate',annload=annload)
+                    #reload the annuals here.
 
-                logger.fdebug("Attempting to put the Status' back how they were.")
-                icount = 0
-                #the problem - the loop below will not match on NEW issues that have been refreshed that weren't present in the
-                #db before (ie. you left Mylar off for abit, and when you started it up it pulled down new issue information)
-                #need to test if issuenew['Status'] is None, but in a seperate loop below.
-                fndissue = []
-                for issue in issues:
-                    for issuenew in issues_new:
-                        #logger.fdebug(str(issue['Issue_Number']) + ' - issuenew:' + str(issuenew['IssueID']) + ' : ' + str(issuenew['Status']))
-                        #logger.fdebug(str(issue['Issue_Number']) + ' - issue:' + str(issue['IssueID']) + ' : ' + str(issue['Status']))
-                        if issuenew['IssueID'] == issue['IssueID'] and issuenew['Status'] != issue['Status']:
-                            ctrlVAL = {"IssueID":      issue['IssueID']}
-                            #if the status is None and the original status is either Downloaded / Archived, keep status & stats
-                            if issuenew['Status'] == None and (issue['Status'] == 'Downloaded' or issue['Status'] == 'Archived'):
-                                newVAL = {"Location":     issue['Location'],
-                                          "ComicSize":    issue['ComicSize'],
-                                          "Status":       issue['Status']}
-                            #if the status is now Downloaded/Snatched, keep status & stats (downloaded only)
-                            elif issuenew['Status'] == 'Downloaded' or issue['Status'] == 'Snatched':
-                                newVAL = {"Location":      issue['Location'],
-                                          "ComicSize":     issue['ComicSize']}
-                                if issuenew['Status'] == 'Downloaded':
-                                    newVAL['Status'] = issuenew['Status']
+                    issues_new = myDB.select('SELECT * FROM issues WHERE ComicID=?', [ComicID])
+                    annuals = []
+                    ann_list = []
+                    if mylar.ANNUALS_ON:
+                        annuals_list = myDB.select('SELECT * FROM annuals WHERE ComicID=?', [ComicID])
+                        ann_list += annuals_list
+                        issues_new += annuals_list
+
+                    logger.fdebug("Attempting to put the Status' back how they were.")
+                    icount = 0
+                    #the problem - the loop below will not match on NEW issues that have been refreshed that weren't present in the
+                    #db before (ie. you left Mylar off for abit, and when you started it up it pulled down new issue information)
+                    #need to test if issuenew['Status'] is None, but in a seperate loop below.
+                    fndissue = []
+                    for issue in issues:
+                        for issuenew in issues_new:
+                            #logger.fdebug(str(issue['Issue_Number']) + ' - issuenew:' + str(issuenew['IssueID']) + ' : ' + str(issuenew['Status']))
+                            #logger.fdebug(str(issue['Issue_Number']) + ' - issue:' + str(issue['IssueID']) + ' : ' + str(issue['Status']))
+                            if issuenew['IssueID'] == issue['IssueID'] and issuenew['Status'] != issue['Status']:
+                                ctrlVAL = {"IssueID":      issue['IssueID']}
+                                #if the status is None and the original status is either Downloaded / Archived, keep status & stats
+                                if issuenew['Status'] == None and (issue['Status'] == 'Downloaded' or issue['Status'] == 'Archived'):
+                                    newVAL = {"Location":     issue['Location'],
+                                              "ComicSize":    issue['ComicSize'],
+                                              "Status":       issue['Status']}
+                                #if the status is now Downloaded/Snatched, keep status & stats (downloaded only)
+                                elif issuenew['Status'] == 'Downloaded' or issue['Status'] == 'Snatched':
+                                    newVAL = {"Location":      issue['Location'],
+                                              "ComicSize":     issue['ComicSize']}
+                                    if issuenew['Status'] == 'Downloaded':
+                                        newVAL['Status'] = issuenew['Status']
+                                    else:
+                                        newVAL['Status'] = issue['Status']
+
+                                elif issue['Status'] == 'Archived':
+                                    newVAL = {"Status":        issue['Status'],
+                                              "Location":      issue['Location'],
+                                              "ComicSize":     issue['ComicSize']}
                                 else:
-                                    newVAL['Status'] = issue['Status']
+                                    #change the status to the previous status
+                                    newVAL = {"Status":        issue['Status']}
 
-                            elif issue['Status'] == 'Archived':
-                                newVAL = {"Status":        issue['Status'],
-                                          "Location":      issue['Location'],
-                                          "ComicSize":     issue['ComicSize']}
-                            else:
-                                #change the status to the previous status
-                                newVAL = {"Status":        issue['Status']}
+                                if newVAL['Status'] == None:
+                                    newVAL = {"Status":        "Skipped"}
 
-                            if newVAL['Status'] == None:
-                                newVAL = {"Status":        "Skipped"}
+                                if any(d['IssueID'] == str(issue['IssueID']) for d in ann_list):
+                                    #logger.fdebug("annual detected for " + str(issue['IssueID']) + " #: " + str(issue['Issue_Number']))
+                                    myDB.upsert("Annuals", newVAL, ctrlVAL)
+                                else:
+                                    #logger.fdebug('#' + str(issue['Issue_Number']) + ' writing issuedata: ' + str(newVAL))
+                                    myDB.upsert("Issues", newVAL, ctrlVAL)
+                                fndissue.append({"IssueID":      issue['IssueID']})
+                                icount+=1
+                                break
+                    logger.info("In the process of converting the data to CV, I changed the status of " + str(icount) + " issues.")
 
-                            if any(d['IssueID'] == str(issue['IssueID']) for d in ann_list):
-                                #logger.fdebug("annual detected for " + str(issue['IssueID']) + " #: " + str(issue['Issue_Number']))
-                                myDB.upsert("Annuals", newVAL, ctrlVAL)
-                            else:
-                                #logger.fdebug('#' + str(issue['Issue_Number']) + ' writing issuedata: ' + str(newVAL))
-                                myDB.upsert("Issues", newVAL, ctrlVAL)
-                            fndissue.append({"IssueID":      issue['IssueID']})
-                            icount+=1
-                            break
-                logger.info("In the process of converting the data to CV, I changed the status of " + str(icount) + " issues.")
+                    issues_new = myDB.select('SELECT * FROM issues WHERE ComicID=? AND Status is NULL', [ComicID])
+                    if mylar.ANNUALS_ON:
+                        issues_new += myDB.select('SELECT * FROM annuals WHERE ComicID=? AND Status is NULL', [ComicID])
 
-                issues_new = myDB.select('SELECT * FROM issues WHERE ComicID=? AND Status is NULL', [ComicID])
-                if mylar.ANNUALS_ON:
-                    issues_new += myDB.select('SELECT * FROM annuals WHERE ComicID=? AND Status is NULL', [ComicID])
-
-                newiss = []
-                if mylar.AUTOWANT_UPCOMING:
-                    newstatus = "Wanted"
-                else:
-                    newstatus = "Skipped"
-                for iss in issues_new:
-                     newiss.append({"IssueID":      iss['IssueID'],
+                    newiss = []
+                    if mylar.AUTOWANT_UPCOMING:
+                        newstatus = "Wanted"
+                    else:
+                        newstatus = "Skipped"
+                    for iss in issues_new:
+                         newiss.append({"IssueID":      iss['IssueID'],
                                     "Status":       newstatus})
-                if len(newiss) > 0:
-                     for newi in newiss:
-                         ctrlVAL = {"IssueID":   newi['IssueID']}
-                         newVAL = {"Status":     newi['Status']}
-                         #logger.fdebug('writing issuedata: ' + str(newVAL))
-                         myDB.upsert("Issues", newVAL, ctrlVAL)
+                    if len(newiss) > 0:
+                         for newi in newiss:
+                             ctrlVAL = {"IssueID":   newi['IssueID']}
+                             newVAL = {"Status":     newi['Status']}
+                             #logger.fdebug('writing issuedata: ' + str(newVAL))
+                             myDB.upsert("Issues", newVAL, ctrlVAL)
 
-                logger.info('I have added ' + str(len(newiss)) + ' new issues for this series that were not present before.')
+                    logger.info('I have added ' + str(len(newiss)) + ' new issues for this series that were not present before.')
+
+                else:
+                    mylar.importer.addComictoDB(ComicID,mismatch,annload=annload)
 
             else:
                 mylar.importer.addComictoDB(ComicID,mismatch)
@@ -419,7 +434,7 @@ def nzblog(IssueID, NZBName, ComicName, SARC=None, IssueArcID=None):
     #print newValue
     myDB.upsert("nzblog", newValue, controlValue)
 
-def foundsearch(ComicID, IssueID, mode=None, down=None, provider=None, SARC=None, IssueArcID=None):
+def foundsearch(ComicID, IssueID, mode=None, down=None, provider=None, SARC=None, IssueArcID=None, module=None):
     # When doing a Force Search (Wanted tab), the resulting search calls this to update.
 
     # this is all redudant code that forceRescan already does.
@@ -427,10 +442,14 @@ def foundsearch(ComicID, IssueID, mode=None, down=None, provider=None, SARC=None
     # series directory, it just scans for the issue it just downloaded and
     # and change the status to Snatched accordingly. It is not to increment the have count
     # at this stage as it's not downloaded - just the .nzb has been snatched and sent to SAB.
+    if module is None:
+        module = ''
+    module += '[UPDATER]'
+
     myDB = db.DBConnection()
 
-    logger.info('comicid: ' + str(ComicID))
-    logger.info('issueid: ' + str(IssueID))
+    logger.fdebug(module + ' comicid: ' + str(ComicID))
+    logger.fdebug(module + ' issueid: ' + str(IssueID))
     if mode != 'story_arc':
         comic = myDB.selectone('SELECT * FROM comics WHERE ComicID=?', [ComicID]).fetchone()
         ComicName = comic['ComicName']
@@ -447,8 +466,8 @@ def foundsearch(ComicID, IssueID, mode=None, down=None, provider=None, SARC=None
 
     if down is None:
         # update the status to Snatched (so it won't keep on re-downloading!)
-        logger.fdebug('updating status to snatched')
-        logger.fdebug('provider is ' + provider)
+        logger.info(module + ' Updating status to snatched')
+        logger.fdebug(module + ' Provider is ' + provider)
         newValue = {"Status":    "Snatched"}
         if mode == 'story_arc':
             cValue = {"IssueArcID": IssueArcID}
@@ -495,13 +514,13 @@ def foundsearch(ComicID, IssueID, mode=None, down=None, provider=None, SARC=None
                                "Status":          "Snatched"
                                }
         myDB.upsert("snatched", newsnatchValues, snatchedupdate)
-        logger.info("updated the snatched.")
+        logger.info(module + ' Updated the status (Snatched) complete for ' + ComicName + ' Issue: ' + str(IssueNum))
     else:
         if down == 'PP':
-            logger.fdebug('setting status to Post-Processed in history.')
+            logger.info(module + ' Setting status to Post-Processed in history.')
             downstatus = 'Post-Processed'
         else:
-            logger.fdebug('setting status to Downloaded in history.')
+            logger.info(module + ' Setting status to Downloaded in history.')
             downstatus = 'Downloaded'
         if mode == 'want_ann':
             IssueNum = "Annual " + issue['Issue_Number']
@@ -534,15 +553,17 @@ def foundsearch(ComicID, IssueID, mode=None, down=None, provider=None, SARC=None
 
             myDB.upsert("issues", newValue, controlValue)
 
-    #print ("finished updating snatched db.")
-    logger.info('Updating now complete for ' + ComicName + ' issue: ' + str(IssueNum))
+        logger.info(module + ' Updating Status (' + downstatus + ') now complete for ' + ComicName + ' issue: ' + str(IssueNum))
     return
 
-def forceRescan(ComicID,archive=None):
+def forceRescan(ComicID,archive=None,module=None):
+    if module is None:
+        module = ''
+    module += '[FILE-RESCAN]'
     myDB = db.DBConnection()
     # file check to see if issue exists
     rescan = myDB.selectone('SELECT * FROM comics WHERE ComicID=?', [ComicID]).fetchone()
-    logger.info('Now checking files for ' + rescan['ComicName'] + ' (' + str(rescan['ComicYear']) + ') in ' + rescan['ComicLocation'] )
+    logger.info(module + ' Now checking files for ' + rescan['ComicName'] + ' (' + str(rescan['ComicYear']) + ') in ' + rescan['ComicLocation'] )
     if archive is None:
         fc = filechecker.listFiles(dir=rescan['ComicLocation'], watchcomic=rescan['ComicName'], Publisher=rescan['ComicPublisher'], AlternateSearch=rescan['AlternateSearch'])
     else:
@@ -572,8 +593,8 @@ def forceRescan(ComicID,archive=None):
         try:
             tmpfc = fc['comiclist'][fn]
         except IndexError:
-            logger.fdebug('Unable to properly retrieve a file listing for the given series.')
-            logger.fdebug('Probably because the filenames being scanned are not in a parseable format')
+            logger.fdebug(module + ' Unable to properly retrieve a file listing for the given series.')
+            logger.fdebug(module + ' Probably because the filenames being scanned are not in a parseable format')
             if fn == 0: 
                 return
             else:
@@ -582,12 +603,12 @@ def forceRescan(ComicID,archive=None):
 
 #        temploc = tmpfc['ComicFilename'].replace('_', ' ')
         temploc = re.sub('[\#\']', '', temploc)
-        logger.fdebug('temploc: ' + str(temploc))
+        logger.fdebug(module + ' temploc: ' + str(temploc))
         if 'annual' not in temploc.lower():
             #remove the extension here
             extensions = ('.cbr','.cbz')
             if temploc.lower().endswith(extensions):
-                logger.fdebug('removed extension for issue: ' + str(temploc))
+                logger.fdebug(module + ' Removed extension for issue: ' + str(temploc))
                 temploc = temploc[:-4]
 #            deccnt = str(temploc).count('.')
 #            if deccnt > 1:
@@ -673,12 +694,12 @@ def forceRescan(ComicID,archive=None):
                             #if the 'AU' is in 005AU vs 005 AU it will yield different results.
                             fcnew[som] = fcnew[som] + 'AU'
                             fcnew[som+1] = '93939999919190933'
-                            logger.info('AU Detected seperate from issue - combining and continuing')
+                            logger.info(module + ' AU Detected seperate from issue - combining and continuing')
                         elif 'ai' in fcnew[som+1].lower():
                             #if the 'AI' is in 005AI vs 005 AI it will yield different results.
                             fcnew[som] = fcnew[som] + 'AI'
                             fcnew[som+1] = '93939999919190933'
-                            logger.info('AI Detected seperate from issue - combining and continuing')
+                            logger.info(module + ' AI Detected seperate from issue - combining and continuing')
 
                     #sometimes scanners refuse to use spaces between () and lump the issue right at the start
                     #mylar assumes it's all one word in this case..let's dump the brackets.
@@ -689,27 +710,27 @@ def forceRescan(ComicID,archive=None):
                     #logger.fdebug("int_iss: " + str(int_iss))
 
                     if int(fcdigit) == int_iss:
-                        logger.fdebug('issue match - fcdigit: ' + str(fcdigit) + ' ... int_iss: ' + str(int_iss))
+                        logger.fdebug(module + ' Issue match - fcdigit: ' + str(fcdigit) + ' ... int_iss: ' + str(int_iss))
 
                         if '-' in temploc and temploc.find(reiss['Issue_Number']) > temploc.find('-'):
-                            logger.fdebug('I have detected a possible Title in the filename')
-                            logger.fdebug('the issue # has occured after the -, so I assume that it is part of the Title')
+                            logger.fdebug(module + ' I have detected a possible Title in the filename')
+                            logger.fdebug(module + ' the issue # has occured after the -, so I assume that it is part of the Title')
                             break
                         for d in issuedupechk:
                             if int(d['fcdigit']) == int(fcdigit):
-                                logger.fdebug('duplicate issue detected - not counting this: ' + str(tmpfc['ComicFilename']))
-                                logger.fdebug('is a duplicate of ' + d['filename'])
+                                logger.fdebug(module + ' Duplicate issue detected - not counting this: ' + str(tmpfc['ComicFilename']))
+                                logger.fdebug(module + ' is a duplicate of ' + d['filename'])
                                 logger.fdebug('fcdigit:' + str(fcdigit) + ' === dupedigit: ' + str(d['fcdigit']))
                                 issuedupe = "yes"
                                 break
                         if issuedupe == "no":
-                            logger.fdebug('matched...issue: ' + rescan['ComicName'] + '#' + str(reiss['Issue_Number']) + ' --- ' + str(int_iss))
+                            logger.fdebug(module + ' Matched...issue: ' + rescan['ComicName'] + '#' + str(reiss['Issue_Number']) + ' --- ' + str(int_iss))
                             havefiles+=1
                             haveissue = "yes"
                             isslocation = str(tmpfc['ComicFilename'])
                             issSize = str(tmpfc['ComicSize'])
-                            logger.fdebug('.......filename: ' + str(isslocation))
-                            logger.fdebug('.......filesize: ' + str(tmpfc['ComicSize'])) 
+                            logger.fdebug(module + ' .......filename: ' + str(isslocation))
+                            logger.fdebug(module + ' .......filesize: ' + str(tmpfc['ComicSize'])) 
                             # to avoid duplicate issues which screws up the count...let's store the filename issues then 
                             # compare earlier...
                             issuedupechk.append({'fcdigit': int(fcdigit),
@@ -720,7 +741,7 @@ def forceRescan(ComicID,archive=None):
                         # determine a way to match on year if present, or no year (currently).
 
                     if issuedupe == "yes":
-                        logger.fdebug('I should break out here because of a dupe.')
+                        logger.fdebug(module + ' I should break out here because of a dupe.')
                         break
                     som+=1
                 if haveissue == "yes" or issuedupe == "yes": break
@@ -760,23 +781,23 @@ def forceRescan(ComicID,archive=None):
                             ann_iss = fcnew[som+1]
                             logger.fdebug('Annual # ' + str(ann_iss) + ' detected.')
                             fcdigit = helpers.issuedigits(ann_iss)
-                    logger.fdebug('fcdigit:' + str(fcdigit))
-                    logger.fdebug('int_iss:' + str(int_iss))
+                    logger.fdebug(module + ' fcdigit:' + str(fcdigit))
+                    logger.fdebug(module + ' int_iss:' + str(int_iss))
                     if int(fcdigit) == int_iss:
-                        logger.fdebug('annual match - issue : ' + str(int_iss))
+                        logger.fdebug(module + ' Annual match - issue : ' + str(int_iss))
                         for d in annualdupechk:
                             if int(d['fcdigit']) == int(fcdigit):
-                                logger.fdebug('duplicate annual issue detected - not counting this: ' + str(tmpfc['ComicFilename']))
+                                logger.fdebug(module + ' Duplicate annual issue detected - not counting this: ' + str(tmpfc['ComicFilename']))
                                 issuedupe = "yes"
                                 break
                         if issuedupe == "no":
-                            logger.fdebug('matched...annual issue: ' + rescan['ComicName'] + '#' + str(reann['Issue_Number']) + ' --- ' + str(int_iss))
+                            logger.fdebug(module + ' Matched...annual issue: ' + rescan['ComicName'] + '#' + str(reann['Issue_Number']) + ' --- ' + str(int_iss))
                             havefiles+=1
                             haveissue = "yes"
                             isslocation = str(tmpfc['ComicFilename'])
                             issSize = str(tmpfc['ComicSize'])
-                            logger.fdebug('.......filename: ' + str(isslocation))
-                            logger.fdebug('.......filesize: ' + str(tmpfc['ComicSize']))
+                            logger.fdebug(module + ' .......filename: ' + str(isslocation))
+                            logger.fdebug(module + ' .......filesize: ' + str(tmpfc['ComicSize']))
                             # to avoid duplicate issues which screws up the count...let's store the filename issues then
                             # compare earlier...
                             annualdupechk.append({'fcdigit': int(fcdigit)})
@@ -794,7 +815,7 @@ def forceRescan(ComicID,archive=None):
             if mylar.ANNUALS_ON:
                 if 'annual' in temploc.lower():
                     if reann is None:
-                        logger.fdebug('Annual present in location, but series does not have any annuals attached to it - Ignoring')
+                        logger.fdebug(module + ' Annual present in location, but series does not have any annuals attached to it - Ignoring')
                         writeit = False
                     else:
                         iss_id = reann['IssueID']
@@ -802,13 +823,13 @@ def forceRescan(ComicID,archive=None):
                     iss_id = reiss['IssueID']
             else:
                 if 'annual' in temploc.lower():
-                    logger.fdebug('Annual support not enabled, but annual issue present within directory. Ignoring annual.')
+                    logger.fdebug(module + ' Annual support not enabled, but annual issue present within directory. Ignoring annual.')
                     writeit = False
                 else:
                     iss_id = reiss['IssueID']
 
             if writeit == True:
-                logger.fdebug('issueID to write to db:' + str(iss_id))
+                logger.fdebug(module + ' issueID to write to db:' + str(iss_id))
                 controlValueDict = {"IssueID": iss_id}
 
                 #if Archived, increase the 'Have' count.
@@ -841,7 +862,7 @@ def forceRescan(ComicID,archive=None):
 #            logger.info('writing ' + str(iss))
 #            writethis = myDB.upsert(iss['tableName'], iss['valueDict'], iss['keyDict'])
 
-    logger.fdebug('IssueID to ignore: ' + str(issID_to_ignore))
+    logger.fdebug(module + ' IssueID to ignore: ' + str(issID_to_ignore))
 
     #here we need to change the status of the ones we DIDN'T FIND above since the loop only hits on FOUND issues.
     update_iss = []
@@ -885,9 +906,9 @@ def forceRescan(ComicID,archive=None):
             newStatusValue = {"Status": ui['Status']}
             myDB.upsert("issues", newStatusValue, controlValueDict)
             i+=1
-        logger.info('Updated the status of ' + str(i) + ' issues for ' + rescan['ComicName'] + ' (' + str(rescan['ComicYear']) + ') that were not found.')
+        logger.info(module + ' Updated the status of ' + str(i) + ' issues for ' + rescan['ComicName'] + ' (' + str(rescan['ComicYear']) + ') that were not found.')
 
-    logger.info('Total files located: ' + str(havefiles))
+    logger.info(module + ' Total files located: ' + str(havefiles))
     foundcount = havefiles
     arcfiles = 0
     arcanns = 0
@@ -903,7 +924,7 @@ def forceRescan(ComicID,archive=None):
     if arcfiles > 0 or arcanns > 0:
         arcfiles = arcfiles + arcanns
         havefiles = havefiles + arcfiles
-        logger.fdebug('Adjusting have total to ' + str(havefiles) + ' because of this many archive files:' + str(arcfiles))
+        logger.fdebug(module + ' Adjusting have total to ' + str(havefiles) + ' because of this many archive files:' + str(arcfiles))
 
     ignorecount = 0
     if mylar.IGNORE_HAVETOTAL:   # if this is enabled, will increase Have total as if in Archived Status
@@ -911,7 +932,7 @@ def forceRescan(ComicID,archive=None):
         if int(ignores[0][0]) > 0:
             ignorecount = ignores[0][0]
             havefiles = havefiles + ignorecount
-            logger.fdebug('Adjusting have total to ' + str(havefiles) + ' because of this many Ignored files:' + str(ignorecount))
+            logger.fdebug(module + ' Adjusting have total to ' + str(havefiles) + ' because of this many Ignored files:' + str(ignorecount))
 
     #now that we are finished...
     #adjust for issues that have been marked as Downloaded, but aren't found/don't exist.
@@ -930,7 +951,7 @@ def forceRescan(ComicID,archive=None):
             #print ("comiclocation: " + str(rescan['ComicLocation']))
             #print ("downlocation: " + str(down['Location']))
             if down['Location'] is None:
-                logger.fdebug('location does not exist which means file was not downloaded successfully, or was moved.')
+                logger.fdebug(module + ' Location does not exist which means file was not downloaded successfully, or was moved.')
                 controlValue = {"IssueID":  down['IssueID']}
                 newValue = {"Status":    "Archived"}
                 myDB.upsert("issues", newValue, controlValue)
@@ -949,9 +970,9 @@ def forceRescan(ComicID,archive=None):
                     archivedissues+=1 
         totalarc = arcfiles + archivedissues
         havefiles = havefiles + archivedissues  #arcfiles already tallied in havefiles in above segment
-        logger.fdebug('arcfiles : ' + str(arcfiles))
-        logger.fdebug('havefiles: ' + str(havefiles))
-        logger.fdebug('I have changed the status of ' + str(archivedissues) + ' issues to a status of Archived, as I now cannot locate them in the series directory.')
+        logger.fdebug(module + ' arcfiles : ' + str(arcfiles))
+        logger.fdebug(module + ' havefiles: ' + str(havefiles))
+        logger.fdebug(module + ' I have changed the status of ' + str(archivedissues) + ' issues to a status of Archived, as I now cannot locate them in the series directory.')
 
         
     #let's update the total count of comics that was found.
@@ -962,6 +983,6 @@ def forceRescan(ComicID,archive=None):
     combined_total = rescan['Total'] + anncnt
 
     myDB.upsert("comics", newValueStat, controlValueStat)
-    logger.info('I have physically found ' + str(foundcount) + ' issues, ignored ' + str(ignorecount) + ' issues, and accounted for ' + str(totalarc) + ' in an Archived state. Total Issue Count: ' + str(havefiles) + ' / ' + str(combined_total))
+    logger.info(module + ' I have physically found ' + str(foundcount) + ' issues, ignored ' + str(ignorecount) + ' issues, and accounted for ' + str(totalarc) + ' in an Archived state. Total Issue Count: ' + str(havefiles) + ' / ' + str(combined_total))
 
     return
