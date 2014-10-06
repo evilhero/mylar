@@ -33,7 +33,7 @@ import shutil
 
 import mylar
 
-from mylar import logger, db, importer, mb, search, filechecker, helpers, updater, parseit, weeklypull, PostProcessor, version, librarysync, moveit #,rsscheck
+from mylar import logger, db, importer, mb, search, filechecker, helpers, updater, parseit, weeklypull, PostProcessor, version, librarysync, moveit, Failed #,rsscheck
 #from mylar.helpers import checked, radio, today
 
 import lib.simplejson as simplejson
@@ -119,10 +119,11 @@ class WebInterface(object):
         isCounts[3] = 0   #3 archived
         isCounts[4] = 0   #4 downloaded
         isCounts[5] = 0   #5 ignored
-        #isCounts[6] = 0   #6 read 
+        isCounts[6] = 0   #6 failed
+        #isCounts[7] = 0   #7 read 
 
         for curResult in issues:
-            baseissues = {'skipped':1,'wanted':2,'archived':3,'downloaded':4,'ignored':5}
+            baseissues = {'skipped':1,'wanted':2,'archived':3,'downloaded':4,'ignored':5,'failed':6}
             for seas in baseissues:
                 if curResult['Status'] is None:
                    continue
@@ -136,7 +137,8 @@ class WebInterface(object):
                  "Wanted" : str(isCounts[2]),
                  "Archived" : str(isCounts[3]),
                  "Downloaded" : str(isCounts[4]),
-                 "Ignored" : str(isCounts[5])
+                 "Ignored" : str(isCounts[5]),
+                 "Failed" : str(isCounts[6])
                }
         usethefuzzy = comic['UseFuzzy']
         skipped2wanted = "0"
@@ -173,7 +175,7 @@ class WebInterface(object):
         return serve_template(templatename="comicdetails.html", title=comic['ComicName'], comic=comic, issues=issues, comicConfig=comicConfig, isCounts=isCounts, series=series, annuals=annuals, annualinfo=aName)
     comicDetails.exposed = True
 
-    def searchit(self, name, issue=None, mode=None, type=None, explicit=None):
+    def searchit(self, name, issue=None, mode=None, type=None, explicit=None, serinfo=None):
         if type is None: type = 'comic'  # let's default this to comic search only for the time being (will add story arc, characters, etc later)
         else: logger.fdebug(str(type) + " mode enabled.")
         #mode dictates type of search:
@@ -195,15 +197,15 @@ class WebInterface(object):
             searchresults, explicit = mb.findComic(name, mode, issue=None, explicit=explicit)
         elif type == 'comic' and mode == 'want':
             searchresults, explicit = mb.findComic(name, mode, issue)
-        elif type == 'storyarc':
-            searchresults, explicit = mb.findComic(name, mode, issue=None, storyarc='yes')
+        elif type == 'story_arc':
+            searchresults, explicit = mb.findComic(name, mode=None, issue=None, explicit='explicit', type='story_arc')
 
         searchresults = sorted(searchresults, key=itemgetter('comicyear','issues'), reverse=True)
         #print ("Results: " + str(searchresults))
-        return serve_template(templatename="searchresults.html", title='Search Results for: "' + name + '"', searchresults=searchresults, type=type, imported=None, ogcname=None, name=name, explicit=explicit)
+        return serve_template(templatename="searchresults.html", title='Search Results for: "' + name + '"', searchresults=searchresults, type=type, imported=None, ogcname=None, name=name, explicit=explicit, serinfo=serinfo)
     searchit.exposed = True
 
-    def addComic(self, comicid, comicname=None, comicyear=None, comicimage=None, comicissues=None, comicpublisher=None, imported=None, ogcname=None):
+    def addComic(self, comicid, comicname=None, comicyear=None, comicimage=None, comicissues=None, comicpublisher=None, imported=None, ogcname=None, serinfo=None):
         myDB = db.DBConnection()
         if imported == "confirm":
             # if it's coming from the importer and it's just for confirmation, record the right selection and break.
@@ -224,6 +226,17 @@ class WebInterface(object):
                     myDB.upsert("importresults", newValue, controlValue)
                 self.importResults()            
             return
+        elif imported == 'futurecheck':
+            print 'serinfo:' + str(serinfo)
+            logger.info('selected comicid of : ' + str(comicid) + ' [ ' + comicname + ' (' + str(comicyear) + ') ]')
+            ser = []
+            ser.append({"comicname": comicname, 
+                        "comicyear": comicyear, 
+                        "comicissues": comicissues, 
+                        "comicpublisher": comicpublisher,
+                        "IssueDate": serinfo[0]['IssueDate'],
+                        "IssueNumber": serinfo[0]['IssueNumber']})
+            self.future_check_add(comicid, ser)
         sresults = []
         cresults = []
         mismatch = "no"
@@ -410,19 +423,64 @@ class WebInterface(object):
         raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % gcomicid)
     GCDaddComic.exposed = True
 
-    def post_process(self, nzb_name, nzb_folder):
-        logger.info(u"Starting postprocessing for : " + str(nzb_name) )
-        PostProcess = PostProcessor.PostProcessor(nzb_name, nzb_folder)
-        if nzb_name == 'Manual Run' or nzb_name == 'Manual+Run':
-            threading.Thread(target=PostProcess.Process).start()
-            raise cherrypy.HTTPRedirect("home")
-        else:
-            result = helpers.ThreadWithReturnValue(target=PostProcess.Process)
-            result.start()
-            #result = PostProcess.Process()
-            return result.join()
-        #log2screen = threading.Thread(target=PostProcessor.PostProcess, args=[nzb_name,nzb_folder]).start()
-        #return serve_template(templatename="postprocess.html", title="postprocess")
+    def post_process(self, nzb_name, nzb_folder, failed=False):
+        import Queue
+        logger.info('Starting postprocessing for : ' + nzb_name)
+        if failed == '0':
+            failed = False
+        elif failed == '1':
+            failed = True
+
+        queue = Queue.Queue()
+
+        if not failed:
+            PostProcess = PostProcessor.PostProcessor(nzb_name, nzb_folder, queue=queue)
+            if nzb_name == 'Manual Run' or nzb_name == 'Manual+Run':
+                threading.Thread(target=PostProcess.Process).start()
+                raise cherrypy.HTTPRedirect("home")
+            else:
+                thread_ = threading.Thread(target=PostProcess.Process, name="Post-Processing")
+                thread_.start()
+                thread_.join()
+                chk = queue.get()
+                while True:
+                    if chk[0]['mode'] == 'fail':
+                        yield chk[0]['self.log']
+                        logger.info('Initiating Failed Download handling')
+                        if chk[0]['annchk'] == 'no': mode = 'want'
+                        else: mode = 'want_ann'
+                        failed = True
+                        break
+                    elif chk[0]['mode'] == 'stop':
+                        yield chk[0]['self.log']
+                        break
+                    else:
+                        logger.error('mode is unsupported: ' + chk[0]['mode'])
+                        yield chk[0]['self.log']
+                        break
+
+        if failed:
+            if mylar.FAILED_DOWNLOAD_HANDLING:
+                #drop the if-else continuation so we can drop down to this from the above if statement.
+                logger.info('Initiating Failed Download handling for this download.')
+                FailProcess = Failed.FailedProcessor(nzb_name=nzb_name, nzb_folder=nzb_folder, queue=queue)
+                thread_ = threading.Thread(target=FailProcess.Process, name="FAILED Post-Processing")
+                thread_.start()
+                thread_.join()
+                failchk = queue.get()
+                if failchk[0]['mode'] == 'retry':
+                    yield failchk[0]['self.log']
+                    logger.info('Attempting to return to search module with ' + str(failchk[0]['issueid']))
+                    if failchk[0]['annchk'] == 'no': mode = 'want'
+                    else: mode = 'want_ann'
+                    self.queueit(mode=mode, ComicName=failchk[0]['comicname'], ComicIssue=failchk[0]['issuenumber'], ComicID=failchk[0]['comicid'], IssueID=failchk[0]['issueid'], manualsearch=True)
+                elif failchk[0]['mode'] == 'stop':
+                    yield failchk[0]['self.log']
+                else:
+                    logger.error('mode is unsupported: ' + failchk[0]['mode'])
+                    yield failchk[0]['self.log']
+            else:
+                logger.warn('Failed Download Handling is not enabled. Leaving Failed Download as-is.') 
     post_process.exposed = True
 
     def pauseArtist(self, ComicID):
@@ -462,7 +520,7 @@ class WebInterface(object):
         if ComicID is None:
             myDB.action('DROP table nzblog')
             logger.fdebug("Deleted nzblog table.")
-            myDB.action('CREATE TABLE IF NOT EXISTS nzblog (IssueID TEXT, NZBName TEXT, SARC TEXT)')
+            myDB.action('CREATE TABLE IF NOT EXISTS nzblog (IssueID TEXT, NZBName TEXT, SARC TEXT, PROVIDER TEXT, ID TEXT)')
             logger.fdebug("Re-created nzblog table.")
         raise cherrypy.HTTPRedirect("history")
     wipenzblog.exposed = True
@@ -619,13 +677,43 @@ class WebInterface(object):
         raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % ComicID)
     refreshArtist.exposed=True  
 
-    def editIssue(self, ComicID):
+    def issue_edit(self, id, value):
+        logger.fdebug('id: ' + str(id))
+        logger.fdebug('value: ' + str(value))
+        comicid = id[:id.find('.')]
+        logger.fdebug('comicid:' + str(comicid))
+        issueid = id[id.find('.')+1:]
+        logger.fdebug('issueid:' + str(issueid))
         myDB = db.DBConnection()
-        comic = myDB.selectone('SELECT * from comics WHERE ComicID=?', [ComicID]).fetchone()
-        title = 'Now Editing ' + comic['ComicName']
-        return serve_template(templatename="editcomic.html", title=title, comic=comic)
-        #raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" & ComicID)   
-    editIssue.exposed=True
+        comicchk = myDB.selectone('SELECT ComicYear FROM comics WHERE ComicID=?', [comicid]).fetchone()
+        issuechk = myDB.selectone('SELECT * FROM issues WHERE IssueID=?', [issueid]).fetchone()
+        if issuechk is None:
+            logger.error('Cannot edit this for some reason - something is wrong.')
+            return
+        oldissuedate = issuechk['IssueDate']
+        seriesyear = comicchk['ComicYear']
+        issuenumber = issuechk['Issue_Number']
+
+        #check if the new date is in the correct format of yyyy-mm-dd
+        try:
+            valid_date = time.strptime(value, '%Y-%m-%d')
+        except ValueError:
+            logger.error('invalid date provided. Rejecting edit.')
+            return oldissuedate
+
+        #if the new issue year is less than the series year - reject it.
+        if value[:4] < seriesyear:
+            logger.error('Series year of ' + str(seriesyear) + ' is less than new issue date of ' + str(value[:4]))
+            return oldissuedate
+
+        newVal = {"IssueDate"      : value,
+                  "IssueDate_Edit" : oldissuedate}
+        ctrlVal = {"IssueID": issueid}
+        myDB.upsert("issues", newVal, ctrlVal)
+        logger.info('Updated Issue Date for issue #' + str(issuenumber))
+        return value
+
+    issue_edit.exposed=True
  
     def force_rss(self):
         logger.info('attempting to run RSS Check Forcibly')
@@ -643,16 +731,10 @@ class WebInterface(object):
 
     force_rss.exposed = True
 
-    #def chkTorrents(self, ComicName, pickfeed):
-    #    chktorrent = rsscheck.torrents(ComicName,pickfeed)
-    #    if chktorrent:
-    #        print ("Torrent Check completed.")
-
-    #    raise cherrypy.HTTPRedirect("home")
-
-    #chkTorrents.exposed = True
-
-
+    def markannuals(self, ann_action=None, **args):
+        self.markissues(action=ann_action, **args)
+    markannuals.exposed = True
+     
     def markissues(self, action=None, **args):
         myDB = db.DBConnection()
         issuesToAdd = []
@@ -662,8 +744,7 @@ class WebInterface(object):
         else:
             newaction = action
         for IssueID in args:
-            #print ("issueID: " + str(IssueID) + "... " + str(newaction))
-            if IssueID is None or 'issue_table' in IssueID or 'history_table' in IssueID:
+            if IssueID is None or 'issue_table' in IssueID or 'history_table' in IssueID or 'manage_issues' in IssueID or 'issue_table_length' in IssueID:
                 continue
             else:
                 mi = myDB.selectone("SELECT * FROM issues WHERE IssueID=?",[IssueID]).fetchone()
@@ -675,23 +756,29 @@ class WebInterface(object):
                         annchk = 'yes'
                 else: 
                     comicname = mi['ComicName']
+
                 miyr = myDB.selectone("SELECT ComicYear FROM comics WHERE ComicID=?", [mi['ComicID']]).fetchone()
                 if action == 'Downloaded':
                     if mi['Status'] == "Skipped" or mi['Status'] == "Wanted":
-                        logger.info(u"Cannot change status to %s as comic is not Snatched or Downloaded" % (newaction))
+                        logger.fdebug(u"Cannot change status to %s as comic is not Snatched or Downloaded" % (newaction))
                         continue
                 elif action == 'Archived':
-                    logger.info(u"Marking %s %s as %s" % (comicname, mi['Issue_Number'], newaction))
+                    logger.fdebug(u"Marking %s %s as %s" % (comicname, mi['Issue_Number'], newaction))
                     #updater.forceRescan(mi['ComicID'])
                     issuestoArchive.append(IssueID)
                 elif action == 'Wanted' or action == 'Retry':
                     if action == 'Retry': newaction = 'Wanted'
-                    logger.info(u"Marking %s %s as %s" % (mi['ComicName'], mi['Issue_Number'], newaction))
+                    logger.fdebug(u"Marking %s %s as %s" % (comicname, mi['Issue_Number'], newaction))
                     issuesToAdd.append(IssueID)
                 elif action == 'Skipped':
-                    logger.info(u"Marking " + str(IssueID) + " as Skipped")
+                    logger.fdebug(u"Marking " + str(IssueID) + " as Skipped")
                 elif action == 'Clear':
                     myDB.action("DELETE FROM snatched WHERE IssueID=?", [IssueID])
+                elif action == 'Failed' and mylar.FAILED_DOWNLOAD_HANDLING:
+                    logger.fdebug('Marking [' + comicname + '] : ' + str(IssueID) + ' as Failed. Sending to failed download handler.')
+                    failedcomicid = mi['ComicID']
+                    failedissueid = IssueID
+                    break
                 controlValueDict = {"IssueID": IssueID}
                 newValueDict = {"Status": newaction}
                 if annchk == 'yes':
@@ -699,10 +786,12 @@ class WebInterface(object):
                 else:
                     myDB.upsert("issues", newValueDict, controlValueDict)
                 logger.fdebug("updated...to " + str(newaction))
+        if action == 'Failed' and mylar.FAILED_DOWNLOAD_HANDLING:
+            self.failed_handling(failedcomicid, failedissueid)
         if len(issuestoArchive) > 0:
             updater.forceRescan(mi['ComicID'])
         if len(issuesToAdd) > 0:
-            logger.debug("Marking issues: %s as Wanted" % (issuesToAdd))
+            logger.fdebug("Marking issues: %s as Wanted" % (issuesToAdd))
             threading.Thread(target=search.searchIssueIDList, args=[issuesToAdd]).start()
         #if IssueID:
         raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % mi['ComicID'])
@@ -710,11 +799,151 @@ class WebInterface(object):
         #    raise cherrypy.HTTPRedirect("upcoming")
     markissues.exposed = True
     
+    def retryit(self, **kwargs):
+        threading.Thread(target=self.retryissue, kwargs=kwargs).start()
+    retryit.exposed = True
+
+    def retryissue(self, ComicName, ComicID, IssueID, IssueNumber, ReleaseComicID=None, ComicYear=None, redirect=None):
+
+        logger.info('ComicID:' + str(ComicID))
+        logger.info('Retrying : ' + str(IssueID))
+        # mode = either series or annual (want vs. want_ann)
+        #To retry the exact download again - we already have the nzb/torrent name stored in the nzblog.
+        #0 - Change status to Retrying.
+        #1 - we need to search the snatched table for the relevant information (since it HAS to be in snatched status)
+        #2 - we need to reference the ID from the snatched table to the nzblog table
+        #  - if it doesn't match, then it's an invalid retry.
+        #  - if it does match, we get the nzbname/torrent name and provider info
+        #3 - if it's an nzb - we recreate the sab/nzbget url and resubmit it directly.
+        #  - if it's a torrent - we redownload the torrent and flip it to the watchdir on the local / seedbox.
+        #4 - Change status to Snatched.
+        myDB = db.DBConnection()
+        chk_snatch = myDB.select('SELECT * FROM snatched WHERE IssueID=?', [IssueID])
+        if chk_snatch is None:
+            logger.info('Unable to locate how issue was downloaded (name, provider). Cannot continue.')
+            return
+
+        confirmedsnatch = False
+        for cs in chk_snatch:
+            if cs['Status'] == 'Snatched':
+                logger.info('Located snatched download:')
+                logger.info('--Referencing : ' + cs['Provider'] + ' @ ' + str(cs['DateAdded']))
+                Provider = cs['Provider']
+                confirmedsnatch = True
+            elif (cs['Status'] == 'Post-Processed' or cs['Status'] == 'Downloaded') and confirmedsnatch == True:
+                logger.info('Issue has already been Snatched, Downloaded & Post-Processed.')
+                logger.info('You should be using Manual Search or Mark Wanted - not retry the same download.')
+                return
+
+        Provider_sql = '%' + Provider + '%'
+
+        chk_log = myDB.selectone('SELECT * FROM nzblog WHERE IssueID=? AND Provider like (?)', [IssueID, Provider_sql]).fetchone()
+        if chk_log is None:
+            logger.info('Unable to locate provider information from nzblog - if you wiped the log, you have to search/download as per normal')
+            return
+        nzbname = chk_log['NZBName']
+        id = chk_log['ID']
+        fullprov = chk_log['PROVIDER'] #the full newznab name if it exists will appear here as 'sitename (newznab)'
+
+        #now we break it down by provider to recreate the link.
+        #torrents first.
+        if Provider == 'CBT' or Provider == 'KAT':
+            if not mylar.ENABLE_TORRENT_SEARCH:
+               logger.error('Torrent Providers are not enabled - unable to process retry request until provider is re-enabled.')
+               return
+
+            if Provider == 'CBT':
+                if not mylar.ENABLE_CBT:
+                    logger.error('CBT is not enabled - unable to process retry request until provider is re-enabled.')
+                    return
+                # format - http://comicbt.com/download.php?torrent=48064            
+                link = 'http://comicbt.com/download.php?torrent=' + str(id)
+            elif Provider == 'KAT':
+                if not mylar.ENABLE_KAT:
+                    logger.error('KAT is not enabled - unable to process retry request until provider is re-enabled.')
+                    return
+                # format - http://torcache.net/torrent/63194E7328FD9D0AA15795CCA74D4C4995AEDD92.torrent?title=[kickass.to]low.001.2014.digital.zone.empire.cbr.ne
+                link = 'http://torcache.net/torrent/' + str(id) + '.torrent'
+
+            logger.fdebug("sending .torrent to watchdir.")
+            logger.fdebug("ComicName:" + ComicName)
+            logger.fdebug("link:" + str(link))
+            logger.fdebug("Torrent Provider:" + Provider)
+
+            rcheck = mylar.rsscheck.torsend2client(ComicName, IssueNumber, ComicYear, link, Provider)
+            if rcheck == "fail":
+                logger.error("Unable to send torrent - check logs and settings.")
+        else:
+            annualize = myDB.selectone('SELECT * FROM annuals WHERE IssueID=?', [IssueID]).fetchone()
+            if annualize is None:
+                modcomicname = ComicName
+            else:
+                modcomicname = ComicName + ' Annual'
+
+
+            comicinfo = []
+            comicinfo.append({"ComicName":     ComicName,
+                              "IssueNumber":   IssueNumber,
+                              "comyear":       ComicYear,
+                              "modcomicname":  modcomicname})            
+
+            if Provider == 'nzb.su':
+                if not mylar.NZBSU:
+                    logger.error('nzb.su is not enabled - unable to process retry request until provider is re-enabled.')
+                    return
+                # http://nzb.su/getnzb/ea1befdeee0affd663735b2b09010140.nzb&i=<uid>&r=<passkey>
+                link = 'http://nzb.su/getnzb/' + str(id) + '.nzb&i=' + str(mylar.NZBSU_ID) + '&r=' + str(mylar.NZBSU_APIKEY)
+                logger.info('fetched via nzb.su. Retrying the send : ' + str(link))
+            elif Provider == 'dognzb':
+                if not mylar.DOGNZB:
+                    logger.error('Dognzb is not enabled - unable to process retry request until provider is re-enabled.')
+                    return
+                # https://dognzb.cr/fetch/5931874bf7381b274f647712b796f0ac/<passkey>
+                link = 'https://dognzb.cr/fetch/' + str(id) + '/' + str(mylar.DOGNZB_APIKEY)
+                logger.info('fetched via dognzb. Retrying the send : ' + str(link))
+            elif Provider == 'experimental':
+                if not mylar.EXPERIMENTAL:
+                    logger.error('Experimental is not enabled - unable to process retry request until provider is re-enabled.')
+                    return
+                # http://nzbindex.nl/download/110818178
+                link = 'http://nzbindex.nl/download/' + str(id)
+                logger.info('fetched via experimental. Retrying the send : ' + str(link))
+            elif 'newznab' in Provider:
+                if not mylar.NEWZNAB:
+                    logger.error('Newznabs are not enabled - unable to process retry request until provider is re-enabled.')
+                    return
+
+                # http://192.168.2.2/getnzb/4323f9c567c260e3d9fc48e09462946c.nzb&i=<uid>&r=<passkey>
+                # trickier - we have to scroll through all the newznabs until we find a match.
+                logger.info('fetched via newnzab. Retrying the send.')
+                m = re.findall('[^()]+', fullprov)
+                tmpprov = m[0].strip()
+              
+                for newznab_info in mylar.EXTRA_NEWZNABS:
+                    if tmpprov.lower() in newznab_info[0].lower():
+                        if (newznab_info[4] == '1' or newznab_info[4] == 1):
+                            if newznab_info[1].endswith('/'):
+                                newznab_host = newznab_info[1]
+                            else:
+                                newznab_host = newznab_info[1] + '/'
+                            newznab_api = newznab_info[2]
+                            newznab_uid = newznab_info[3]
+                            link = str(newznab_host) + 'getnzb/' + str(id) + '.nzb&i=' + str(newznab_uid) + '&r=' + str(newznab_api)
+                            logger.info('newznab detected as : ' + str(newznab_info[0]) + ' @ ' + str(newznab_host))
+                            logger.info('link : ' + str(link))
+                            break
+                        else:
+                            logger.error(str(newznab_info[0]) + ' is not enabled - unable to process retry request until provider is re-enabled.')
+                            return
+
+            sendit = search.searcher(Provider, nzbname, comicinfo, link=link, IssueID=IssueID, ComicID=ComicID, tmpprov=fullprov, directsend=True)
+    retryissue.exposed = True
+
     def queueit(self, **kwargs):
         threading.Thread(target=self.queueissue, kwargs=kwargs).start()
     queueit.exposed = True
 
-    def queueissue(self, mode, ComicName=None, ComicID=None, ComicYear=None, ComicIssue=None, IssueID=None, new=False, redirect=None, SeriesYear=None, SARC=None, IssueArcID=None, manualsearch=None):
+    def queueissue(self, mode, ComicName=None, ComicID=None, ComicYear=None, ComicIssue=None, IssueID=None, new=False, redirect=None, SeriesYear=None, SARC=None, IssueArcID=None, manualsearch=None, Publisher=None):
         logger.fdebug('ComicID:' + str(ComicID))
         logger.fdebug('mode:' + str(mode))
         now = datetime.datetime.now()
@@ -755,16 +984,17 @@ class WebInterface(object):
             #better to set both to some generic #, and then filter out later...
             cyear = myDB.selectone("SELECT SHIPDATE FROM weekly").fetchone()
             ComicYear = str(cyear['SHIPDATE'])[:4]
+            if Publisher == 'COMICS': Publisher = None
             if ComicYear == '': ComicYear = now.year
             logger.info(u"Marking " + ComicName + " " + ComicIssue + " as wanted...")
-            foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=None, IssueDate=cyear['SHIPDATE'], StoreDate=cyear['SHIPDATE'], IssueID=None, AlternateSearch=None, UseFuzzy=None, ComicVersion=None)
+            foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=Publisher, IssueDate=cyear['SHIPDATE'], StoreDate=cyear['SHIPDATE'], IssueID=None, AlternateSearch=None, UseFuzzy=None, ComicVersion=None)
             if foundcom  == "yes":
                 logger.info(u"Downloaded " + ComicName + " " + ComicIssue )  
             raise cherrypy.HTTPRedirect("pullist")
             #return
         elif mode == 'want' or mode == 'want_ann' or manualsearch:
-            cdname = myDB.selectone("SELECT ComicName from comics where ComicID=?", [ComicID]).fetchone()
-            ComicName = cdname['ComicName']
+            cdname = myDB.selectone("SELECT ComicName, ComicName_Filesafe from comics where ComicID=?", [ComicID]).fetchone()
+            ComicName = cdname['ComicName_Filesafe']
             controlValueDict = {"IssueID": IssueID}
             newStatus = {"Status": "Wanted"}
             if mode == 'want':
@@ -804,7 +1034,7 @@ class WebInterface(object):
         Publisher = miy['ComicPublisher']
         UseAFuzzy = miy['UseFuzzy']
         ComicVersion = miy['ComicVersion']
-        foundcom, prov = search.search_init(ComicName, ComicIssue, ComicYear, SeriesYear, Publisher, issues['IssueDate'], storedate, IssueID, AlternateSearch, UseAFuzzy, ComicVersion, mode=mode, ComicID=ComicID, manualsearch=manualsearch)
+        foundcom, prov = search.search_init(ComicName, ComicIssue, ComicYear, SeriesYear, Publisher, issues['IssueDate'], storedate, IssueID, AlternateSearch, UseAFuzzy, ComicVersion, mode=mode, ComicID=ComicID, manualsearch=manualsearch, filesafe=miy['ComicName_Filesafe'])
         if foundcom  == "yes":
             # file check to see if issue exists and update 'have' count
             if IssueID is not None:
@@ -814,29 +1044,45 @@ class WebInterface(object):
             # if it's a manual search, return to null here so the thread will die and not cause http redirect errors.
             return
         if ComicID:
-            raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % ComicID)
+            return cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % ComicID)
         else:
             raise cherrypy.HTTPRedirect(redirect)
     queueissue.exposed = True
 
-    def unqueueissue(self, IssueID, ComicID, ComicName=None, Issue=None, FutureID=None):
+    def unqueueissue(self, IssueID, ComicID, ComicName=None, Issue=None, FutureID=None, mode=None, ReleaseComicID=None):
         myDB = db.DBConnection()
         if ComicName is None:
-            issue = myDB.selectone('SELECT * FROM issues WHERE IssueID=?', [IssueID]).fetchone()
+            if ReleaseComicID is None:  #ReleaseComicID is used for annuals.
+                issue = myDB.selectone('SELECT * FROM issues WHERE IssueID=?', [IssueID]).fetchone()
+            else:
+                issue = None                
             annchk = 'no'
             if issue is None:
                 if mylar.ANNUALS_ON:
-                    issann = myDB.selectone('SELECT * FROM annuals WHERE IssueID=?', [IssueID]).fetchone()
-                    comicname = issann['ReleaseComicName']
-                    issue = issann['Issue_Number']
+                    if ReleaseComicID is None:
+                        issann = myDB.selectone('SELECT * FROM annuals WHERE IssueID=?', [IssueID]).fetchone()
+                    else:
+                        issann = myDB.selectone('SELECT * FROM annuals WHERE IssueID=? AND ReleaseComicID=?', [IssueID, ReleaseComicID]).fetchone()
+                    ComicName = issann['ReleaseComicName']
+                    IssueNumber = issann['Issue_Number']
                     annchk = 'yes'
-                    comicid = issann['ComicID']
+                    ComicID = issann['ComicID']
+                    ReleaseComicID = issann['ReleaseComicID']
             else:
-                comicname = issue['ComicName']
-                issue = issue['Issue_Number']
-            logger.info(u"Marking " + comicname + " issue # " + str(issue) + " as Skipped...")
+                ComicName = issue['ComicName']
+                IssueNumber = issue['Issue_Number']
+
             controlValueDict = {"IssueID": IssueID}
-            newValueDict = {"Status": "Skipped"}
+            if mode == 'failed' and mylar.FAILED_DOWNLOAD_HANDLING:
+                logger.info(u"Marking " + ComicName + " issue # " + str(IssueNumber) + " as Failed...")
+                newValueDict = {"Status": "Failed"}
+                myDB.upsert("failed", newValueDict, controlValueDict)
+                yield cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % ComicID)
+                self.failed_handling(ComicID=ComicID, IssueID=IssueID)
+            else:
+                logger.info(u"Marking " + ComicName + " issue # " + str(IssueNumber) + " as Skipped...")
+                newValueDict = {"Status": "Skipped"}
+
             if annchk == 'yes':
                myDB.upsert("annuals", newValueDict, controlValueDict)
             else:
@@ -868,11 +1114,34 @@ class WebInterface(object):
 
     unqueueissue.exposed = True
     
-    def archiveissue(self, IssueID):
+    def failed_handling(self, ComicID, IssueID):
+        import Queue
+        queue = Queue.Queue()
+
+        FailProcess = Failed.FailedProcessor(issueid=IssueID, comicid=ComicID, queue=queue)
+        thread_ = threading.Thread(target=FailProcess.Process, name="FAILED Post-Processing")
+        thread_.start()
+        thread_.join()
+        failchk = queue.get()
+        if failchk[0]['mode'] == 'retry':
+            logger.info('Attempting to return to search module with ' + str(failchk[0]['issueid']))
+            if failchk[0]['annchk'] == 'no': mode = 'want'
+            else: mode = 'want_ann'
+            self.queueit(mode=mode, ComicName=failchk[0]['comicname'], ComicIssue=failchk[0]['issuenumber'], ComicID=failchk[0]['comicid'], IssueID=failchk[0]['issueid'], manualsearch=True)
+        elif failchk[0]['mode'] == 'stop':
+            pass
+        else:
+            logger.error('mode is unsupported: ' + failchk[0]['mode'])
+
+    failed_handling.exposed = True
+
+    def archiveissue(self, IssueID, comicid):
+        print 'marking issue : ' + str(IssueID)
         myDB = db.DBConnection()
         issue = myDB.selectone('SELECT * FROM issues WHERE IssueID=?', [IssueID]).fetchone()
         annchk = 'no'
         if issue is None:
+            print 'issue is none'
             if mylar.ANNUALS_ON:
                 issann = myDB.selectone('SELECT * FROM annuals WHERE IssueID=?', [IssueID]).fetchone()
                 comicname = issann['ReleaseComicName']
@@ -880,9 +1149,11 @@ class WebInterface(object):
                 annchk = 'yes'
                 comicid = issann['ComicID']
         else:
+            print 'issue not none'
             comicname = issue['ComicName']
+            print comicname
             issue = issue['Issue_Number']
-            comicid = issue['ComicID']
+            print issue
         logger.info(u"Marking " + comicname + " issue # " + str(issue) + " as archived...")
         controlValueDict = {'IssueID': IssueID}
         newValueDict = {'Status': 'Archived'}
@@ -1014,12 +1285,14 @@ class WebInterface(object):
         if chkfuture is not None:
             logger.info('Already on Future Upcoming list - not adding at this time.')
             return
-        logger.info('Adding ' + ComicName + ' # ' + str(Issue) + ' to future upcoming watchlist')
-        newCtrl = {"ComicName":       ComicName,
-                   "IssueNumber":       Issue,
+        logger.info('Adding ' + ComicName + ' # ' + str(Issue) + ' [' + Publisher + '] to future upcoming watchlist')
+        newCtrl = {"ComicName":   ComicName,
+                   "IssueNumber": Issue,
                    "Publisher":   Publisher}
+
         newVal = {"Status":       "Wanted",
                   "IssueDate":     ShipDate}
+
         myDB.upsert("futureupcoming", newVal, newCtrl)
  
         fCtrl = {"FutureID":  FutureID}
@@ -1055,18 +1328,24 @@ class WebInterface(object):
                            "IssueNumber": cf['IssueNumber'],   #this should be all #1's as the sql above limits the hits. 
                            "Publisher":   cf['Publisher'],
                            "Status":      cf['Status']})
-
+            print 'cflist: ' + str(cflist)
         #now we load in         
         logger.info('I will be looking to see if any information has been released for ' + str(len(cflist)) + ' series that are NEW series')
         #limit the search to just the 'current year' since if it's anything but a #1, it should have associated data already.
         #limittheyear = []
         #limittheyear.append(cf['IssueDate'][-4:])
         for ser in cflist:
-            logger.info('looking for new data for ' + ser['ComicName'] + '[#' + str(ser['IssueNumber']) + '] (' + str(ser['IssueDate'][-4:]) + ')')
-            searchresults, explicit = mb.findComic(ser['ComicName'], mode='pullseries', issue=ser['IssueNumber'], limityear=ser['IssueDate'][-4:], explicit='explicit')
+            theissdate = ser['IssueDate'][-4:]
+            if not theissdate.startswith('20'):
+                theissdate = ser['IssueDate'][:4]
+            logger.info('looking for new data for ' + ser['ComicName'] + '[#' + str(ser['IssueNumber']) + '] (' + str(theissdate) + ')')
+            searchresults, explicit = mb.findComic(ser['ComicName'], mode='pullseries', issue=ser['IssueNumber'], limityear=theissdate, explicit='all')
             print searchresults
             if len(searchresults) > 1:
+                logger.info('publisher: ' + str(ser['Publisher']))
                 logger.info('More than one result returned - this may have to be a manual add')
+                return serve_template(templatename="searchresults.html", title='New Series Results for: "' + ser['ComicName'] + '"',searchresults=searchresults, type='series', imported='futurecheck', ogcname=ser['ComicName'], name=ser['ComicName'], explicit='all', serinfo=ser) #imported=comicstoIMP, ogcname=ogcname)
+                #call secondary module here to complete the selected add.
             else:
                 for sr in searchresults:
                     #we should probably load all additional issues for the series on the futureupcoming list that are marked as Wanted and then
@@ -1086,15 +1365,36 @@ class WebInterface(object):
 
                         logger.info('Marking ' + str(len(chkthewanted)) + ' additional issues as Wanted from ' + ser['ComicName'] + ' series as requested') 
 
-                    chktheadd = importer.addComictoDB(sr['comicid'], "no", chkwant=chkthewanted)
-                    if chktheadd != 'Exists':
-                        logger.info('Sucessfully imported ' + ser['ComicName'] + ' (' + str(ser['IssueDate'][-4:]) + ')')
- 
-                    myDB.action('DELETE from futureupcoming WHERE ComicName=?', [ser['ComicName']])
-                    logger.info('Removed ' + ser['ComicName'] + ' (' + str(ser['IssueDate'][-4:]) + ') from the future upcoming list as it is now added.')
+                self.future_check_add(sr['comicid'], ser, chkthewanted, theissdate)
+
+    future_check.exposed = True
+
+    def future_check_add(self, comicid, serinfo, chkthewanted=None, theissdate=None):
+        #In order to not error out when adding series with absolutely NO issue data, we need to 'fakeup' some values
+        #latestdate = the 'On sale' date from the futurepull-list OR the Shipping date if not available.
+        #latestiss = the IssueNumber for the first issue (this should always be #1, but might change at some point)
+        ser = serinfo
+        if theissdate is None:
+            theissdate = ser['IssueDate'][-4:]
+            if not theissdate.startswith('20'):
+                theissdate = ser['IssueDate'][:4]
+
+        latestissueinfo = []
+        latestissueinfo.append({"latestdate": ser['IssueDate'],
+                                "latestiss":  ser['IssueNumber']})
+        logger.fdebug('sending latestissueinfo from future as : ' + str(latestissueinfo))
+        chktheadd = importer.addComictoDB(comicid, "no", chkwant=chkthewanted, latestissueinfo=latestissueinfo, calledfrom="futurecheck")
+
+        if chktheadd != 'Exists':
+           logger.info('Sucessfully imported ' + ser['ComicName'] + ' (' + str(theissdate) + ')')
+
+        myDB = db.DBConnection()
+        myDB.action('DELETE from futureupcoming WHERE ComicName=?', [ser['ComicName']])
+        logger.info('Removed ' + ser['ComicName'] + ' (' + str(theissdate) + ') from the future upcoming list as it is now added.')
 
         raise cherrypy.HTTPRedirect("home")
-    future_check.exposed = True
+
+    future_check_add.exposed = True
 
     def filterpull(self):
         myDB = db.DBConnection()
@@ -1133,46 +1433,65 @@ class WebInterface(object):
             upcoming = []
             upcoming_count = 0
             futureupcoming_count = 0
+            try:
+                pull_date = myDB.selectone("SELECT SHIPDATE from weekly").fetchone()
+                logger.fdebug(u"Weekly pull list present - retrieving pull-list date.")
+                if (pull_date is None):
+                    pulldate = '00000000'
+                else:
+                    pulldate = pull_date['SHIPDATE']
+            except (sqlite3.OperationalError, TypeError),msg:
+                logger.info(u"Error Retrieving weekly pull list - attempting to adjust")
+                pulldate = '00000000'
+
             for upc in upcomingdata:
-            
                 if len(upc['IssueDate']) <= 7 :
                     #if it's less than or equal 7, then it's a future-pull so let's check the date and display
                     #tmpdate = datetime.datetime.com
                     tmpdatethis = upc['IssueDate']
                     if tmpdatethis[:2] == '20':
-                        tmpdate = tmpdatethis #in correct format of yyyymm
+                        tmpdate = tmpdatethis + '01' #in correct format of yyyymm
                     else:
                         findst = tmpdatethis.find('-')  #find the '-'
-                        tmpdate = tmpdatethis[findst+1:] + tmpdatethis[:findst] #rebuild in format of yyyymm
-                    timenow = datetime.datetime.now().strftime('%Y%m')
-                    #logger.fdebug('comparing pubdate of: ' + str(tmpdate) + ' to now date of: ' + str(timenow))
-                    if int(tmpdate) >= int(timenow):
-                        if upc['Status'] == 'Wanted':
-                            futureupcoming_count +=1
-                            futureupcoming.append({"ComicName":    upc['ComicName'],
-                                                   "IssueNumber":  upc['IssueNumber'],
-                                                   "IssueDate":    upc['IssueDate'],
-                                                   "ComicID":      upc['ComicID'],
-                                                   "IssueID":      upc['IssueID'],
-                                                   "Status":       upc['Status'],
-                                                   "DisplayComicName": upc['DisplayComicName']})
+                        tmpdate = tmpdatethis[findst+1:] + tmpdatethis[:findst] + '01' #rebuild in format of yyyymm
+                    #timenow = datetime.datetime.now().strftime('%Y%m')
                 else:
-                    #if it's greater than 7 it's a full date, and shouldn't be displayed ;)
-                    timenow = datetime.datetime.now().strftime('%Y%m%d') #convert to yyyymmdd
+                    #if it's greater than 7 it's a full date.
                     tmpdate = re.sub("[^0-9]", "", upc['IssueDate'])  #convert date to numerics only (should be in yyyymmdd)
 
-                    #logger.fdebug('comparing pubdate of: ' + str(tmpdate) + ' to now date of: ' + str(timenow))
+                timenow = datetime.datetime.now().strftime('%Y%m%d') #convert to yyyymmdd
+                #logger.fdebug('comparing pubdate of: ' + str(tmpdate) + ' to now date of: ' + str(timenow))
 
-                    if int(tmpdate) >= int(timenow):
-                        if upc['Status'] == 'Wanted':
-                            upcoming_count +=1
-                            upcoming.append({"ComicName":    upc['ComicName'],
-                                             "IssueNumber":  upc['IssueNumber'],
-                                             "IssueDate":    upc['IssueDate'],
-                                             "ComicID":      upc['ComicID'],
-                                             "IssueID":      upc['IssueID'],
-                                             "Status":       upc['Status'],
-                                             "DisplayComicName": upc['DisplayComicName']})
+                pulldate = re.sub("[^0-9]", "", pulldate)  #convert pulldate to numerics only (should be in yyyymmdd)
+
+                if int(tmpdate) >= int(timenow) and int(tmpdate) == int(pulldate): #int(pulldate) <= int(timenow):
+                    if upc['Status'] == 'Wanted':
+                        upcoming_count +=1
+                        upcoming.append({"ComicName":    upc['ComicName'],
+                                         "IssueNumber":  upc['IssueNumber'],
+                                         "IssueDate":    upc['IssueDate'],
+                                         "ComicID":      upc['ComicID'],
+                                         "IssueID":      upc['IssueID'],
+                                         "Status":       upc['Status'],
+                                         "DisplayComicName": upc['DisplayComicName']})
+
+                elif int(tmpdate) >= int(timenow):
+                    if len(upc['IssueDate']) <= 7:
+                        issuedate = tmpdate[:4] + '-' + tmpdate[4:6] + '-00'
+                    else:
+                        issuedate = upc['IssueDate']
+                    if upc['Status'] == 'Wanted':
+                        futureupcoming_count +=1
+                        futureupcoming.append({"ComicName":    upc['ComicName'],
+                                               "IssueNumber":  upc['IssueNumber'],
+                                               "IssueDate":    issuedate,
+                                               "ComicID":      upc['ComicID'],
+                                               "IssueID":      upc['IssueID'],
+                                               "Status":       upc['Status'],
+                                               "DisplayComicName": upc['DisplayComicName']})
+
+        futureupcoming = sorted(futureupcoming, key=itemgetter('IssueDate','ComicName','IssueNumber'), reverse=True)
+
 
         issues = myDB.select("SELECT * from issues WHERE Status='Wanted'")
         isscnt = myDB.select("SELECT COUNT(*) FROM issues WHERE Status='Wanted'")
@@ -1322,10 +1641,14 @@ class WebInterface(object):
         return serve_template(templatename="managecomics.html", title="Manage Comics", comics=comics)
     manageComics.exposed = True
     
-    def manageIssues(self):
+    def manageIssues(self, **kwargs):
+        print 'here'
+        print kwargs
+        status = kwargs['status']
         myDB = db.DBConnection()
-        issues = myDB.select('SELECT * from issues')
-        return serve_template(templatename="manageissues.html", title="Manage Issues", issues=issues)
+        issues = myDB.select('SELECT * from issues WHERE Status=?', [status])
+
+        return serve_template(templatename="manageissues.html", title="Manage " + str(status) + " Issues", issues=issues)
     manageIssues.exposed = True
     
     def manageNew(self):
@@ -1542,6 +1865,69 @@ class WebInterface(object):
                        "TotalIssues": len(tracks)}
             myDB.upsert("readinglist", NewVals, CtrlVal)
             i+=1
+
+        # Now we either load in all of the issue data for series' already on the watchlist,
+        # or we dynamically load them from CV and write to the db.
+
+        #this loads in all the series' that have multiple entries in the current story arc.
+        Arc_MultipleSeries = myDB.select("SELECT * FROM readinglist WHERE StoryArcID=? AND IssueID is NULL GROUP BY ComicName HAVING (COUNT(ComicName) > 1)", [storyarcid])
+        
+        if Arc_MultipleSeries is None:
+            logger.info('Detected 0 series that have multiple entries in this Story Arc. Continuing.')
+
+        else:
+            AMS = []
+            for Arc_MS in Arc_MultipleSeries:
+                #the purpose of this loop is to loop through the multiple entries, pulling out the lowest & highest issue numbers
+                #along with the publication years in order to help the auto-detector attempt to figure out what the series is on CV.
+                #.schema readinglist
+                #(StoryArcID TEXT, ComicName TEXT, IssueNumber TEXT, SeriesYear TEXT, IssueYEAR TEXT, StoryArc TEXT, TotalIssues TEXT, 
+                # Status TEXT, inCacheDir TEXT, Location TEXT, IssueArcID TEXT, ReadingOrder INT, IssueID TEXT);
+                if any(d['ComicName'] == Arc_MS['ComicName'] for d in AMS):
+                    #store the high value
+                    if helpers.issuedigit(Arc_MS['IssueNumber']) >= helpers.issuedigit(d['highvalue']):
+                        for key in AMS.keys():
+                            if key == "highvalue":
+                                AMS[key] = Arc_MS['IssueNumber']
+
+                if not any(d['ComicName'] == Arc_MS['ComicName'] for d in AMS):
+
+                    AMS.append({"StoryArcID":  Arc_MS['StoryArcID'],
+                                "ComicName":   Arc_MS['ComicName'],
+                                "IssueNumber": Arc_MS['IssueNumber'],
+                                "SeriesYear":  Arc_MS['SeriesYear'],
+                                "IssueYear":   Arc_MS['IssueYear'],
+                                "IssueID":     Arc_MS['IssueID'],
+                                "highvalue":   Arc_MS['IssueNumber']})
+
+            print str(AMS)
+#        mode='series'
+#        if yearRANGE is None:
+#        sresults, explicit = mb.findComic(comicname, mode, issue=numissues, explicit='all')
+#        else:
+#            sresults, explicit = mb.findComic(comicname, mode, issue=numissues, limityear=yearRANGE, explicit='all')
+#        type='comic'
+
+#        if len(sresults) == 1:
+#            sr = sresults[0]
+#            implog = implog + "only one result...automagik-mode enabled for " + displaycomic + " :: " + str(sr['comicid']) + "\n"
+#            resultset = 1
+#            #need to move the files here.
+#        elif len(sresults) == 0 or len(sresults) is None:
+#            implog = implog + "no results, removing the year from the agenda and re-querying.\n"
+#            sresults, explicit = mb.findComic(ogcname, mode, issue=numissues, explicit='all') #ComicName, mode, issue=numissues)
+#            if len(sresults) == 1:
+#                sr = sresults[0]
+#                implog = implog + "only one result...automagik-mode enabled for " + displaycomic + " :: " + str(sr['comicid']) + "\n"
+#                resultset = 1
+#            else:
+#                resultset = 0
+#        else:
+#            implog = implog + "returning results to screen - more than one possibility.\n"
+#            resultset = 0
+
+
+
         raise cherrypy.HTTPRedirect("detailReadlist?StoryArcID=%s&StoryArcName=%s" % (storyarcid, storyarc))
     importReadlist.exposed = True
 
@@ -1594,9 +1980,11 @@ class WebInterface(object):
                             GCDissue = int(GCDissue) / 1000
                             if '.' not in str(GCDissue): GCDissue = str(GCDissue) + ".00"
                             logger.fdebug("issue converted to " + str(GCDissue))
-                            isschk = myDB.selectone("SELECT * FROM issues WHERE ComicName=? AND Issue_Number=? AND ComicID=?", [comic['ComicName'], str(GCDissue), comic['ComicID']]).fetchone()
+                            isschk = myDB.selectone("SELECT * FROM issues WHERE Issue_Number=? AND ComicID=?", [str(GCDissue), comic['ComicID']]).fetchone()
                         else:
-                            isschk = myDB.selectone("SELECT * FROM issues WHERE ComicName=? AND Issue_Number=? AND ComicID=?", [comic['ComicName'], arc['IssueNumber'], comic['ComicID']]).fetchone()
+                            issue_int = helpers.issuedigits(arc['IssueNumber'])
+                            logger.info('int_issue = ' + str(issue_int))
+                            isschk = myDB.selectone("SELECT * FROM issues WHERE Int_IssueNumber=? AND ComicID=?", [issue_int, comic['ComicID']]).fetchone()
                         if isschk is None:
                             logger.fdebug("we matched on name, but issue " + str(arc['IssueNumber']) + " doesn't exist for " + comic['ComicName'])
                         else:
@@ -1823,7 +2211,7 @@ class WebInterface(object):
             logger.fdebug("You don't have any issues from " + StoryArcName + ". Aborting Mass Copy.")
             return
         else:
-            dst = os.path.join(mylar.CACHE, StoryArcName)
+            dst = os.path.join(mylar.CACHE_DIR, StoryArcName)
             for files in copylist:
                 
                 copyloc = files['Location']
@@ -2004,6 +2392,10 @@ class WebInterface(object):
     confirmResult.exposed = True
 
     def comicScan(self, path, scan=0, libraryscan=0, redirect=None, autoadd=0, imp_move=0, imp_rename=0, imp_metadata=0):
+        import Queue
+        queue = Queue.Queue()
+
+        #save the values so they stick.
         mylar.LIBRARYSCAN = libraryscan
         mylar.ADD_COMICS = autoadd
         mylar.COMIC_DIR = path
@@ -2011,61 +2403,18 @@ class WebInterface(object):
         mylar.IMP_RENAME = imp_rename
         mylar.IMP_METADATA = imp_metadata
         mylar.config_write()
-        if scan:
-            try:
-                soma,noids = librarysync.libraryScan()
-            except Exception, e:
-                logger.error('Unable to complete the scan: %s' % e)
-                return
-            if soma == "Completed":
-                print ("sucessfully completed import.")
-            else:
-                logger.info(u"Starting mass importing..." + str(noids) + " records.")
-                #this is what it should do...
-                #store soma (the list of comic_details from importing) into sql table so import can be whenever
-                #display webpage showing results
-                #allow user to select comic to add (one at a time)
-                #call addComic off of the webpage to initiate the add.
-                #return to result page to finish or continue adding.
-                #....
-                #threading.Thread(target=self.searchit).start()
-                #threadthis = threadit.ThreadUrl()
-                #result = threadthis.main(soma)
-                myDB = db.DBConnection()
-                sl = 0
-                print ("number of records: " + str(noids))
-                while (sl < int(noids)):
-                    soma_sl = soma['comic_info'][sl]
-                    print ("soma_sl: " + str(soma_sl))
-                    print ("comicname: " + soma_sl['comicname'].encode('utf-8'))
-                    print ("filename: " + soma_sl['comfilename'].encode('utf-8'))
-                    controlValue = {"impID":    soma_sl['impid']}
-                    newValue = {"ComicYear":        soma_sl['comicyear'],
-                                "Status":           "Not Imported",
-                                "ComicName":        soma_sl['comicname'].encode('utf-8'),
-                                "DisplayName":      soma_sl['displayname'].encode('utf-8'),
-                                "ComicFilename":    soma_sl['comfilename'].encode('utf-8'),
-                                "ComicLocation":    soma_sl['comlocation'].encode('utf-8'),
-                                "ImportDate":       helpers.today(),
-                                "WatchMatch":       soma_sl['watchmatch']}      
-                    myDB.upsert("importresults", newValue, controlValue)
-                    sl+=1
-                # because we could be adding volumes/series that span years, we need to account for this
-                # add the year to the db under the term, valid-years
-                # add the issue to the db under the term, min-issue
-                
-                #locate metadata here.
-                # unzip -z filename.cbz will show the comment field of the zip which contains the metadata.
-
-                # unzip -z filename.cbz < /dev/null  will remove the comment field, and thus the metadata.
-
-                    
-                #self.importResults()
-            raise cherrypy.HTTPRedirect("importResults")
-        if redirect:
-            raise cherrypy.HTTPRedirect(redirect)
-        else:
-            raise cherrypy.HTTPRedirect("home")
+        #thread the scan.
+        if scan == '1': scan = True
+        else: scan = False
+      
+        thread_ = threading.Thread(target=librarysync.scanLibrary, name="LibraryScan", args=[scan, queue])
+        thread_.start()
+        thread_.join()
+        chk = queue.get()
+        while True:
+            if chk[0]['result'] == 'success':
+#                yield logger.info('I should now enable the Results button somehow.') 
+                break
     comicScan.exposed = True
 
     def importResults(self):
@@ -2158,8 +2507,8 @@ class WebInterface(object):
                             yearRANGE.append(result['ComicYear'])
                             yearTOP = str(result['ComicYear'])
                     getiss_num = helpers.issuedigits(getiss)
-                    miniss_num = helpers.issuedigits(minISSUE)
-                    startiss_num = helpers.issuedigits(startISSUE)
+                    miniss_num = helpers.issuedigits(str(minISSUE))
+                    startiss_num = helpers.issuedigits(str(startISSUE))
                     if int(getiss_num) > int(miniss_num):
                         implog = implog + "issue now set to : " + str(getiss) + " ... it was : " + str(minISSUE) + "\n"
                         minISSUE = str(getiss)
@@ -2218,9 +2567,9 @@ class WebInterface(object):
         
             mode='series'
             if yearRANGE is None:
-                sresults, explicit = mb.findComic(displaycomic, mode, issue=numissues, explicit='all') #ComicName, mode, issue=numissues)
+                sresults, explicit = mb.findComic(ogcname, mode, issue=numissues, explicit='all') #ComicName, mode, issue=numissues)
             else:
-                sresults, explicit = mb.findComic(displaycomic, mode, issue=numissues, limityear=yearRANGE, explicit='all') #ComicName, mode, issue=numissues, limityear=yearRANGE)
+                sresults, explicit = mb.findComic(ogcname, mode, issue=numissues, limityear=yearRANGE, explicit='all') #ComicName, mode, issue=numissues, limityear=yearRANGE)
             type='comic'
 
             if len(sresults) == 1:
@@ -2230,7 +2579,7 @@ class WebInterface(object):
 #            #need to move the files here.
             elif len(sresults) == 0 or len(sresults) is None:
                 implog = implog + "no results, removing the year from the agenda and re-querying.\n"
-                sresults, explicit = mb.findComic(displaycomic, mode, issue=numissues, explicit='all') #ComicName, mode, issue=numissues)
+                sresults, explicit = mb.findComic(ogcname, mode, issue=numissues, explicit='all') #ComicName, mode, issue=numissues)
                 if len(sresults) == 1:
                     sr = sresults[0]
                     implog = implog + "only one result...automagik-mode enabled for " + displaycomic + " :: " + str(sr['comicid']) + "\n"
@@ -2252,7 +2601,7 @@ class WebInterface(object):
                 cresults = self.addComic(comicid=sr['comicid'],comicname=sr['name'],comicyear=sr['comicyear'],comicpublisher=sr['publisher'],comicimage=sr['comicimage'],comicissues=sr['issues'],imported='yes',ogcname=ogcname)  #imported=comicstoIMP,ogcname=ogcname)
                 return serve_template(templatename="searchfix.html", title="Error Check", comicname=sr['name'], comicid=sr['comicid'], comicyear=sr['comicyear'], comicimage=sr['comicimage'], comicissues=sr['issues'], cresults=cresults, imported='yes', ogcname=str(ogcname))
             else:
-                return serve_template(templatename="searchresults.html", title='Import Results for: "' + displaycomic + '"',searchresults=sresults, type=type, imported='yes', ogcname=ogcname, explicit=explicit) #imported=comicstoIMP, ogcname=ogcname)
+                return serve_template(templatename="searchresults.html", title='Import Results for: "' + displaycomic + '"',searchresults=sresults, type=type, imported='yes', ogcname=ogcname, name=ogcname, explicit=explicit, serinfo=None) #imported=comicstoIMP, ogcname=ogcname)
     preSearchit.exposed = True
 
     def pretty_git(self, br_history):
@@ -2332,6 +2681,9 @@ class WebInterface(object):
                     "launch_browser" : helpers.checked(mylar.LAUNCH_BROWSER),
                     "logverbose" : helpers.checked(mylar.LOGVERBOSE),
                     "max_logsize" : mylar.MAX_LOGSIZE,
+                    "annuals_on" : helpers.checked(mylar.ANNUALS_ON), 
+                    "enable_check_folder" : helpers.checked(mylar.ENABLE_CHECK_FOLDER),
+                    "check_folder" : mylar.CHECK_FOLDER,
                     "download_scan_interval" : mylar.DOWNLOAD_SCAN_INTERVAL,
                     "nzb_search_interval" : mylar.SEARCH_INTERVAL,
                     "nzb_startup_search" : helpers.checked(mylar.NZB_STARTUP_SEARCH),
@@ -2389,6 +2741,7 @@ class WebInterface(object):
                     "cbt_passkey" : mylar.CBT_PASSKEY,
                     "snatchedtorrent_notify" : mylar.SNATCHEDTORRENT_NOTIFY,
                     "destination_dir" : mylar.DESTINATION_DIR,
+                    "create_folders" : helpers.checked(mylar.CREATE_FOLDERS),
                     "chmod_dir" : mylar.CHMOD_DIR,
                     "chmod_file" : mylar.CHMOD_FILE,
                     "replace_spaces" : helpers.checked(mylar.REPLACE_SPACES),
@@ -2443,6 +2796,8 @@ class WebInterface(object):
                     "ct_tag_cr" : helpers.checked(mylar.CT_TAG_CR),
                     "ct_tag_cbl" : helpers.checked(mylar.CT_TAG_CBL),
                     "ct_cbz_overwrite" : helpers.checked(mylar.CT_CBZ_OVERWRITE),
+                    "failed_download_handling" : helpers.checked(mylar.FAILED_DOWNLOAD_HANDLING),
+                    "failed_auto" : helpers.checked(mylar.FAILED_AUTO),
                     "branch" : version.MYLAR_VERSION,
                     "br_type" : mylar.INSTALL_TYPE,
                     "br_version" : mylar.versioncheck.getVersion(),
@@ -2491,13 +2846,13 @@ class WebInterface(object):
         b = urllib.unquote_plus(comicname)
         cname = b.encode('utf-8')
 
-        print ('comicid to be attached : ' + str(manual_comicid))
-        print ('comicname : ' + str(cname))
-        print ('comicyear : ' + str(comicyear))
-        print ('comicid : ' + str(comicid))
+        logger.fdebug('comicid to be attached : ' + str(manual_comicid))
+        logger.fdebug('comicname : ' + str(cname))
+        logger.fdebug('comicyear : ' + str(comicyear))
+        logger.fdebug('comicid : ' + str(comicid))
         issueid = manual_comicid
-        logger.fdebug(str(issueid) + ' added to series list as an Annual')
-        threading.Thread(target=importer.manualAnnual, args=[manual_comicid, comicname, comicyear, comicid]).start()
+        logger.fdebug('I will be adding ' + str(issueid) + ' to the Annual list for this series.')
+        threading.Thread(target=importer.manualAnnual, args=[manual_comicid, cname, comicyear, comicid]).start()
 
         raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % comicid)
     manual_annual_add.exposed = True
@@ -2619,17 +2974,17 @@ class WebInterface(object):
     readOptions.exposed = True
 
     
-    def configUpdate(self, comicvine_api=None, http_host='0.0.0.0', http_username=None, http_port=8090, http_password=None, api_enabled=0, api_key=None, launch_browser=0, logverbose=0, max_logsize=None, download_scan_interval=None, nzb_search_interval=None, nzb_startup_search=0, libraryscan_interval=None,
+    def configUpdate(self, comicvine_api=None, http_host='0.0.0.0', http_username=None, http_port=8090, http_password=None, api_enabled=0, api_key=None, launch_browser=0, logverbose=0, annuals_on=0, max_logsize=None, download_scan_interval=None, nzb_search_interval=None, nzb_startup_search=0, libraryscan_interval=None,
         nzb_downloader=0, sab_host=None, sab_username=None, sab_apikey=None, sab_password=None, sab_category=None, sab_priority=None, sab_directory=None, log_dir=None, log_level=0, blackhole_dir=None,
         nzbget_host=None, nzbget_port=None, nzbget_username=None, nzbget_password=None, nzbget_category=None, nzbget_priority=None, nzbget_directory=None,
         usenet_retention=None, nzbsu=0, nzbsu_uid=None, nzbsu_apikey=None, dognzb=0, dognzb_uid=None, dognzb_apikey=None, newznab=0, newznab_host=None, newznab_name=None, newznab_apikey=None, newznab_uid=None, newznab_enabled=0,
-        raw=0, raw_provider=None, raw_username=None, raw_password=None, raw_groups=None, experimental=0,
-        enable_meta=0, cmtagger_path=None, ct_tag_cr=0, ct_tag_cbl=0, ct_cbz_overwrite=0, enable_rss=0, rss_checkinterval=None, enable_torrent_search=0, enable_kat=0, enable_cbt=0, cbt_passkey=None, snatchedtorrent_notify=0,
+        raw=0, raw_provider=None, raw_username=None, raw_password=None, raw_groups=None, experimental=0, check_folder=None, enable_check_folder=0, 
+        enable_meta=0, cmtagger_path=None, ct_tag_cr=0, ct_tag_cbl=0, ct_cbz_overwrite=0, enable_rss=0, rss_checkinterval=None, failed_download_handling=0, failed_auto=0, enable_torrent_search=0, enable_kat=0, enable_cbt=0, cbt_passkey=None, snatchedtorrent_notify=0,
         enable_torrents=0, minseeds=0, torrent_local=0, local_watchdir=None, torrent_seedbox=0, seedbox_watchdir=None, seedbox_user=None, seedbox_pass=None, seedbox_host=None, seedbox_port=None,
         prowl_enabled=0, prowl_onsnatch=0, prowl_keys=None, prowl_priority=None, nma_enabled=0, nma_apikey=None, nma_priority=0, nma_onsnatch=0, pushover_enabled=0, pushover_onsnatch=0, pushover_apikey=None, pushover_userkey=None, pushover_priority=None, boxcar_enabled=0, boxcar_onsnatch=0, boxcar_token=None,
         pushbullet_enabled=0, pushbullet_apikey=None, pushbullet_deviceid=None, pushbullet_onsnatch=0,
         preferred_quality=0, move_files=0, rename_files=0, add_to_csv=1, cvinfo=0, lowercase_filenames=0, folder_format=None, file_format=None, enable_extra_scripts=0, extra_scripts=None, enable_pre_scripts=0, pre_scripts=None, post_processing=0, syno_fix=0, search_delay=None, chmod_dir=0777, chmod_file=0660, cvapifix=0,
-        tsab=None, destination_dir=None, replace_spaces=0, replace_char=None, use_minsize=0, minsize=None, use_maxsize=0, maxsize=None, autowant_all=0, autowant_upcoming=0, comic_cover_local=0, zero_level=0, zero_level_n=None, interface=None, **kwargs):
+        tsab=None, destination_dir=None, create_folders=1, replace_spaces=0, replace_char=None, use_minsize=0, minsize=None, use_maxsize=0, maxsize=None, autowant_all=0, autowant_upcoming=0, comic_cover_local=0, zero_level=0, zero_level_n=None, interface=None, **kwargs):
         mylar.COMICVINE_API = comicvine_api
         mylar.HTTP_HOST = http_host
         mylar.HTTP_PORT = http_port
@@ -2639,7 +2994,10 @@ class WebInterface(object):
         mylar.API_KEY = api_key
         mylar.LAUNCH_BROWSER = launch_browser
         mylar.LOGVERBOSE = logverbose
+        mylar.ANNUALS_ON = int(annuals_on)
         mylar.MAX_LOGSIZE = max_logsize
+        mylar.ENABLE_CHECK_FOLDER = enable_check_folder
+        mylar.CHECK_FOLDER = check_folder
         mylar.DOWNLOAD_SCAN_INTERVAL = download_scan_interval
         mylar.SEARCH_INTERVAL = nzb_search_interval
         mylar.NZB_STARTUP_SEARCH = nzb_startup_search
@@ -2739,6 +3097,7 @@ class WebInterface(object):
         mylar.FOLDER_FORMAT = folder_format
         mylar.FILE_FORMAT = file_format
         mylar.DESTINATION_DIR = destination_dir
+        mylar.CREATE_FOLDERS = create_folders
         mylar.AUTOWANT_ALL = autowant_all
         mylar.AUTOWANT_UPCOMING = autowant_upcoming
         mylar.COMIC_COVER_LOCAL = comic_cover_local
@@ -2753,6 +3112,8 @@ class WebInterface(object):
         mylar.CT_TAG_CR = ct_tag_cr
         mylar.CT_TAG_CBL = ct_tag_cbl
         mylar.CT_CBZ_OVERWRITE = ct_cbz_overwrite
+        mylar.FAILED_DOWNLOAD_HANDLING = failed_download_handling
+        mylar.FAILED_AUTO = failed_auto
         mylar.LOG_DIR = log_dir
         mylar.LOG_LEVEL = log_level
         mylar.CHMOD_DIR = chmod_dir
@@ -2983,3 +3344,89 @@ class WebInterface(object):
         return serve_download(pathfile)
 
     downloadthis.exposed = True
+
+    def IssueInfo(self, filelocation):
+        issuedetails = helpers.IssueDetails(filelocation)
+        print str(issuedetails)
+        issueinfo = '<table width="500"><tr><td>'
+        issueinfo += '<img style="float: left; padding-right: 10px" src=' + issuedetails[0]['IssueImage'] + ' height="400" width="263">'
+        issueinfo += '<h1><center><b>' + issuedetails[0]['series'] + '</br>[#' + issuedetails[0]['issue_number'] + ']</b></center></h1>'
+        issueinfo += '<center>"' + issuedetails[0]['title'] + '"</center></br>'
+        issueinfo += '</br><p class="alignleft">' + str(issuedetails[0]['pagecount']) + ' pages</p>'
+        if issuedetails[0]['day'] is None:
+            issueinfo += '<p class="alignright">(' + str(issuedetails[0]['year']) + '-' + str(issuedetails[0]['month']) + ')</p></br>'
+        else:
+            issueinfo += '<p class="alignright">(' + str(issuedetails[0]['year']) + '-' + str(issuedetails[0]['month']) + '-' + str(issuedetails[0]['day']) + ')</p></br>'
+        if not issuedetails[0]['writer'] == 'None': 
+            issueinfo += 'Writer: ' + issuedetails[0]['writer'] + '</br>'
+        if not issuedetails[0]['penciller'] == 'None': 
+            issueinfo += 'Penciller: ' + issuedetails[0]['penciller'] + '</br>'
+        if not issuedetails[0]['inker'] == 'None': 
+            issueinfo += 'Inker: ' + issuedetails[0]['inker'] + '</br>'
+        if not issuedetails[0]['colorist'] == 'None': 
+            issueinfo += 'Colorist: ' + issuedetails[0]['colorist'] + '</br>'
+        if not issuedetails[0]['letterer'] == 'None': 
+            issueinfo += 'Letterer: ' + issuedetails[0]['letterer'] + '</br>'
+        if not issuedetails[0]['editor'] == 'None': 
+            issueinfo += 'Editor: ' + issuedetails[0]['editor'] + '</br>'
+        issueinfo += '</td></tr>'
+        #issueinfo += '<img src="interfaces/default/images/rename.png" height="25" width="25"></td></tr>'
+        issueinfo += '<tr><td>Summary: ' + issuedetails[0]['summary'] + '</br></td></tr>'
+        issueinfo += '<tr><td><center>' + os.path.split(filelocation)[1] + '</center>'
+        issueinfo += '</td></tr></table>'
+        return issueinfo
+        #import json
+        #json_dump = json.dumps(issuedetails)
+        #json_dump = json_dump.replace("\\","\\\\")
+        #print 'json_dump:' + str(json_dump)
+        #return json_dump
+    IssueInfo.exposed = True
+
+    def manual_metatag(self, dirName, issueid, filename, comicid):
+        module = '[MANUAL META-TAGGING]'
+        try:
+            import cmtagmylar
+            metaresponse = cmtagmylar.run(dirName, issueid=issueid, filename=filename)
+        except ImportError:
+            logger.warn(module + ' comictaggerlib not found on system. Ensure the ENTIRE lib directory is located within mylar/lib/comictaggerlib/ directory.')
+            metaresponse = "fail"
+
+        if metaresponse == "fail":
+            logger.fdebug(module + ' Unable to write metadata successfully - check mylar.log file.')
+        elif metaresponse == "unrar error":
+             logger.error(module + ' This is a corrupt archive - whether CRC errors or it is incomplete. Marking as BAD, and retrying a different copy.')
+             #launch failed download handling here.
+        else:
+             logger.info(module + ' Sucessfully wrote metadata to .cbz (' + os.path.split(metaresponse)[1] + ') - Continuing..')
+             updater.forceRescan(comicid)
+    manual_metatag.exposed = True
+
+    def group_metatag(self, dirName, ComicID):
+        myDB = db.DBConnection()
+        groupinfo = myDB.select('SELECT * FROM issues WHERE ComicID=? and Location is not NULL', [ComicID])
+        if groupinfo is None:
+            logger.warn('No issues physically exist within the series directory for me to (re)-tag.')
+            return
+        for ginfo in groupinfo:
+            logger.info('tagging : ' + str(ginfo))
+            self.manual_metatag(dirName, ginfo['IssueID'], os.path.join(dirName, ginfo['Location']), ComicID)
+        logger.info('Finished doing a complete series (re)tagging of metadata.')
+    group_metatag.exposed = True
+
+    def CreateFolders(self, createfolders=None):
+        print 'createfolders is ' + str(createfolders)
+        if createfolders:
+            mylar.CREATE_FOLDERS = int(createfolders)
+            mylar.config_write()
+
+    CreateFolders.exposed = True
+
+    def getPushbulletDevices(self, api=None):
+        logger.fdebug('here')
+        notifythis = notifiers.pushbullet
+        result = notifythis.get_devices(api)
+        if result:
+            return result
+        else:
+            return 'Error sending Pushbullet notifications.'
+    getPushbulletDevices.exposed = True

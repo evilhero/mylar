@@ -171,7 +171,7 @@ def human2bytes(s):
 def replace_all(text, dic):
     for i, j in dic.iteritems():
         text = text.replace(i, j)
-    return text
+    return text.rstrip()
     
 def cleanName(string):
 
@@ -299,9 +299,20 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
             issuenum = issuenzb['Issue_Number']
             #issueno = str(issuenum).split('.')[0]
             issue_except = 'None'
-            if 'au' in issuenum.lower():
+            if 'au' in issuenum.lower() and issuenum[:1].isdigit():
                 issuenum = re.sub("[^0-9]", "", issuenum)
                 issue_except = ' AU'
+            elif 'ai' in issuenum.lower() and issuenum[:1].isdigit():
+                issuenum = re.sub("[^0-9]", "", issuenum)
+                issue_except = ' AI'
+            elif 'inh' in issuenum.lower() and issuenum[:1].isdigit():
+                issuenum = re.sub("[^0-9]", "", issuenum)
+                issue_except = '.INH'
+            elif 'now' in issuenum.lower() and issuenum[:1].isdigit():
+                if '!' in issuenum: issuenum = re.sub('\!', '', issuenum)
+                issuenum = re.sub("[^0-9]", "", issuenum)
+                issue_except = '.NOW'
+
             if '.' in issuenum:
                 iss_find = issuenum.find('.')
                 iss_b4dec = issuenum[:iss_find]
@@ -616,6 +627,8 @@ def fullmonth(monthno):
     #simple numerical to worded month conversion....
     basmonths = {'1':'January','2':'February','3':'March','4':'April','5':'May','6':'June','7':'July','8':'August','9':'September','10':'October','11':'November','12':'December'}
 
+    monthconv = None
+
     for numbs in basmonths:
         if numbs in str(int(monthno)):
             monthconv = basmonths[numbs]
@@ -628,23 +641,21 @@ def updateComicLocation():
     if mylar.NEWCOM_DIR is not None:
         logger.info('Performing a one-time mass update to Comic Location')
         #create the root dir if it doesn't exist
-        if os.path.isdir(mylar.NEWCOM_DIR):
-            logger.info('Directory (' + mylar.NEWCOM_DIR + ') already exists! Continuing...')
-        else:
-            logger.info('Directory does not exist!')
-            try:
-                os.makedirs(mylar.NEWCOM_DIR)
-                logger.info('Directory successfully created at: ' + mylar.NEWCOM_DIR)
-            except OSError:
-                logger.error('Could not create comicdir : ' + mylar.NEWCOM_DIR)
-                return
+        mylar.filechecker.validateAndCreateDirectory(mylar.NEWCOM_DIR, create=True)
 
         dirlist = myDB.select("SELECT * FROM comics")
+        comloc = []
 
         if dirlist is not None:
             for dl in dirlist:
                 
-                comversion = dl['ComicVersion']                
+                u_comicnm = dl['ComicName']
+                # let's remove the non-standard characters here that will break filenaming / searching.
+                comicname_folder = filesafe(u_comicnm)
+
+                publisher = re.sub('!','',dl['ComicPublisher']) # thanks Boom!
+                year = dl['ComicYear']
+                comversion = dl['ComicVersion']
                 if comversion is None:
                     comversion = 'None'
                 #if comversion is None, remove it so it doesn't populate with 'None'
@@ -655,54 +666,61 @@ def updateComicLocation():
                 else:
                     folderformat = mylar.FOLDER_FORMAT
 
-                #remove all 'bad' characters from the Series Name in order to create directories.
-                u_comicnm = dl['ComicName']
-                u_comicname = u_comicnm.encode('ascii', 'ignore').strip()
-                if ':' in u_comicname or '/' in u_comicname or ',' in u_comicname or '?' in u_comicname:
-                    comicdir = u_comicname
-                if ':' in comicdir:
-                    comicdir = comicdir.replace(':','')
-                if '/' in comicdir:
-                    comicdir = comicdir.replace('/','-')
-                if ',' in comicdir:
-                    comicdir = comicdir.replace(',','')
-                if '?' in comicdir:
-                    comicdir = comicdir.replace('?','')
-                else: comicdir = u_comicname
+                #do work to generate folder path
 
-
-                values = {'$Series':        comicdir,
-                          '$Publisher':     re.sub('!','',dl['ComicPublisher']),
-                          '$Year':          dl['ComicYear'],
-                          '$series':        dl['ComicName'].lower(),
-                          '$publisher':     re.sub('!','',dl['ComicPublisher']).lower(),
-                          '$VolumeY':       'V' + str(dl['ComicYear']),
-                          '$VolumeN':       comversion
+                values = {'$Series':        comicname_folder,
+                          '$Publisher':     publisher,
+                          '$Year':          year,
+                          '$series':        comicname_folder.lower(),
+                          '$publisher':     publisher.lower(),
+                          '$VolumeY':       'V' + str(year),
+                          '$VolumeN':       comversion,
+                          '$Annual':        'Annual'
                           }
+
 
                 if mylar.FFTONEWCOM_DIR:
                     #if this is enabled (1) it will apply the Folder_Format to all the new dirs
                     if mylar.FOLDER_FORMAT == '':
-                        comlocation = re.sub(mylar.DESTINATION_DIR, mylar.NEWCOM_DIR, comicdir)
+                        comlocation = re.sub(mylar.DESTINATION_DIR, mylar.NEWCOM_DIR, dl['ComicLocation']).strip()
                     else:
                         first = replace_all(folderformat, values)                    
                         if mylar.REPLACE_SPACES:
                             #mylar.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
                             first = first.replace(' ', mylar.REPLACE_CHAR)
-                        comlocation = os.path.join(mylar.NEWCOM_DIR,first)
+                        comlocation = os.path.join(mylar.NEWCOM_DIR,first).strip()
 
                 else:
-                    comlocation = re.sub(mylar.DESTINATION_DIR, mylar.NEWCOM_DIR, comicdir)
+                    comlocation = re.sub(mylar.DESTINATION_DIR, mylar.NEWCOM_DIR, dl['ComicLocation']).strip()
 
-                ctrlVal = {"ComicID":    dl['ComicID']}
-                newVal = {"ComicLocation": comlocation}
-                myDB.upsert("Comics", newVal, ctrlVal)
-                logger.fdebug('updated ' + dl['ComicName'] + ' to : ' + comlocation)
+                comloc.append({"comlocation":  comlocation,
+                               "origlocation": dl['ComicLocation'],
+                               "comicid":      dl['ComicID']})
+
+            if len(comloc) > 0:
+                #give the information about what we're doing.
+                if mylar.FFTONEWCOM_DIR:
+                    logger.info('FFTONEWCOM_DIR is enabled. Applying the existing folder format to ALL directories regardless of existing location paths')
+                else:
+                    logger.info('FFTONEWCOM_DIR is not enabled. I will keep existing subdirectory paths, and will only change the actual Comic Location in the path.')
+                    logger.fdebug(' (ie. /mnt/Comics/Marvel/Hush-(2012) to /mnt/mynewLocation/Marvel/Hush-(2012) ')
+
+                #do the deed.
+                for cl in comloc:
+                    ctrlVal = {"ComicID":      cl['comicid']}
+                    newVal = {"ComicLocation": cl['comlocation']}
+#                   myDB.upsert("Comics", newVal, ctrlVal)
+                    logger.fdebug('Updated : ' + cl['origlocation'] + ' .: TO :. ' + cl['comlocation'])
+                logger.info('Updated ' + str(len(comloc)) + ' series to a new Comic Location as specified in the config.ini')
+            else:
+                logger.fdebug('Failed in updating the Comic Locations. Check Folder Format string and/or log the issue.')
+        else:
+            logger.info('There are no series in your watchlist to Update the locations. Not updating anything at this time.')
         #set the value to 0 here so we don't keep on doing this...
         mylar.LOCMOVE = 0
         mylar.config_write()
     else:
-        logger.info('No new ComicLocation path specified - not updating.')
+        logger.info('No new ComicLocation path specified - not updating. Set NEWCOMD_DIR in config.ini')
         #raise cherrypy.HTTPRedirect("config")
     return
 
@@ -727,7 +745,7 @@ def cleanhtml(raw_html):
 def issuedigits(issnum):
     import db, logger
     #print "issnum : " + str(issnum)
-    if str(issnum).isdigit():
+    if issnum.isdigit():
         int_issnum = int( issnum ) * 1000
     else:
         #count = 0
@@ -760,14 +778,11 @@ def issuedigits(issnum):
             else:
                 int_issnum = (int(issnum[:-4]) * 1000) + ord('n') + ord('o') + ord('w')
         elif u'\xbd' in issnum:
-            issnum = .5
-            int_issnum = int(issnum) * 1000
+            int_issnum = .5 * 1000
         elif u'\xbc' in issnum:
-            issnum = .25
-            int_issnum = int(issnum) * 1000
+            int_issnum = .25 * 1000
         elif u'\xbe' in issnum:
-            issnum = .75
-            int_issnum = int(issnum) * 1000
+            int_issnum = .75 * 1000
         elif u'\u221e' in issnum:
             #issnum = utf-8 will encode the infinity symbol without any help
             int_issnum = 9999999999 * 1000  # set 9999999999 for integer value of issue
@@ -813,6 +828,8 @@ def issuedigits(issnum):
                         try:
                             isschk = float(issno)
                         except ValueError, e:
+                            if len(issnum) == 1 and issnum.isalpha():
+                                break
                             logger.fdebug('invalid numeric for issue - cannot be found. Ignoring.')
                             issno = None
                             tstord = None
@@ -820,18 +837,18 @@ def issuedigits(issnum):
                         break
                     x+=1
                 if tstord is not None and issno is not None:
-                    logger.fdebug('tstord: ' + str(tstord))
                     a = 0
                     ordtot = 0
-                    while (a < len(tstord)):
-                        try:
-                            ordtot += ord(tstord[a].lower())  #lower-case the letters for simplicty
-                        except ValueError:
-                            break
-                        a+=1
-                    logger.fdebug('issno: ' + str(issno))
-                    int_issnum = (int(issno) * 1000) + ordtot
-                    logger.fdebug('intissnum : ' + str(int_issnum))
+                    if len(issnum) == 1 and issnum.isalpha():
+                        int_issnum = ord(tstord.lower())
+                    else:
+                        while (a < len(tstord)):
+                            try:
+                                ordtot += ord(tstord[a].lower())  #lower-case the letters for simplicty
+                            except ValueError:
+                                break
+                            a+=1
+                        int_issnum = (int(issno) * 1000) + ordtot
                 elif invchk == "true":
                     logger.fdebug('this does not have an issue # that I can parse properly.')
                     int_issnum = 999999999999999
@@ -918,12 +935,16 @@ def renamefile_readingorder(readorder):
 def latestdate_fix():
     import db, logger
     datefix = []
+    cnupdate = []
     myDB = db.DBConnection()
     comiclist = myDB.select('SELECT * FROM comics')
     if comiclist is None:
         logger.fdebug('No Series in watchlist to correct latest date')
         return
     for cl in comiclist:
+        if cl['ComicName_Filesafe'] is None: 
+            cnupdate.append({"comicid":  cl['ComicID'],
+                            "comicname_filesafe": filesafe(cl['ComicName'])})
         latestdate = cl['LatestDate']
         #logger.fdebug("latestdate:  " + str(latestdate))
         if latestdate[8:] == '':
@@ -945,19 +966,30 @@ def latestdate_fix():
 
     #now we fix.
     if len(datefix) > 0:
+       logger.info('Preparing to correct/fix ' + str(len(datefix)) + ' series that have incorrect values given for the Latest Date field.')
        for df in datefix:
           newCtrl = {"ComicID":    df['comicid']}
           newVal = {"LatestDate":  df['latestdate']}
           myDB.upsert("comics", newVal, newCtrl)
+    if len(cnupdate) > 0:
+       logger.info('Preparing to update ' + str(len(cnupdate)) + ' series on your watchlist for use with non-ascii characters')
+       for cn in cnupdate:
+          newCtrl = {"ComicID":           cn['comicid']}
+          newVal = {"ComicName_Filesafe": cn['comicname_filesafe']}
+          myDB.upsert("comics", newVal, newCtrl)
+
     return
 
 def checkFolder():
-    import PostProcessor, logger
+    from mylar import PostProcessor, logger
+    import Queue
+
+    queue = Queue.Queue()
     #monitor a selected folder for 'snatched' files that haven't been processed
     logger.info('Checking folder ' + mylar.CHECK_FOLDER + ' for newly snatched downloads')
-    PostProcess = PostProcessor.PostProcessor('Manual Run', mylar.CHECK_FOLDER)
-    result = PostProcess.Process()
-    logger.info('Finished checking for newly snatched downloads')
+    PostProcess = PostProcessor.PostProcessor('Manual Run', mylar.CHECK_FOLDER, queue=queue)
+    vals = PostProcess.Process()
+    return
 
 def LoadAlternateSearchNames(seriesname_alt, comicid):
     import logger    
@@ -1120,6 +1152,269 @@ def cvapi_check(web=None):
         line = str(mylar.CVAPI_COUNT) + ' hits / ' + str(mins) + ' minutes'
         return line
 
+def filesafe(comic):
+    import unicodedata
+    u_comic = unicodedata.normalize('NFKD', comic).encode('ASCII', 'ignore').strip()
+
+    comicname_filesafe = re.sub('[\:\'\,\?\!\\\]', '', u_comic)
+    comicname_filesafe = re.sub('[\/]','-', comicname_filesafe)
+
+    return comicname_filesafe
+
+def IssueDetails(filelocation, IssueID=None):
+    import zipfile, logger, shutil
+    from xml.dom.minidom import parseString
+
+    dstlocation = os.path.join(mylar.CACHE_DIR, 'temp.zip')
+
+    issuedetails = []
+
+    if filelocation.endswith('.cbz'):
+        logger.fdebug('CBZ file detected. Checking for .xml within file')
+        shutil.copy( filelocation, dstlocation )
+    else:
+        logger.fdebug('filename is not a cbz : ' + filelocation)
+        return
+
+    cover = "notfound"
+    issuetag = None
+
+    modtime = os.path.getmtime(dstlocation)
+
+    with zipfile.ZipFile(dstlocation, 'r') as inzipfile:
+        for infile in inzipfile.namelist():
+            if infile == 'ComicInfo.xml':
+               logger.fdebug('Extracting ComicInfo.xml to display.')
+               dst = os.path.join(mylar.CACHE_DIR, 'ComicInfo.xml')
+               data = inzipfile.read(infile)
+               print str(data)
+               issuetag = 'xml'
+            elif '000.jpg' in infile or '000.png' in infile or '00.jpg' in infile:
+               logger.fdebug('Extracting primary image ' + infile + ' as coverfile for display.')
+               local_file = open(os.path.join(mylar.CACHE_DIR,'temp.jpg'), "wb")
+               local_file.write(inzipfile.read(infile))
+               local_file.close
+               cover = "found"
+            elif ('001.jpg' in infile or '001.png' in infile) and cover == "notfound":
+               logger.fdebug('Extracting primary image ' + infile + ' as coverfile for display.')
+               local_file = open(os.path.join(mylar.CACHE_DIR,'temp.jpg'), "wb")
+               local_file.write(inzipfile.read(infile))
+               local_file.close
+               cover = "found"
+
+    ComicImage = os.path.join('cache', 'temp.jpg?'+str(modtime))
+    IssueImage = replacetheslash(ComicImage)
+
+
+    if issuetag is None:
+        import subprocess
+        from subprocess import CalledProcessError, check_output
+        unzip_cmd = "/usr/bin/unzip"
+        try:
+            #unzip -z will extract the zip comment field.
+            data = subprocess.check_output( [ unzip_cmd, '-z', dstlocation ] ) 
+            # return data is encoded in bytes, not unicode. Need to figure out how to run check_output returning utf-8
+            issuetag = 'comment'
+        except CalledProcessError as e:
+            logger.warn('Unable to extract comment field from zipfile.')
+            
+    #logger.info('data:' + str(data))
+
+    if issuetag == 'xml':
+        #import easy to use xml parser called minidom:
+        dom = parseString(data)
+
+        results = dom.getElementsByTagName('ComicInfo')
+        for result in results:
+            try:
+                issue_title = result.getElementsByTagName('Title')[0].firstChild.wholeText
+            except:
+                issue_title = "None"
+            try:
+                series_title = result.getElementsByTagName('Series')[0].firstChild.wholeText
+            except:
+                series_title = "None"
+            try:
+                issue_number = result.getElementsByTagName('Number')[0].firstChild.wholeText
+            except:
+                issue_number = "None"
+            try:
+                summary = result.getElementsByTagName('Summary')[0].firstChild.wholeText
+            except:
+                summary = "None"
+
+            if '*List' in summary: 
+                summary_cut = summary.find('*List')
+                summary = summary[:summary_cut]
+
+            try:
+                notes = result.getElementsByTagName('Notes')[0].firstChild.wholeText  #IssueID is in here
+            except:
+                notes = "None"
+            try:
+                year = result.getElementsByTagName('Year')[0].firstChild.wholeText
+            except:
+                year = "None"
+            try:
+                month = result.getElementsByTagName('Month')[0].firstChild.wholeText
+            except:
+                month = "None"
+            try:
+                day = result.getElementsByTagName('Day')[0].firstChild.wholeText
+            except:
+                day = "None"
+            try:
+                writer = result.getElementsByTagName('Writer')[0].firstChild.wholeText
+            except:
+                writer = "None"
+            try:
+                penciller = result.getElementsByTagName('Penciller')[0].firstChild.wholeText
+            except:
+                penciller = "None"
+            try:
+                inker = result.getElementsByTagName('Inker')[0].firstChild.wholeText
+            except:
+                inker = "None"
+            try:
+                colorist = result.getElementsByTagName('Colorist')[0].firstChild.wholeText
+            except:
+                colorist = "None"
+            try:
+                letterer = result.getElementsByTagName('Letterer')[0].firstChild.wholeText
+            except:
+                letterer = "None"
+            try:
+                cover_artist = result.getElementsByTagName('CoverArtist')[0].firstChild.wholeText
+            except:
+                cover_artist = "None"
+            try:
+                editor = result.getElementsByTagName('Editor')[0].firstChild.wholeText
+            except:
+                editor = "None"
+            try:
+                publisher = result.getElementsByTagName('Publisher')[0].firstChild.wholeText
+            except:
+                publisher = "None"
+            try:
+                webpage = result.getElementsByTagName('Web')[0].firstChild.wholeText
+            except:
+                webpage = "None"
+            try:
+                pagecount = result.getElementsByTagName('PageCount')[0].firstChild.wholeText
+            except:
+                pagecount = 0     
+            logger.fdebug("number of pages I counted: " + str(pagecount))
+            i = 0
+            while (i < int(pagecount)):
+                pageinfo = result.getElementsByTagName('Page')[i].attributes
+                attrib = pageinfo.getNamedItem('Image')
+                logger.fdebug('Frontcover validated as being image #: ' + str(attrib.value))
+                att = pageinfo.getNamedItem('Type')
+                logger.fdebug('pageinfo: ' + str(pageinfo))
+                if att.value == 'FrontCover':
+                    logger.fdebug('FrontCover detected. Extracting.')
+                    break
+                i+=1
+    else:
+        stripline = 'Archive:  ' + dstlocation
+        data = re.sub(stripline, '', data.encode("utf-8")).strip()
+        if data is None or data == '':
+            return
+        import ast
+        ast_data = ast.literal_eval(str(data))
+        lastmodified = ast_data['lastModified']
+
+        dt = ast_data['ComicBookInfo/1.0']
+        publisher = dt['publisher']
+        year = dt['publicationYear']
+        month = dt['publicationMonth']
+        try:
+            day = dt['publicationDay']
+        except:
+            day = None
+        issue_title = dt['title']
+        series_title = dt['series']
+        issue_number = dt['issue']
+        summary = dt['comments']
+        editor = "None"
+        colorist = "None"
+        artist = "None"
+        writer = "None"
+        letterer = "None"
+        cover_artist = "None"
+        penciller = "None"
+        inker = "None"
+        for cl in dt['credits']:    
+            if cl['role'] == 'Editor':
+                if editor == "None": editor = cl['person']
+                else: editor += ', ' + cl['person']
+            elif cl['role'] == 'Colorist':
+                if colorist == "None": colorist = cl['person']
+                else: colorist += ', ' + cl['person']
+            elif cl['role'] == 'Artist':
+                if artist == "None": artist = cl['person']
+                else: artist += ', ' + cl['person']
+            elif cl['role'] == 'Writer':
+                if writer == "None": writer = cl['person']
+                else: writer += ', ' + cl['person']
+            elif cl['role'] == 'Letterer':
+                if letterer == "None": letterer = cl['person']
+                else: letterer += ', ' + cl['person']
+            elif cl['role'] == 'Cover':
+                if cover_artist == "None": cover_artist = cl['person']
+                else: cover_artist += ', ' + cl['person']
+            elif cl['role'] == 'Penciller':
+                if penciller == "None": penciller = cl['person']
+                else: penciller += ', ' + cl['person']
+            elif cl['role'] == 'Inker':
+                if inker == "None": inker = cl['person']
+                else: inker += ', ' + cl['person']
+
+        try:
+            notes = dt['notes']
+        except:
+            notes = "None"
+        try:
+            webpage = dt['web']
+        except:
+            webpage = "None"
+        try:
+            pagecount = dt['pagecount']
+        except:
+            pagecount = "None"
+
+    issuedetails.append({"title":        issue_title,
+                         "series":       series_title,
+                         "issue_number": issue_number,
+                         "summary":      summary,
+                         "notes":        notes,
+                         "year":         year,
+                         "month":        month,
+                         "day":          day,
+                         "writer":       writer,
+                         "penciller":    penciller,
+                         "inker":        inker,
+                         "colorist":     colorist,
+                         "letterer":     letterer,
+                         "cover_artist": cover_artist,
+                         "editor":       editor,
+                         "publisher":    publisher,
+                         "webpage":      webpage,
+                         "pagecount":    pagecount,
+                         "IssueImage":   IssueImage})
+
+    return issuedetails
+
+def get_issue_title(IssueID):
+    import db, logger
+    myDB = db.DBConnection()
+    issue = myDB.selectone('SELECT * FROM issues WHERE IssueID=?', [IssueID]).fetchone()
+    if issue is None:
+        logger.warn('Unable to locate given IssueID within the db.')
+        return None
+    return issue['IssueName']
+
+
 from threading import Thread
 
 class ThreadWithReturnValue(Thread):
@@ -1129,10 +1424,9 @@ class ThreadWithReturnValue(Thread):
         self._return = None
     def run(self):
         if self._Thread__target is not None:
-            self._return = self._Thread__target(*self._Thread__args,
-                                                **self._Thread__kwargs)
+            self._return = self._Thread__target(*self._Thread__args, **self._Thread__kwargs)
+
     def join(self):
         Thread.join(self)
         return self._return
-
 

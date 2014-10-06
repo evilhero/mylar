@@ -283,7 +283,7 @@ input,
 select,
 form .checkbox input,
 .configtable td#middle,
-#artist_table td#have,
+#series_table td#have,
 #album_table td#have {
   vertical-align: middle;
 }
@@ -1064,59 +1064,100 @@ div#artistheader h2 a {
   text-align: left;
   vertical-align: middle;
 }
-
-#artist_table {
-  background-color: #FFF;
-  padding: 20px;
-  width: 100%;
-}
-#artist_table th#select {
+#manage_issues th#name {
+  min-width: 275px;
   text-align: left;
 }
-#artist_table th#select input {
+#manage_issues th#options {
+  min-width: 150px;
+  text-align: left;
+}
+#manage_issues th#select {
+  min-width: 10px;
+  text-align: left;
   vertical-align: middle;
 }
-#artist_table #artistImg {
-  background: url("../images/loader_black.gif") no-repeat scroll center center #ffffff;
-  border: 3px solid #FFFFFF;
-  box-shadow: 1px 1px 2px 0 #555555;
-  float: left;
-  height: 50px;
-  overflow: hidden;
-  text-indent: -3000px;
-  width: 50px;
-}
-#artist_table th#name {
-  min-width: 200px;
-  text-align: left;
-}
-#artist_table th#album {
-  min-width: 300px;
-  text-align: left;
-}
-#artist_table th#status,
-#artist_table th#albumart,
-#artist_table th#lastupdated {
+#manage_issues th#status,
+#manage_issues th#issue,
+#manage_issues th#pubdate,
+#manage_issues th#releasedate,
+#manage_issues th#int_issue {
   min-width: 50px;
   text-align: left;
 }
-#artist_table th#have {
-  text-align: center;
-}
-#artist_table td#name {
-  min-width: 200px;
+#manage_issues td#name {
+  min-width: 275px;
   text-align: left;
   vertical-align: middle;
   font-size: 12px;
 }
-#artist_table td#status,
-#artist_table td#lastupdated {
+#manage_issues td#select {
+  min-width: 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+#manage_issues td#status,
+#manage_issues td#issue,
+#manage_issues td#pubdate,
+#manage_issues td#releasedate,
+#manage_issues td#int_issue {
   min-width: 50px;
   text-align: left;
   vertical-align: middle;
 }
-#artist_table td#album {
-  min-width: 300px;
+#manage_issues td#options {
+  min-width: 150px;
+  text-align: left;
+  vertical-align: middle;
+}
+#series_table {
+  background-color: #FFF;
+  padding: 20px;
+  width: 100%;
+}
+#series_table th#publisher {
+  min-width: 150px;
+  text-align: left;
+}
+#series_table th#name {
+  min-width: 275px;
+  text-align: left;
+}
+#series_table th#year,
+#series_table th#issue {
+  min-width: 25px;
+  text-align: left;
+}
+#series_table th#status,
+#series_table th#active,
+#series_table th#published {
+  min-width: 50px;
+  text-align: left;
+}
+#series_table th#have {
+  text-align: center;
+}
+#series_table td#publisher {
+  min-width: 150px;
+  text-align: left;
+  vertical-align: middle;
+  font-size: 12px;
+}
+#series_table td#name {
+  min-width: 275px;
+  text-align: left;
+  vertical-align: middle;
+}
+#series_table th#year,
+#series_table th#issue {
+  max-width: 25px;
+  text-align: left;
+  vertical-align: middle;
+}
+#series_table td#status,
+#series_table td#active,
+#series_table td#published {
+  max-width: 50px;
   text-align: left;
   vertical-align: middle;
 }
@@ -1770,4 +1811,59 @@ table tr td#status a {
 }
 .ie7 legend {
   margin-left: -7px;
+}
+/* Mask for background, by default is not display */
+#mask {
+    display: none;
+    background: #000;
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 10;
+    width: 100%;
+    height: 100%;
+    opacity: 0.8;
+    z-index: 999;
+}
+/* You can customize to your needs  */
+.issue-popup {
+    width: 600px;
+    display: none;
+    background: #333;
+    padding: 5px;
+    border: 2px solid #ddd;
+    color: white;
+    font-size: 1.2em;
+    position: absolute;
+    top: 20%;
+    left: 50%;
+    z-index: 99999;
+    box-shadow: 0px 0px 20px #999;
+    /* CSS3 */
+        -moz-box-shadow: 0px 0px 20px #999;
+    /* Firefox */
+        -webkit-box-shadow: 0px 0px 20px #999;
+    /* Safari, Chrome */
+	border-radius: 3px 3px 3px 3px;
+    -moz-border-radius: 3px;
+    /* Firefox */
+        -webkit-border-radius: 3px;
+    /* Safari, Chrome */;
+}
+.alignleft {
+    float: left;
+}
+.alignright {
+    float: right;
+}
+img.btn_close {
+    Position the close button
+	float: right;
+    margin: -28px -28px 0 0;
+}
+fieldset {
+    border: none;
+}
+img.highqual { 
+    -ms-interpolation-mode: bicubuic;
 }
