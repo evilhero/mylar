@@ -13,7 +13,9 @@
 </%def>
 <%def name="body()">
 
-
+        <%
+             mylar.DONATEBUTTON = False
+        %>
 
 	<div id="paddingheader">
 		<h1 class="clearfix"><img src="interfaces/default/images/icon_gear.png" alt="settings"/>Settings</h1>
@@ -46,12 +48,27 @@
 
                        </div>                       
                    </fieldset>
+                   <fieldset>
+                       <legend>DONATIONS</legend>
+                         <a name="donate"></a>
+                         <div align="center">
+                            <label><strong>Mylar is free to use,</br>
+                            but you can contribute and support the development</br>
+                            by giving a donation</strong></label></br></br>
+                         </div>
+                         <div style="width: 55%; margin: 0px auto;">
+                            <a href="https://flattr.com/submit/auto?user_id=evilhero&url=https://github.com/evilhero/mylar&title=Mylar%20Donation%description=Supporting&20the%development%20of%20Mylar&language=en_CA&hidden=1&category=software" target="_blank">
+                               <img src="//api.flattr.com/button/flattr-badge-large.png" alt="Flattr this" title="Flattr this" border="0" align="center">
+                            </a>
+                            <a href="#" onclick="javascript:window.prompt('Please copy/paste my Bitcoin address into your Bitcoin client.', '18eCE9wZxnNiZgE4Cc5pwJMnMjEfhdmH4U');"><img src="interfaces/default/images/bitcoin.png" alt="Bitcoin" height="20" align="center"></a></div>
+                         </div>
+                   </fieldset>
                   </td>
                   <td>
                    <fieldset>
                       <legend>Bragging Rights</legend>
                         <div>
-                            <label><strong># of Series you're watching: </strong> ${comicinfo['COUNT_COMICS']}</br></label>
+                           <label><strong># of Series you're watching: </strong> ${comicinfo['COUNT_COMICS']}</br></label>
                            <label><strong># of Issues you're watching: </strong> ${comicinfo['COUNT_ISSUES']}</br></label>
                            <label><strong># of Issues you actually have: </strong> ${comicinfo['COUNT_HAVES']}</br></label>
                            <label><strong> ... total HD-space being used: </strong> ${comicinfo['COUNT_SIZE']}</br></label>
@@ -65,19 +82,19 @@
                         </div>
                         <div class="row">
                           <label><strong>Forums</strong></label>
-                            <div><a href="http://forum.mylarcomics.com/">http://forum.mylarcomics.com</a></div>
+                            <div><a href="http://forum.mylarcomics.com/" target="_blank">http://forum.mylarcomics.com</a></div>
                         </div>
                         <div class="row">
                           <label><strong>Source</strong></label>
-                            <div><a href="https://github.com/evilhero/mylar/">https://github.com/evilhero/mylar/</a></div>
+                            <div><a href="https://github.com/evilhero/mylar/" target="_blank">https://github.com/evilhero/mylar/</a></div>
                         </div>
                         <div class="row">
                           <label><strong>Issues</strong></label>
-                            <div><a href="https://github.com/evilhero/mylar/issues">https://github.com/evilhero/mylar/issues/</a></div>
+                            <div><a href="https://github.com/evilhero/mylar/issues" target="_blank">https://github.com/evilhero/mylar/issues/</a></div>
                         </div>
                         <div class="row">
                           <label><strong>Internet Relay Chat</strong></label>
-                              <div><a href="irc://irc.freenode.net/#mylar">#mylar on irc.freenode.net</a></div>
+                              <div><a href="irc://irc.freenode.net/#mylar" target="_blank">#mylar on irc.freenode.net</a></div>
                         </div>
                 </fieldset>
                 <fieldset>
@@ -905,6 +922,11 @@
                                     </div>
                                     <div class="row">
                                         <label>Device ID</label><input type="text" name="pushbullet_deviceid" value="${config['pushbullet_deviceid']}" size="50">
+<!--                                    <label>Pushbullet device list</label>
+                                        <select name="pushbullet_device_list" id="pushbullet_device_list"></select>
+                                        <input type="hidden" id="pushbullet_deviceid" value="${config['pushbullet_deviceid']}" />
+                                        <input type="button" class="btn" value="Update device list" id="getPushbulletDevices" />
+-->
                                     </div>
                                 </div>
                             </fieldset>

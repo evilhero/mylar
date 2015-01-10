@@ -343,14 +343,30 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                 if mylar.ZERO_LEVEL_N  == "none": zeroadd = ""
                 elif mylar.ZERO_LEVEL_N == "0x": zeroadd = "0"
                 elif mylar.ZERO_LEVEL_N == "00x": zeroadd = "00"
-
+          
             logger.fdebug('Zero Suppression set to : ' + str(mylar.ZERO_LEVEL_N))
+            prettycomiss = None
 
-            if str(len(issueno)) > 1:
-                if int(issueno) < 0:
-                    self._log("issue detected is a negative")
-                    prettycomiss = '-' + str(zeroadd) + str(abs(issueno))
-                elif int(issueno) < 10:
+            try:
+                x = float(issueno)
+                #validity check
+                if x < 0:
+                    logger.info('I\'ve encountered a negative issue #: ' + str(issueno) + '. Trying to accomodate.')
+                    prettycomiss = '-' + str(zeroadd) + str(issueno[1:])
+                elif x >= 0:
+                    pass
+                else:
+                    raise ValueError
+            except ValueError, e:
+                logger.warn('Unable to properly determine issue number [' + str(issueno) + '] - you should probably log this on github for help.')
+                return
+
+            if prettycomiss is None and len(str(issueno)) > 0:
+                logger.info('here')
+                #if int(issueno) < 0:
+                #    self._log("issue detected is a negative")
+                #    prettycomiss = '-' + str(zeroadd) + str(abs(issueno))
+                if int(issueno) < 10:
                     logger.fdebug('issue detected less than 10')
                     if '.' in iss:
                         if int(iss_decval) > 0:
@@ -389,7 +405,7 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                     if issue_except != 'None':
                         prettycomiss = str(prettycomiss) + issue_except
                     logger.fdebug('Zero level supplement set to ' + str(mylar.ZERO_LEVEL_N) + '. Issue will be set as : ' + str(prettycomiss))
-            else:
+            elif len(str(issueno)) == 0:
                 prettycomiss = str(issueno)
                 logger.fdebug('issue length error - cannot determine length. Defaulting to None:  ' + str(prettycomiss))
 
@@ -557,7 +573,16 @@ def ComicSort(comicorder=None,sequence=None,imported=None):
     if sequence:
         # if it's on startup, load the sql into a tuple for use to avoid record-locking
         i = 0
-        import db, logger
+        import logger
+        #if mylar.DBCHOICE == 'postgresql':
+        #    import db_postgresql as db
+        #    myDB = db.DBConnection()
+        #    comicsort = myDB.select("SELECT * FROM comics ORDER BY ComicSortName COLLATE ?", [mylar.OS_LANG])
+        #else:
+        #    import db
+        #    myDB = db.DBConnection()
+        #    comicsort = myDB.select("SELECT * FROM comics ORDER BY ComicSortName COLLATE NOCASE")
+        import db
         myDB = db.DBConnection()
         comicsort = myDB.select("SELECT * FROM comics ORDER BY ComicSortName COLLATE NOCASE")
         comicorderlist = []
@@ -593,11 +618,12 @@ def ComicSort(comicorder=None,sequence=None,imported=None):
                 comicorder['SortOrder'] = comicorderlist
                 comicorder['LastOrderNo'] = i-1
                 comicorder['LastOrderID'] = comicorder['SortOrder'][i-1]['ComicID']
+            if i < 0: i == 0
             logger.info('Sucessfully ordered ' + str(i-1) + ' series in your watchlist.')
             return comicorder
         elif sequence == 'update':
             mylar.COMICSORT['SortOrder'] = comicorderlist
-            print ("i:" + str(i))
+            #print ("i:" + str(i))
             if i == 0:
                 placemnt = 1
             else:
@@ -636,6 +662,11 @@ def fullmonth(monthno):
     return monthconv
 
 def updateComicLocation():
+    #in order for this to work, the ComicLocation MUST be left at the original location.
+    #in the config.ini - set LOCMOVE = 1  (to enable this to run on the NEXT startup)
+    #                  - set NEWCOMDIR = new ComicLocation
+    #after running, set ComicLocation to new location in Configuration GUI
+
     import db, logger
     myDB = db.DBConnection()
     if mylar.NEWCOM_DIR is not None:
@@ -691,6 +722,9 @@ def updateComicLocation():
                         comlocation = os.path.join(mylar.NEWCOM_DIR,first).strip()
 
                 else:
+                    #DESTINATION_DIR = /mnt/mediavg/Comics
+                    #NEWCOM_DIR = /mnt/mediavg/Comics/Comics-1
+                    #dl['ComicLocation'] = /mnt/mediavg/Comics/Batman-(2011)
                     comlocation = re.sub(mylar.DESTINATION_DIR, mylar.NEWCOM_DIR, dl['ComicLocation']).strip()
 
                 comloc.append({"comlocation":  comlocation,
@@ -709,7 +743,7 @@ def updateComicLocation():
                 for cl in comloc:
                     ctrlVal = {"ComicID":      cl['comicid']}
                     newVal = {"ComicLocation": cl['comlocation']}
-#                   myDB.upsert("Comics", newVal, ctrlVal)
+                    myDB.upsert("Comics", newVal, ctrlVal)
                     logger.fdebug('Updated : ' + cl['origlocation'] + ' .: TO :. ' + cl['comlocation'])
                 logger.info('Updated ' + str(len(comloc)) + ' series to a new Comic Location as specified in the config.ini')
             else:
@@ -744,7 +778,12 @@ def cleanhtml(raw_html):
 
 def issuedigits(issnum):
     import db, logger
-    #print "issnum : " + str(issnum)
+
+    try:
+        tst = issnum.isdigit()
+    except:
+        return 9999999999
+
     if issnum.isdigit():
         int_issnum = int( issnum ) * 1000
     else:
@@ -798,9 +837,15 @@ def issuedigits(issnum):
             if len(decis) == 1:
                 decisval = int(decis) * 10
                 issaftdec = str(decisval)
-            if len(decis) >= 2:
+            elif len(decis) == 2:
                 decisval = int(decis)
                 issaftdec = str(decisval)
+            else:
+                decisval = decis
+                issaftdec = str(decisval)
+            #if there's a trailing decimal (ie. 1.50.) and it's either intentional or not, blow it away.
+            if issaftdec[-1:] == '.':
+                issaftdec = issaftdec[:-1]
             try:
                 int_issnum = (int(issb4dec) * 1000) + (int(issaftdec) * 10)
             except ValueError:
@@ -824,13 +869,15 @@ def issuedigits(issnum):
                     if issnum[x].isalpha():
                     #take first occurance of alpha in string and carry it through
                         tstord = issnum[x:].rstrip()
+                        tstord = re.sub('[\-\,\.\+]','', tstord).rstrip()
                         issno = issnum[:x].rstrip()
+                        issno = re.sub('[\-\,\.\+]','', issno).rstrip()
                         try:
                             isschk = float(issno)
                         except ValueError, e:
                             if len(issnum) == 1 and issnum.isalpha():
                                 break
-                            logger.fdebug('invalid numeric for issue - cannot be found. Ignoring.')
+                            logger.fdebug('[' + issno + '] Invalid numeric for issue - cannot be found. Ignoring.')
                             issno = None
                             tstord = None
                             invchk = "true"
@@ -1028,12 +1075,22 @@ def havetotals(refreshit=None):
 
         comics = []
 
-        myDB = db.DBConnection()
 
         if refreshit is None:
+            #if mylar.DBCHOICE == 'postgresql':
+            #    import db_postgresql as db
+            #    myDB = db.DBConnection()
+            #    comiclist = myDB.select("SELECT * from comics order by ComicSortName COLLATE ?",[mylar.OS_LANG])
+            #else:
+            #    import db
+            #    myDB = db.DBConnection()
+            #    comiclist = myDB.select('SELECT * from comics order by ComicSortName COLLATE NOCASE')
+            import db
+            myDB = db.DBConnection()
             comiclist = myDB.select('SELECT * from comics order by ComicSortName COLLATE NOCASE')
         else:
             comiclist = []
+            myDB = db.DBConnection()
             comicref = myDB.selectone("SELECT * from comics WHERE ComicID=?", [refreshit]).fetchone()
             #refreshit is the ComicID passed from the Refresh Series to force/check numerical have totals
             comiclist.append({"ComicID":  comicref[0],
@@ -1187,14 +1244,26 @@ def IssueDetails(filelocation, IssueID=None):
                logger.fdebug('Extracting ComicInfo.xml to display.')
                dst = os.path.join(mylar.CACHE_DIR, 'ComicInfo.xml')
                data = inzipfile.read(infile)
-               print str(data)
+               #print str(data)
                issuetag = 'xml'
+            #looks for the first page and assumes it's the cover. (Alternate covers handled later on)
             elif '000.jpg' in infile or '000.png' in infile or '00.jpg' in infile:
                logger.fdebug('Extracting primary image ' + infile + ' as coverfile for display.')
                local_file = open(os.path.join(mylar.CACHE_DIR,'temp.jpg'), "wb")
                local_file.write(inzipfile.read(infile))
                local_file.close
                cover = "found"
+            elif any( [ '00a' in infile, '00b' in infile, '00c' in infile, '00d' in infile, '00e' in infile ]):
+               logger.fdebug('Found Alternate cover - ' + infile + ' . Extracting.')
+               altlist = ('00a', '00b', '00c', '00d', '00e')
+               for alt in altlist:
+                   if alt in infile:
+                       local_file = open(os.path.join(mylar.CACHE_DIR,'temp.jpg'), "wb")
+                       local_file.write(inzipfile.read(infile))
+                       local_file.close
+                       cover = "found"
+                       break
+
             elif ('001.jpg' in infile or '001.png' in infile) and cover == "notfound":
                logger.fdebug('Extracting primary image ' + infile + ' as coverfile for display.')
                local_file = open(os.path.join(mylar.CACHE_DIR,'temp.jpg'), "wb")
@@ -1246,7 +1315,8 @@ def IssueDetails(filelocation, IssueID=None):
             if '*List' in summary: 
                 summary_cut = summary.find('*List')
                 summary = summary[:summary_cut]
-
+                #check here to see if Covers exist as they will probably be misnamed when trying to determine the actual cover
+                # (ie. 00a.jpg / 00d.jpg  - when there's a Cover A or a Cover D listed)
             try:
                 notes = result.getElementsByTagName('Notes')[0].firstChild.wholeText  #IssueID is in here
             except:
@@ -1405,15 +1475,98 @@ def IssueDetails(filelocation, IssueID=None):
 
     return issuedetails
 
-def get_issue_title(IssueID):
+def get_issue_title(IssueID=None, ComicID=None, IssueNumber=None):
     import db, logger
     myDB = db.DBConnection()
-    issue = myDB.selectone('SELECT * FROM issues WHERE IssueID=?', [IssueID]).fetchone()
-    if issue is None:
-        logger.warn('Unable to locate given IssueID within the db.')
-        return None
+    if IssueID:
+        issue = myDB.selectone('SELECT * FROM issues WHERE IssueID=?', [IssueID]).fetchone()
+        if issue is None:
+            logger.warn('Unable to locate given IssueID within the db.')
+            return None
+    else:
+        issue = myDB.selectone('SELECT * FROM issues WHERE ComicID=? AND Int_IssueNumber=?', [ComicID, issuedigits(IssueNumber)]).fetchone()
+        if issue is None:
+            logger.warn('Unable to locate given IssueID within the db.')
+            return None
+        
     return issue['IssueName']
 
+def int_num(s):
+    try:
+        return int(s)
+    except ValueError:
+        return float(s)
+    
+def listLibrary():
+    import db
+    library = {}
+    myDB = db.DBConnection()
+    # Get individual comics
+    list = myDB.select("SELECT ComicId FROM Comics")
+    for row in list:
+        library[row['ComicID']] = row['ComicID']
+    # Add the annuals
+    list = myDB.select("SELECT ReleaseComicId,ComicID FROM Annuals")
+    for row in list:
+        library[row['ReleaseComicId']] = row['ComicID']
+    return library
+
+def incr_snatched(ComicID):
+    import db, logger
+    myDB = db.DBConnection()
+    incr_count = myDB.selectone("SELECT Have FROM Comics WHERE ComicID=?", [ComicID]).fetchone()
+    logger.fdebug('Incrementing HAVE count total to : ' + str( incr_count['Have'] + 1 ))
+    newCtrl = {"ComicID":    ComicID}
+    newVal = {"Have":  incr_count['Have'] + 1}
+    myDB.upsert("comics", newVal, newCtrl)
+    return 
+
+def duplicate_filecheck(filename, ComicID=None, IssueID=None, StoryArcID=None):
+    #filename = the filename in question that's being checked against
+    #comicid = the comicid of the series that's being checked for duplication
+    #issueid = the issueid of the issue that's being checked for duplication
+    #storyarcid = the storyarcid of the issue that's being checked for duplication.
+    #
+    import db, logger
+    myDB = db.DBConnection()
+
+    logger.info('duplicate check for ' + filename)
+    filesz = os.path.getsize(filename)
+
+    if IssueID:
+        dupchk = myDB.selectone("SELECT * FROM issues WHERE IssueID=?", [IssueID]).fetchone()
+    if dupchk is None:
+        dupchk = myDB.selectone("SELECT * FROM annuals WHERE IssueID=?", [IssueID]).fetchone()
+        if dupchk is None:
+            logger.info('Unable to find corresponding Issue within the DB. Do you still have the series on your watchlist?')
+            return
+
+    if any( [ dupchk['Status'] == 'Downloaded', dupchk['Status'] == 'Archived' ] ):
+        logger.info('Existing Status already set to ' + dupchk['Status'])
+        dupsize = dupchk['ComicSize']
+        if dupsize is None:
+            logger.info('Existing filesize is 0 bytes as I cannot locate the orginal entry - it is probably archived.')
+            rtnval = "dupe"
+        else:
+            logger.info('Existing file :' + dupchk['Location'] + ' has a filesize of : ' + str(dupsize) + ' bytes.')
+
+            #keywords to force keep / delete
+            #this will be eventually user-controlled via the GUI once the options are enabled.
+
+            if int(dupsize) >= filesz:
+                logger.info('Existing filesize is greater than : ' + str(filesz) + ' bytes.')
+                rtnval = "dupe"
+            elif int(dupsize) == 0:
+                logger.info('Existing filesize is 0 as I cannot locate the original entry. Will assume it is Archived already.')
+                rtnval = "dupe"
+            else:
+                logger.info('Existing filesize is less than : ' + str(filesz) + ' bytes. Checking configuration if I should keep this or  not.')
+                rtnval = "write"
+
+    else:
+        logger.info('Duplication detection returned no hits. This is not a duplicate of anything currently on your watchlist.')
+        rtnval = "write"
+    return rtnval
 
 from threading import Thread
 

@@ -29,7 +29,7 @@ import datetime
 import shutil
 
 import mylar 
-from mylar import db, updater, helpers, logger
+from mylar import db, updater, helpers, logger, newpull
 
 def pullit(forcecheck=None):
     myDB = db.DBConnection()
@@ -119,17 +119,25 @@ def pullit(forcecheck=None):
           'ONE SHOT',
           'PI']
 
+    #denotes issues that contain special characters within that would normally fail when checked if issue ONLY contained numerics.
+    #add freely, just lowercase and exclude decimals (they get stripped during comparisons)
+    specialissues = {'au','ai','inh','now'}
+
     pub = "COMICS"
     prevcomic = ""
     previssue = ""
 
+    newrl = mylar.CACHE_DIR + "/newreleases.txt"
+
+    if mylar.ALT_PULL:
+        logger.info('[PULL-LIST] Populating & Loading pull-list data directly from webpage')
+        newpull.newpull()
+    else:
+        logger.info('[PULL-LIST] Populating & Loading pull-list data from file')
+        f = urllib.urlretrieve(PULLURL, newrl)
+
     #newtxtfile header info ("SHIPDATE\tPUBLISHER\tISSUE\tCOMIC\tEXTRA\tSTATUS\n")
     #STATUS denotes default status to be applied to pulllist in Mylar (default = Skipped)
-    newrl = mylar.CACHE_DIR + "/newreleases.txt"
-    f = urllib.urlretrieve(PULLURL, newrl)
-#    local_file = open(newrl, "wb")
-#    local_file.write(f.read())
-#    local_file.close
 
     newfl = mylar.CACHE_DIR + "/Clean-newreleases.txt"
     newtxtfile = open(newfl, 'wb')
@@ -164,8 +172,8 @@ def pullit(forcecheck=None):
                     shipdate = sdsplit[2] + "-" + mo + "-" + dy
                     shipdaterep = shipdate.replace('-', '')
                     pulldate = re.sub('-', '', str(pulldate))
-                    #print ("shipdate: " + str(shipdaterep))
-                    #print ("today: " + str(pulldate))
+                    logger.fdebug("shipdate: " + str(shipdaterep))
+                    logger.fdebug("today: " + str(pulldate))
                     if pulldate == shipdaterep:
                         logger.info(u"No new pull-list available - will re-check again in 24 hours.")
                         pullitcheck()
@@ -228,7 +236,20 @@ def pullit(forcecheck=None):
                             if issname[n] == "PI":
                                 issue = "NA"
                                 break
-                            issue = issname[n]
+
+                            #this is to ensure we don't get any comps added by removing them entirely (ie. #1-4, etc)
+                            x = None
+                            try:
+                                x = float( re.sub('#','', issname[n].strip()) )
+                            except ValueError, e:
+                                if any(d in re.sub(r'[^a-zA-Z0-9]','',issname[n]).strip() for d in specialissues):
+                                    issue = issname[n]
+                                else:
+                                    logger.fdebug('Comp issue set detected as : ' + str(issname[n]) + '. Ignoring.')
+                                    issue = 'NA'
+                            else:
+                                issue = issname[n]
+
                             if 'ongoing' not in issname[n-1].lower() and '(vu)' not in issname[n-1].lower():
                                 #print ("issue found : " + issname[n])
                                 comicend = n - 1
@@ -339,6 +360,16 @@ def pullit(forcecheck=None):
                         #print ("pub: " + str(pub))
                         #print ("issue: " + str(issue))
                         dupefound = "no"
+
+                #-- remove html tags when alt_pull is enabled
+                if mylar.ALT_PULL:
+                    if '&amp;' in comicnm:
+                        comicnm = re.sub('&amp;','&',comicnm).strip()
+                    if '&amp;' in pub:
+                        pub = re.sub('&amp;','&',pub).strip()
+                    if '&amp;' in comicrm:
+                        comicrm = re.sub('&amp;','&',comicrm).strip()
+
                 #--start duplicate comic / issue chk
                 # pullist has shortforms of a series' title sometimes and causes problems
                 if 'O/T' in comicnm:
@@ -392,7 +423,6 @@ def pullit(forcecheck=None):
         #print (row)
         try:
             logger.debug("Row: %s" % row)
-
             controlValueDict = {'COMIC': row[3],
                                 'ISSUE': row[2],
                                 'EXTRA': row[4] }
@@ -469,7 +499,7 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None, futurepul
             w = 1            
         else:
             #let's read in the comic.watchlist from the db here
-            cur.execute("SELECT ComicID, ComicName_Filesafe, ComicYear, ComicPublisher, ComicPublished, LatestDate, ForceContinuing, AlternateSearch, LatestIssue from comics")
+            cur.execute("SELECT ComicID, ComicName_Filesafe, ComicYear, ComicPublisher, ComicPublished, LatestDate, ForceContinuing, AlternateSearch, LatestIssue from comics WHERE Status = 'Active'")
             while True:
                 watchd = cur.fetchone()
                 #print ("watchd: " + str(watchd))
@@ -612,7 +642,7 @@ def pullitcheck(comic1off_name=None,comic1off_id=None,forcecheck=None, futurepul
                                     modwatchcomic = re.sub('\&', 'AND', modwatchcomic.upper())
                                     modcomicnm = re.sub('\&', 'AND', modcomicnm)
                                 if '&' in comicnm:
-                                    modwatchcom = re.sub('\&', 'AND', modwatchcomic.upper())
+                                    modwatchcomic = re.sub('\&', 'AND', modwatchcomic.upper())
                                     modcomicnm = re.sub('\&', 'AND', modcomicnm)
                                 #thnx to A+X for this...
                                 if '+' in watchcomic:
@@ -861,8 +891,12 @@ def checkthis(datecheck,datestatus,usedate):
         logger.fdebug('Store Date falls within acceptable range - series MATCH')
         valid_check = True
     elif int(datecheck) < int(usedate):
-        logger.fdebug('The issue date of issue was on ' + str(datecheck) + ' which is prior to ' + str(usedate))
-        valid_check = False
+        if datecheck == '00000000':
+            logger.fdebug('Issue date retrieved as : ' + str(datecheck) + '. This is unpopulated data on CV, which normally means it\'s a new issue and is awaiting data population.')
+            valid_check = True
+        else:
+            logger.fdebug('The issue date of issue was on ' + str(datecheck) + ' which is prior to ' + str(usedate))
+            valid_check = False
 
     return valid_check
 

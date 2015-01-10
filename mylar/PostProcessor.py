@@ -203,16 +203,44 @@ class PostProcessor(object):
                     logger.error(module + ' No Series in Watchlist - aborting Manual Post Processing. Maybe you should be running Import?')
                     return
                 else:
+                    watchvals = []
+                    for wv in comicseries:
+
+                        wv_comicname = wv['ComicName']
+                        wv_comicpublisher = wv['ComicPublisher']
+                        wv_alternatesearch = wv['AlternateSearch']
+                        wv_comicid = wv['ComicID']
+
+                        wv_seriesyear = wv['ComicYear']
+                        wv_comicversion = wv['ComicVersion']
+                        wv_publisher = wv['ComicPublisher']
+                        wv_total = wv['Total']
+
+                        #logger.fdebug('Checking ' + wv['ComicName'] + ' [' + str(wv['ComicYear']) + '] -- ' + str(wv['ComicID']))
+
+                        #force it to use the Publication Date of the latest issue instead of the Latest Date (which could be anything)
+                        latestdate = myDB.select('SELECT IssueDate from issues WHERE ComicID=? order by ReleaseDate DESC', [wv['ComicID']])
+                        if latestdate:
+                            latestdate = latestdate[0][0]
+                        else:
+                            latestdate = wv['LatestDate']
+
+                        watchvals.append({"ComicName":       wv_comicname,
+                                          "ComicPublisher":  wv_comicpublisher,
+                                          "AlternateSearch": wv_alternatesearch,
+                                          "ComicID":         wv_comicid,
+                                          "WatchValues" : {"SeriesYear":   wv_seriesyear,
+                                                           "LatestDate":   latestdate,
+                                                           "ComicVersion": wv_comicversion,
+                                                           "Publisher":    wv_publisher,
+                                                           "Total":        wv_total,
+                                                           "ComicID":      wv_comicid}
+                                         })
+
                     ccnt=0
                     nm=0
-                    watchvals = {}
-                    for cs in comicseries:
-                        watchvals = {"SeriesYear":   cs['ComicYear'],
-                                     "LatestDate":   cs['LatestDate'],
-                                     "ComicVersion": cs['ComicVersion'],
-                                     "Publisher":    cs['ComicPublisher'],
-                                     "Total":        cs['Total']}
-                        watchmatch = filechecker.listFiles(self.nzb_folder,cs['ComicName'],cs['ComicPublisher'],cs['AlternateSearch'], manual=watchvals)
+                    for cs in watchvals:
+                        watchmatch = filechecker.listFiles(self.nzb_folder,cs['ComicName'],cs['ComicPublisher'],cs['AlternateSearch'], manual=cs['WatchValues'])
                         if watchmatch['comiccount'] == 0: # is None:
                             nm+=1
                             continue
@@ -229,9 +257,14 @@ class PostProcessor(object):
                                 temploc = re.sub('[\#\']', '', temploc)
 
                                 if 'annual' in temploc.lower():
-                                    logger.info(module + ' Annual detected.')
+                                    biannchk = re.sub('-', '', temploc.lower()).strip()
+                                    if 'biannual' in biannchk:
+                                        logger.info(module + ' Bi-Annual detected.')
+                                        fcdigit = helpers.issuedigits(re.sub('biannual', '', str(biannchk)).strip())
+                                    else:
+                                        logger.info(module + ' Annual detected.')
+                                        fcdigit = helpers.issuedigits(re.sub('annual', '', str(temploc.lower())).strip())
                                     annchk = "yes"
-                                    fcdigit = helpers.issuedigits(re.sub('annual', '', str(temploc.lower())).strip())
                                     issuechk = myDB.selectone("SELECT * from annuals WHERE ComicID=? AND Int_IssueNumber=?", [cs['ComicID'],fcdigit]).fetchone()
                                 else:
                                     fcdigit = helpers.issuedigits(temploc)
@@ -267,7 +300,7 @@ class PostProcessor(object):
                                         if int(monthval[5:7]) == 11 or int(monthval[5:7]) == 12:
                                             issyr = int(monthval[:4]) + 1
                                             logger.fdebug(module + ' IssueYear (issyr) is ' + str(issyr))
-                                        elif int(monthval[5:7]) == 1 or int(monthval[5:7]) == 2:
+                                        elif int(monthval[5:7]) == 1 or int(monthval[5:7]) == 2 or int(monthval[5:7]) == 3:
                                             issyr = int(monthval[:4]) - 1
 
 
@@ -343,25 +376,41 @@ class PostProcessor(object):
                     #use issueid to get publisher, series, year, issue number
 
                 annchk = "no"
-                if 'annual' in nzbname.lower():
-                    logger.info(module + ' Annual detected.')
-                    annchk = "yes"
+#                if 'annual' in nzbname.lower():
+#                    logger.info(module + ' Annual detected.')
+#                    annchk = "yes"
+#                    issuenzb = myDB.selectone("SELECT * from annuals WHERE IssueID=? AND ComicName NOT NULL", [issueid]).fetchone()
+#                else:
+#                    issuenzb = myDB.selectone("SELECT * from issues WHERE IssueID=? AND ComicName NOT NULL", [issueid]).fetchone()
+
+                issuenzb = myDB.selectone("SELECT * from issues WHERE IssueID=? AND ComicName NOT NULL", [issueid]).fetchone()
+                if issuenzb is None:                
+                    logger.info(module + ' Could not detect as a standard issue - checking against annuals.')
                     issuenzb = myDB.selectone("SELECT * from annuals WHERE IssueID=? AND ComicName NOT NULL", [issueid]).fetchone()
-                else:
-                    issuenzb = myDB.selectone("SELECT * from issues WHERE IssueID=? AND ComicName NOT NULL", [issueid]).fetchone()
+                    if issuenzb is None:                    
+                        logger.info(module + ' issuenzb not found.')
+                        #if it's non-numeric, it contains a 'G' at the beginning indicating it's a multi-volume
+                        #using GCD data. Set sandwich to 1 so it will bypass and continue post-processing.
+                        if 'S' in issueid:
+                            sandwich = issueid
+                        elif 'G' in issueid or '-' in issueid:
+                            sandwich = 1
+                    else:
+                        logger.info(module + ' Successfully located issue as an annual. Continuing.')
+                        annchk = "yes"
 
                 if issuenzb is not None:
                     logger.info(module + ' issuenzb found.')
                     if helpers.is_number(issueid):
                         sandwich = int(issuenzb['IssueID'])
-                else:
-                    logger.info(module + ' issuenzb not found.')
-                    #if it's non-numeric, it contains a 'G' at the beginning indicating it's a multi-volume
-                    #using GCD data. Set sandwich to 1 so it will bypass and continue post-processing.
-                    if 'S' in issueid:
-                        sandwich = issueid
-                    elif 'G' in issueid or '-' in issueid: 
-                        sandwich = 1
+#                else:
+#                    logger.info(module + ' issuenzb not found.')
+#                    #if it's non-numeric, it contains a 'G' at the beginning indicating it's a multi-volume
+#                    #using GCD data. Set sandwich to 1 so it will bypass and continue post-processing.
+#                    if 'S' in issueid:
+#                        sandwich = issueid
+#                    elif 'G' in issueid or '-' in issueid: 
+#                        sandwich = 1
                 if helpers.is_number(sandwich):
                     if sandwich < 900000:
                         # if sandwich is less than 900000 it's a normal watchlist download. Bypass.
@@ -384,12 +433,42 @@ class PostProcessor(object):
                             logger.info(module + ' One-off mode enabled for Post-Processing. Will move into Grab-bag directory.')
                             self._log("Grab-Bag Directory set to : " + mylar.GRABBAG_DIR)
 
+                        odir = None
                         for root, dirnames, filenames in os.walk(self.nzb_folder):
                             for filename in filenames:
                                 if filename.lower().endswith(extensions):
+                                    odir = root
                                     ofilename = filename
                                     path, ext = os.path.splitext(ofilename)
-      
+
+                        if odir is None:
+                            odir = self.nzb_folder     
+
+                        issuearcid = re.sub('S', '', issueid)
+                        logger.fdebug(module + ' issuearcid:' + str(issuearcid))
+                        arcdata = myDB.selectone("SELECT * FROM readinglist WHERE IssueArcID=?",[issuearcid]).fetchone()
+
+                        issueid = arcdata['IssueID']                        
+                        #tag the meta.
+                        if mylar.ENABLE_META:
+                            self._log("Metatagging enabled - proceeding...")
+                            try:
+                                import cmtagmylar
+                                metaresponse = cmtagmylar.run(self.nzb_folder, issueid=issueid, filename=ofilename)
+                            except ImportError:
+                                logger.warn(module + ' comictaggerlib not found on system. Ensure the ENTIRE lib directory is located within mylar/lib/comictaggerlib/')
+                                metaresponse = "fail"
+
+                            if metaresponse == "fail":
+                                logger.fdebug(module + ' Unable to write metadata successfully - check mylar.log file.')
+                            elif metaresponse == "unrar error":
+                                logger.error(module + ' This is a corrupt archive - whether CRC errors or it is incomplete. Marking as BAD, and retrying it.')
+                                #launch failed download handling here.
+                            else:
+                                ofilename = os.path.split(metaresponse)[1]
+                                logger.info(module + ' Sucessfully wrote metadata to .cbz (' + ofilename + ') - Continuing..')
+                                self._log('Sucessfully wrote metadata to .cbz (' + ofilename + ') - proceeding...')
+
                         if 'S' in sandwich:
                             if mylar.STORYARCDIR:
                                 grdst = storyarcd
@@ -406,9 +485,6 @@ class PostProcessor(object):
                         if 'S' in sandwich:
                             #if from a StoryArc, check to see if we're appending the ReadingOrder to the filename
                             if mylar.READ2FILENAME:
-                                issuearcid = re.sub('S', '', issueid)
-                                logger.fdebug(module + ' issuearcid:' + str(issuearcid))
-                                arcdata = myDB.selectone("SELECT * FROM readinglist WHERE IssueArcID=?",[issuearcid]).fetchone()
                                 logger.fdebug(module + ' readingorder#: ' + str(arcdata['ReadingOrder']))
                                 if int(arcdata['ReadingOrder']) < 10: readord = "00" + str(arcdata['ReadingOrder'])
                                 elif int(arcdata['ReadingOrder']) > 10 and int(arcdata['ReadingOrder']) < 99: readord = "0" + str(arcdata['ReadingOrder'])
@@ -448,14 +524,22 @@ class PostProcessor(object):
                         myDB.action('DELETE from nzblog WHERE issueid=?', [issueid])
 
                         if 'S' in issueid:
-                            issuearcid = re.sub('S', '', issueid)
+                            #issuearcid = re.sub('S', '', issueid)
                             logger.info(module + ' IssueArcID is : ' + str(issuearcid))
                             ctrlVal = {"IssueArcID":  issuearcid}
-                            newVal = {"Status":    "Downloaded",
-                                      "Location":  grab_dst }
-                            myDB.upsert("readinglist",newVal,ctrlVal)
+                            newVal = {"Status":       "Downloaded",
+                                      "Location":     grab_dst}
+                            logger.info('writing: ' + str(newVal) + ' -- ' + str(ctrlVal))
+                            myDB.upsert("readinglist", newVal, ctrlVal)
+                            logger.info('wrote.')
                             logger.info(module + ' Updated status to Downloaded')
-                        return self.log
+
+                        logger.info(module + ' Post-Processing completed for: [' + sarc + '] ' + grab_dst)
+                        self._log(u"Post Processing SUCCESSFUL! ")
+
+                        self.valreturn.append({"self.log" : self.log,
+                                               "mode"     : 'stop'})
+                        return self.queue.put(self.valreturn)
 
 
             if self.nzb_name == 'Manual Run':
@@ -468,13 +552,27 @@ class PostProcessor(object):
                     comicid = ml['ComicID']
                     issueid = ml['IssueID']
                     issuenumOG = ml['IssueNumber']
-                    self.Process_next(comicid,issueid,issuenumOG,ml)
+                    dupthis = helpers.duplicate_filecheck(ml['ComicLocation'], ComicID=comicid, IssueID=issueid)
+                    if dupthis == "write":
+                        self.Process_next(comicid,issueid,issuenumOG,ml)
+                        dupthis = None
                 logger.info(module + ' Manual post-processing completed.')
                 return
             else:
                 comicid = issuenzb['ComicID']
                 issuenumOG = issuenzb['Issue_Number']
-                return self.Process_next(comicid,issueid,issuenumOG)
+                #the self.nzb_folder should contain only the existing filename
+                dupthis = helpers.duplicate_filecheck(self.nzb_folder, ComicID=comicid, IssueID=issueid)
+                if dupthis == "write":
+                    return self.Process_next(comicid,issueid,issuenumOG)
+                else:
+                    self.valreturn.append({"self.log" : self.log,
+                                           "mode"     : 'stop',
+                                           "issueid"  : issueid,
+                                           "comicid"  : comicid})
+
+                    return self.queue.put(self.valreturn)
+
 
     def Process_next(self,comicid,issueid,issuenumOG,ml=None):
             module = self.module
@@ -498,7 +596,7 @@ class PostProcessor(object):
             if annchk == "no":
                 logger.info(module + ' Starting Post-Processing for ' + issuenzb['ComicName'] + ' issue: ' + str(issuenzb['Issue_Number']))
             else:
-                logger.info(module + ' Starting Post-Processing for ' + issuenzb['ComicName'] + ' Annual issue: ' + str(issuenzb['Issue_Number']))
+                logger.info(module + ' Starting Post-Processing for ' + issuenzb['ReleaseComicName'] + ' issue: ' + str(issuenzb['Issue_Number']))
             logger.fdebug(module + ' issueid: ' + str(issueid))
             logger.fdebug(module + ' issuenumOG: ' + str(issuenumOG))
 
@@ -647,7 +745,7 @@ class PostProcessor(object):
                 chunk_f_f = re.sub('\$Annual','',chunk_file_format)
                 chunk_f = re.compile(r'\s+')
                 chunk_file_format = chunk_f.sub(' ', chunk_f_f)
-                logger.fdebug(module + ' Not an annual - removing from filename paramaters')
+                logger.fdebug(module + ' Not an annual - removing from filename parameters')
                 logger.fdebug(module + ' New format: ' + str(chunk_file_format))
 
             else:
@@ -750,9 +848,12 @@ class PostProcessor(object):
                             ofilename = filename
                             logger.fdebug(module + ' ofilename: ' + ofilename)
                             path, ext = os.path.splitext(ofilename)
- 
-                if odir is None:
-                    logger.fdebug(module + ' No root folder set.')
+                try:
+                    if odir is None:
+                        logger.fdebug(module + ' No root folder set.')
+                        odir = self.nzb_folder
+                except:
+                    logger.error(module + ' unable to set root folder. Forcing it due to some error above most likely.')
                     odir = self.nzb_folder
                 logger.fdebug(module + ' odir: ' + str(odir))
                 logger.fdebug(module + ' ofilename: ' + str(ofilename))
@@ -770,7 +871,9 @@ class PostProcessor(object):
 
             if ofilename is None:
                 logger.error(module + ' Aborting PostProcessing - the filename does not exist in the location given. Make sure that ' + str(self.nzb_folder) + ' exists and is the correct location.')
-                return
+                self.valreturn.append({"self.log" : self.log,
+                                       "mode"     : 'stop'})
+                return self.queue.put(self.valreturn)
             self._log("Original Filename: " + ofilename)
             self._log("Original Extension: " + ext)
             logger.fdebug(module + ' Original Filname: ' + str(ofilename))
@@ -903,9 +1006,12 @@ class PostProcessor(object):
                 dispiss = 'issue: ' + str(issuenumOG)
             else:
                 updater.foundsearch(comicid, issueid, mode='want_ann', down=downtype, module=module)
-                dispiss = 'annual issue: ' + str(issuenumOG)
+                if 'annual' not in series.lower():
+                    dispiss = 'annual issue: ' + str(issuenumOG)
+                else:
+                    dispiss = str(issuenumOG)
 
-                    #force rescan of files
+            #force rescan of files
             updater.forceRescan(comicid,module=module)
 
             if mylar.WEEKFOLDER:
@@ -952,7 +1058,11 @@ class PostProcessor(object):
             if annchk == "no":
                 prline = series + '(' + issueyear + ') - issue #' + issuenumOG
             else:
-                prline = series + ' Annual (' + issueyear + ') - issue #' + issuenumOG
+                if 'annual' not in series.lower():
+                    prline = series + ' Annual (' + issueyear + ') - issue #' + issuenumOG
+                else:
+                    prline = series + ' (' + issueyear + ') - issue #' + issuenumOG
+
             prline2 = 'Mylar has downloaded and post-processed: ' + prline
 
             if mylar.PROWL_ENABLED:

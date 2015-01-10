@@ -21,10 +21,10 @@ import pprint
 import subprocess
 import re
 #import logger
-import mylar
-from mylar import logger, helpers
-import unicodedata
-import sys
+import mylar 
+from mylar import logger, helpers 
+import unicodedata 
+import sys 
 import platform
 
 def file2comicmatch(watchmatch):
@@ -67,9 +67,10 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
                       'A',
                       'B',
                       'C',
-                      'X']
+                      'X',
+                      'O']
 
-    extensions = ('.cbr', '.cbz')
+    extensions = ('.cbr', '.cbz', '.cb7')
 
 #    #get the entire tree here
     dirlist = traverse_directories(basedir)
@@ -527,9 +528,15 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
             if modwatchcomic.lower() in subname.lower() and enable_annual == False:
                 loopchk.append(modwatchcomic)
                 if 'annual' in subname.lower():
-                    logger.fdebug('[FILECHECKER] Annual detected - proceeding cautiously.')
-                    enable_annual = False
-                    jtd_len = subname.lower().find('annual')
+                    if 'bi annual' in subname.lower():
+                        logger.fdebug('[FILECHECKER] BiAnnual detected - wouldn\'t Deadpool be proud?')
+                        subname = re.sub('Bi Annual', 'BiAnnual', subname)
+                        jtd_len = subname.lower().find('bi annual')
+                        enable_annual = True
+                    else:
+                        logger.fdebug('[FILECHECKER] Annual detected - proceeding cautiously.')
+                        jtd_len = subname.lower().find('annual')
+                        enable_annual = False
 
             logger.fdebug('[FILECHECKER] Complete matching list of names to this file [' + str(len(loopchk)) + '] : ' + str(loopchk))
 
@@ -538,10 +545,11 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
                 logger.fdebug('[FILECHECKER] AS_Tuple : ' + str(AS_Tuple))
                 annual_comicid = None
                 for ATS in AS_Tuple:
-                    logger.fdebug('[FILECHECKER] ' + str(ATS['AS_Alternate']) + ' comparing to ' + str(modwatchcomic))
-                    if ATS['AS_Alternate'] == modwatchcomic:
+                    logger.fdebug('[FILECHECKER] ' + str(ATS['AS_Alternate']) + ' comparing to ' + str(subname[:len(ATS['AS_Alternate'])])) #str(modwatchcomic))
+                    if ATS['AS_Alternate'].lower().strip() == str(subname[:len(ATS['AS_Alternate'])]).lower().strip(): #modwatchcomic
                         logger.fdebug('[FILECHECKER] Associating ComiciD : ' + str(ATS['ComicID']))
                         annual_comicid = str(ATS['ComicID'])
+                        modwatchcomic = ATS['AS_Alternate']
                         break
                 comicpath = os.path.join(basedir, item)
                 logger.fdebug('[FILECHECKER] ' + modwatchcomic + ' - watchlist match on : ' + comicpath)
@@ -616,7 +624,17 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
 
                 justthedigits_1 = subname[jtd_len:].strip()
 
-                if enable_annual: justthedigits_1 = 'Annual ' + str(justthedigits_1)
+                if enable_annual:
+                    logger.fdebug('enable annual is on')
+                    if annual_comicid is not None:
+                       logger.fdebug('annual comicid is ' + str(annual_comicid))
+                       if 'biannual' in modwatchcomic.lower():
+                           logger.fdebug('bi annual detected')
+                           justthedigits_1 = 'BiAnnual ' + str(justthedigits_1)
+                       else:
+                           logger.fdebug('annual detected')
+                           justthedigits_1 = 'Annual ' + str(justthedigits_1)
+
                 logger.fdebug('[FILECHECKER] after title removed from SUBNAME [' + justthedigits_1 + ']')
 
                 #remove the title if it appears
@@ -652,7 +670,7 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
                     poss_alpha = tmpthedigits
                     if poss_alpha.isdigit():
                         digitsvalid = "true"
-                        if justthedigits.lower() == 'annual' and 'annual' not in watchcomic.lower():
+                        if (justthedigits.lower() == 'annual' and 'annual' not in watchcomic.lower()) or (annual_comicid is not None):
                             logger.fdebug('[FILECHECKER] ANNUAL DETECTED ['  + poss_alpha + ']')
                             justthedigits += ' ' + poss_alpha
                         else:
@@ -793,12 +811,15 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
                         #if annualize == "true" and int(ComicYear) == int(F_ComicVersion):
                         #    logger.fdebug('[FILECHECKER] ("We matched on versions for annuals " + str(volrem))
 
-                        if int(F_ComicVersion) == int(D_ComicVersion) or int(F_ComicVersion) == int(S_ComicVersion):
-                            logger.fdebug('[FILECHECKER] We matched on versions...' + str(volrem))
-                            versionmatch = "true"
-                            yearmatch = "false"
-                        else:
-                            logger.fdebug('[FILECHECKER] Versions wrong. Ignoring possible match.')
+                        try:
+                            if int(F_ComicVersion) == int(D_ComicVersion) or int(F_ComicVersion) == int(S_ComicVersion):
+                                logger.fdebug('[FILECHECKER] We matched on versions...' + str(volrem))
+                                versionmatch = "true"
+                                yearmatch = "false"
+                            else:
+                                logger.fdebug('[FILECHECKER] Versions wrong. Ignoring possible match.')
+                        except ValueError:
+                            logger.warning('[FILECHECKER] Unable to determine version number. This issue will be skipped.')
 
                     result_comyear = None
                     while (cnt < len_sm):
@@ -830,7 +851,7 @@ def listFiles(dir,watchcomic,Publisher,AlternateSearch=None,manual=None,sarc=Non
                             logger.fdebug('[FILECHECKER] Failed to match on both version and issue year.')
                             continue
                         else:
-                            logger.fdebug('[FILECHECKER] Matched on versions, not on year - continuing.')
+                            logger.fdebug('[FILECHECKER] Matched on year, not on version - continuing.')
                     else:
                          if yearmatch == "false":
                             logger.fdebug('[FILECHECKER] Matched on version, but not on year - continuing.')
@@ -980,6 +1001,9 @@ def traverse_directories(dir):
                 direc = ''
             else:
                 direc = dirname
+                if '.AppleDouble' in direc:
+                    #Ignoring MAC OS Finder directory of cached files (/.AppleDouble/<name of file(s)>)
+                    continue
 
             filelist.append({"directory":  direc,
                              "filename":   fname})

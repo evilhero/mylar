@@ -34,7 +34,7 @@ from lib.configobj import ConfigObj
 
 import cherrypy
 
-from mylar import versioncheck, logger, versioncheck, rsscheck, search, PostProcessor, weeklypull, helpers #versioncheckit, searchit, weeklypullit, dbupdater, scheduler
+from mylar import logger, versioncheck, rsscheck, search, PostProcessor, weeklypull, helpers #versioncheckit, searchit, weeklypullit, dbupdater, scheduler
 
 FULL_PATH = None
 PROG_DIR = None
@@ -58,6 +58,7 @@ INIT_LOCK = threading.Lock()
 __INITIALIZED__ = False
 started = False
 WRITELOCK = False
+LOGTYPE = None
 
 ## for use with updated scheduler (not working atm)
 #INIT_LOCK = Lock()
@@ -86,8 +87,11 @@ MAX_LOGSIZE = None
 
 CACHE_DIR = None
 SYNO_FIX = False
+IMPORTBUTTON = False
+DONATEBUTTON = True
 
 PULLNEW = None
+ALT_PULL = False
 
 HTTP_PORT = None
 HTTP_HOST = None
@@ -117,7 +121,8 @@ CHECK_GITHUB = False
 CHECK_GITHUB_ON_STARTUP = False
 CHECK_GITHUB_INTERVAL = None
 
-DESTINATION_DIR = None
+DESTINATION_DIR = None   #if M_D_D_ is enabled, this will be the DEFAULT for writing
+MULTIPLE_DEST_DIRS = None  #Nothing will ever get written to these dirs - just for scanning, unless it's metatagging/renaming.
 CHMOD_DIR = None
 CHMOD_FILE = None
 USENET_RETENTION = None
@@ -128,7 +133,7 @@ COMIC_DIR = None
 LIBRARYSCAN = False
 IMP_MOVE = False
 IMP_RENAME = False
-IMP_METADATA = False
+IMP_METADATA = False  # should default to False - this is enabled for testing only.
 
 SEARCH_INTERVAL = 360
 NZB_STARTUP_SEARCH = False
@@ -150,6 +155,7 @@ ZERO_LEVEL = False
 ZERO_LEVEL_N = None
 LOWERCASE_FILENAME = False
 IGNORE_HAVETOTAL = False
+SNATCHED_HAVETOTAL = False
 USE_MINSIZE = False
 MINSIZE = 10
 USE_MAXSIZE = False
@@ -276,10 +282,15 @@ CMTAGGER_PATH = None
 CT_TAG_CR = 1
 CT_TAG_CBL = 1
 CT_CBZ_OVERWRITE = 0
+UNRAR_CMD = None
 
 ENABLE_RSS = 0
 RSS_CHECKINTERVAL = 20
 RSS_LASTRUN = None
+
+#these are used to set the comparison against the post-processing scripts
+STATIC_COMICRN_VERSION = "1.0"
+STATIC_APC_VERSION = "1.0"
 
 FAILED_DOWNLOAD_HANDLING = 0
 FAILED_AUTO = 0
@@ -355,20 +366,20 @@ def initialize():
     
         global __INITIALIZED__, COMICVINE_API, DEFAULT_CVAPI, CVAPI_COUNT, CVAPI_TIME, CVAPI_MAX, FULL_PATH, PROG_DIR, VERBOSE, DAEMON, COMICSORT, DATA_DIR, CONFIG_FILE, CFG, CONFIG_VERSION, LOG_DIR, CACHE_DIR, MAX_LOGSIZE, LOGVERBOSE, OLDCONFIG_VERSION, OS_DETECT, OS_LANG, OS_ENCODING, \
                 queue, HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, HTTPS_FORCE_ON, API_ENABLED, API_KEY, LAUNCH_BROWSER, GIT_PATH, SAFESTART, \
-                CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, USER_AGENT, DESTINATION_DIR, CREATE_FOLDERS, \
+                CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, USER_AGENT, DESTINATION_DIR, MULTIPLE_DEST_DIRS, CREATE_FOLDERS, \
                 DOWNLOAD_DIR, USENET_RETENTION, SEARCH_INTERVAL, NZB_STARTUP_SEARCH, INTERFACE, AUTOWANT_ALL, AUTOWANT_UPCOMING, ZERO_LEVEL, ZERO_LEVEL_N, COMIC_COVER_LOCAL, HIGHCOUNT, \
                 LIBRARYSCAN, LIBRARYSCAN_INTERVAL, DOWNLOAD_SCAN_INTERVAL, NZB_DOWNLOADER, USE_SABNZBD, SAB_HOST, SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_PRIORITY, SAB_DIRECTORY, USE_BLACKHOLE, BLACKHOLE_DIR, ADD_COMICS, COMIC_DIR, IMP_MOVE, IMP_RENAME, IMP_METADATA, \
                 USE_NZBGET, NZBGET_HOST, NZBGET_PORT, NZBGET_USERNAME, NZBGET_PASSWORD, NZBGET_CATEGORY, NZBGET_PRIORITY, NZBGET_DIRECTORY, NZBSU, NZBSU_UID, NZBSU_APIKEY, DOGNZB, DOGNZB_UID, DOGNZB_APIKEY, \
                 NEWZNAB, NEWZNAB_NAME, NEWZNAB_HOST, NEWZNAB_APIKEY, NEWZNAB_UID, NEWZNAB_ENABLED, EXTRA_NEWZNABS, NEWZNAB_EXTRA, \
                 RAW, RAW_PROVIDER, RAW_USERNAME, RAW_PASSWORD, RAW_GROUPS, EXPERIMENTAL, ALTEXPERIMENTAL, \
-                ENABLE_META, CMTAGGER_PATH, CT_TAG_CR, CT_TAG_CBL, CT_CBZ_OVERWRITE, INDIE_PUB, BIGGIE_PUB, IGNORE_HAVETOTAL, PROVIDER_ORDER, \
+                ENABLE_META, CMTAGGER_PATH, CT_TAG_CR, CT_TAG_CBL, CT_CBZ_OVERWRITE, UNRAR_CMD, INDIE_PUB, BIGGIE_PUB, IGNORE_HAVETOTAL, SNATCHED_HAVETOTAL, PROVIDER_ORDER, \
                 dbUpdateScheduler, searchScheduler, RSSScheduler, WeeklyScheduler, VersionScheduler, FolderMonitorScheduler, \
                 ENABLE_TORRENTS, MINSEEDS, TORRENT_LOCAL, LOCAL_WATCHDIR, TORRENT_SEEDBOX, SEEDBOX_HOST, SEEDBOX_PORT, SEEDBOX_USER, SEEDBOX_PASS, SEEDBOX_WATCHDIR, \
                 ENABLE_RSS, RSS_CHECKINTERVAL, RSS_LASTRUN, FAILED_DOWNLOAD_HANDLING, FAILED_AUTO, ENABLE_TORRENT_SEARCH, ENABLE_KAT, KAT_PROXY, ENABLE_CBT, CBT_PASSKEY, SNATCHEDTORRENT_NOTIFY, \
                 PROWL_ENABLED, PROWL_PRIORITY, PROWL_KEYS, PROWL_ONSNATCH, NMA_ENABLED, NMA_APIKEY, NMA_PRIORITY, NMA_ONSNATCH, PUSHOVER_ENABLED, PUSHOVER_PRIORITY, PUSHOVER_APIKEY, PUSHOVER_USERKEY, PUSHOVER_ONSNATCH, BOXCAR_ENABLED, BOXCAR_ONSNATCH, BOXCAR_TOKEN, \
                 PUSHBULLET_ENABLED, PUSHBULLET_APIKEY, PUSHBULLET_DEVICEID, PUSHBULLET_ONSNATCH, LOCMOVE, NEWCOM_DIR, FFTONEWCOM_DIR, \
                 PREFERRED_QUALITY, MOVE_FILES, RENAME_FILES, LOWERCASE_FILENAMES, USE_MINSIZE, MINSIZE, USE_MAXSIZE, MAXSIZE, CORRECT_METADATA, FOLDER_FORMAT, FILE_FORMAT, REPLACE_CHAR, REPLACE_SPACES, ADD_TO_CSV, CVINFO, LOG_LEVEL, POST_PROCESSING, POST_PROCESSING_SCRIPT, SEARCH_DELAY, GRABBAG_DIR, READ2FILENAME, STORYARCDIR, CVURL, CVAPIFIX, CHECK_FOLDER, ENABLE_CHECK_FOLDER, \
-                COMIC_LOCATION, QUAL_ALTVERS, QUAL_SCANNER, QUAL_TYPE, QUAL_QUALITY, ENABLE_EXTRA_SCRIPTS, EXTRA_SCRIPTS, ENABLE_PRE_SCRIPTS, PRE_SCRIPTS, PULLNEW, COUNT_ISSUES, COUNT_HAVES, COUNT_COMICS, SYNO_FIX, CHMOD_FILE, CHMOD_DIR, ANNUALS_ON, CV_ONLY, CV_ONETIMER, WEEKFOLDER, UMASK
+                COMIC_LOCATION, QUAL_ALTVERS, QUAL_SCANNER, QUAL_TYPE, QUAL_QUALITY, ENABLE_EXTRA_SCRIPTS, EXTRA_SCRIPTS, ENABLE_PRE_SCRIPTS, PRE_SCRIPTS, PULLNEW, ALT_PULL, COUNT_ISSUES, COUNT_HAVES, COUNT_COMICS, SYNO_FIX, CHMOD_FILE, CHMOD_DIR, ANNUALS_ON, CV_ONLY, CV_ONETIMER, WEEKFOLDER, UMASK
                 
         if __INITIALIZED__:
             return False
@@ -412,7 +423,7 @@ def initialize():
             VERBOSE = 2
         else:
             VERBOSE = 1
-        MAX_LOGSIZE = check_setting_str(CFG, 'General', 'max_logsize', '')
+        MAX_LOGSIZE = check_setting_int(CFG, 'General', 'max_logsize', 1000000)
         if not MAX_LOGSIZE:
             MAX_LOGSIZE = 1000000        
         GIT_PATH = check_setting_str(CFG, 'General', 'git_path', '')
@@ -425,11 +436,12 @@ def initialize():
         CHECK_GITHUB_INTERVAL = check_setting_int(CFG, 'General', 'check_github_interval', 360)
         
         DESTINATION_DIR = check_setting_str(CFG, 'General', 'destination_dir', '')
+        MULTIPLE_DEST_DIRS = check_setting_str(CFG, 'General', 'multiple_dest_dirs', '')
         CREATE_FOLDERS = bool(check_setting_int(CFG, 'General', 'create_folders', 1))
         CHMOD_DIR = check_setting_str(CFG, 'General', 'chmod_dir', '0777')
         CHMOD_FILE = check_setting_str(CFG, 'General', 'chmod_file', '0660')
         USENET_RETENTION = check_setting_int(CFG, 'General', 'usenet_retention', '1500')
-        
+        ALT_PULL = bool(check_setting_int(CFG, 'General', 'alt_pull', 0))
         SEARCH_INTERVAL = check_setting_int(CFG, 'General', 'search_interval', 360)
         NZB_STARTUP_SEARCH = bool(check_setting_int(CFG, 'General', 'nzb_startup_search', 0))
         LIBRARYSCAN = bool(check_setting_int(CFG, 'General', 'libraryscan', 1))
@@ -460,6 +472,7 @@ def initialize():
         ZERO_LEVEL_N = check_setting_str(CFG, 'General', 'zero_level_n', '')
         LOWERCASE_FILENAMES = bool(check_setting_int(CFG, 'General', 'lowercase_filenames', 0))
         IGNORE_HAVETOTAL = bool(check_setting_int(CFG, 'General', 'ignore_havetotal', 0))
+        SNATCHED_HAVETOTAL = bool(check_setting_int(CFG, 'General', 'snatched_havetotal', 0))
         SYNO_FIX = bool(check_setting_int(CFG, 'General', 'syno_fix', 0))
         SEARCH_DELAY = check_setting_int(CFG, 'General', 'search_delay', 1)
         GRABBAG_DIR = check_setting_str(CFG, 'General', 'grabbag_dir', '')
@@ -537,6 +550,7 @@ def initialize():
         CT_TAG_CR = bool(check_setting_int(CFG, 'General', 'ct_tag_cr', 1))
         CT_TAG_CBL = bool(check_setting_int(CFG, 'General', 'ct_tag_cbl', 1))
         CT_CBZ_OVERWRITE = bool(check_setting_int(CFG, 'General', 'ct_cbz_overwrite', 0))
+        UNRAR_CMD = check_setting_str(CFG, 'General', 'unrar_cmd', '')
 
         INDIE_PUB = check_setting_str(CFG, 'General', 'indie_pub', '75')
         BIGGIE_PUB = check_setting_str(CFG, 'General', 'biggie_pub', '55')
@@ -818,6 +832,16 @@ def initialize():
         # Start the logger, silence console logging if we need to
         logger.initLogger(verbose=VERBOSE) #logger.mylar_log.initLogger(verbose=VERBOSE)
 
+        # verbatim back the logger being used since it's now started.
+#        if LOGTYPE == 'clog':
+#            logprog = 'Concurrent Log Handler'
+#        else:
+#            logprog = 'Rotational Log Handler (default)'
+#            logger.fdebug('ConcurrentLogHandler package not installed. Using builtin log handler for Rotational logs (default)')
+#            logger.fdebug('[Windows Users] If you are experiencing log file locking, you should install the ConcurrentLogHandler ( https://pypi.python.org/pypi/ConcurrentLogHandler/0.8.7 )')
+
+#        logger.fdebug('Logger set to use : ' + logprog)
+
         # Put the cache dir in the data dir for now
         if not CACHE_DIR:
             CACHE_DIR = os.path.join(str(DATA_DIR), 'cache')
@@ -1038,7 +1062,10 @@ def config_write():
     new_config.encoding = 'UTF8'
     new_config['General'] = {}
     new_config['General']['config_version'] = CONFIG_VERSION
-    new_config['General']['comicvine_api'] = COMICVINE_API
+    if COMICVINE_API is None or COMICVINE_API == '':
+        new_config['General']['comicvine_api'] = COMICVINE_API
+    else:
+        new_config['General']['comicvine_api'] = COMICVINE_API.strip()
     #write the current CV API time / count here so it's persistent through reboots/restarts.
     #get the current values.
     helpers.cvapi_check()
@@ -1067,11 +1094,12 @@ def config_write():
     new_config['General']['check_github_interval'] = CHECK_GITHUB_INTERVAL
 
     new_config['General']['destination_dir'] = DESTINATION_DIR
+    new_config['General']['multiple_dest_dirs'] = MULTIPLE_DEST_DIRS
     new_config['General']['create_folders'] = int(CREATE_FOLDERS)
     new_config['General']['chmod_dir'] = CHMOD_DIR
     new_config['General']['chmod_file'] = CHMOD_FILE
     new_config['General']['usenet_retention'] = USENET_RETENTION
-
+    new_config['General']['alt_pull'] = int(ALT_PULL)
     new_config['General']['search_interval'] = SEARCH_INTERVAL
     new_config['General']['nzb_startup_search'] = int(NZB_STARTUP_SEARCH)
     new_config['General']['libraryscan'] = int(LIBRARYSCAN)
@@ -1102,6 +1130,7 @@ def config_write():
     new_config['General']['zero_level_n'] = ZERO_LEVEL_N
     new_config['General']['lowercase_filenames'] = int(LOWERCASE_FILENAMES)
     new_config['General']['ignore_havetotal'] = int(IGNORE_HAVETOTAL)
+    new_config['General']['snatched_havetotal'] = int(SNATCHED_HAVETOTAL)
     new_config['General']['syno_fix'] = int(SYNO_FIX)
     new_config['General']['search_delay'] = SEARCH_DELAY
     new_config['General']['grabbag_dir'] = GRABBAG_DIR
@@ -1130,6 +1159,7 @@ def config_write():
     new_config['General']['ct_tag_cr'] = int(CT_TAG_CR)
     new_config['General']['ct_tag_cbl'] = int(CT_TAG_CBL)
     new_config['General']['ct_cbz_overwrite'] = int(CT_CBZ_OVERWRITE)
+    new_config['General']['unrar_cmd'] = UNRAR_CMD
     new_config['General']['indie_pub'] = INDIE_PUB
     new_config['General']['biggie_pub'] = BIGGIE_PUB
 
@@ -1333,13 +1363,14 @@ def dbcheck():
     c.execute('CREATE TABLE IF NOT EXISTS nzblog (IssueID TEXT, NZBName TEXT, SARC TEXT, PROVIDER TEXT, ID TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS weekly (SHIPDATE text, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text)')
 #    c.execute('CREATE TABLE IF NOT EXISTS sablog (nzo_id TEXT, ComicName TEXT, ComicYEAR TEXT, ComicIssue TEXT, name TEXT, nzo_complete TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS importresults (impID TEXT, ComicName TEXT, ComicYear TEXT, Status TEXT, ImportDate TEXT, ComicFilename TEXT, ComicLocation TEXT, WatchMatch TEXT, DisplayName TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS importresults (impID TEXT, ComicName TEXT, ComicYear TEXT, Status TEXT, ImportDate TEXT, ComicFilename TEXT, ComicLocation TEXT, WatchMatch TEXT, DisplayName TEXT, SRID TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS readlist (IssueID TEXT, ComicName TEXT, Issue_Number TEXT, Status TEXT, DateAdded TEXT, Location TEXT, inCacheDir TEXT, SeriesYear TEXT, ComicID TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS readinglist(StoryArcID TEXT, ComicName TEXT, IssueNumber TEXT, SeriesYear TEXT, IssueYEAR TEXT, StoryArc TEXT, TotalIssues TEXT, Status TEXT, inCacheDir TEXT, Location TEXT, IssueArcID TEXT, ReadingOrder INT, IssueID TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS readinglist(StoryArcID TEXT, ComicName TEXT, IssueNumber TEXT, SeriesYear TEXT, IssueYEAR TEXT, StoryArc TEXT, TotalIssues TEXT, Status TEXT, inCacheDir TEXT, Location TEXT, IssueArcID TEXT, ReadingOrder INT, IssueID TEXT, ComicID TEXT, StoreDate TEXT, IssueDate TEXT, Publisher TEXT, IssuePublisher TEXT, IssueName TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS annuals (IssueID TEXT, Issue_Number TEXT, IssueName TEXT, IssueDate TEXT, Status TEXT, ComicID TEXT, GCDComicID TEXT, Location TEXT, ComicSize TEXT, Int_IssueNumber INT, ComicName TEXT, ReleaseDate TEXT, ReleaseComicID TEXT, ReleaseComicName TEXT, IssueDate_Edit TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS rssdb (Title TEXT UNIQUE, Link TEXT, Pubdate TEXT, Site TEXT, Size TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS futureupcoming (ComicName TEXT, IssueNumber TEXT, ComicID TEXT, IssueID TEXT, IssueDate TEXT, Publisher TEXT, Status TEXT, DisplayComicName TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS failed (ID TEXT, Status TEXT, ComicID TEXT, IssueID TEXT, Provider TEXT, ComicName TEXT, Issue_Number TEXT, NZBName TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS searchresults (SRID TEXT, results Numeric, Series TEXT, publisher TEXT, haveit TEXT, name TEXT, deck TEXT, url TEXT, description TEXT, comicid TEXT, comicimage TEXT, issues TEXT, comicyear TEXT)')
     conn.commit
     c.close
     #new
@@ -1348,6 +1379,8 @@ def dbcheck():
 
     
     #add in the late players to the game....
+    # -- Comics Table --
+
     try:
         c.execute('SELECT LastUpdated from comics')
     except sqlite3.OperationalError:
@@ -1386,14 +1419,50 @@ def dbcheck():
         c.execute('ALTER TABLE comics ADD COLUMN SortOrder INTEGER')
 
     try:
+        c.execute('SELECT UseFuzzy from comics')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE comics ADD COLUMN UseFuzzy TEXT')
+
+    try:
+        c.execute('SELECT DetailURL from comics')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE comics ADD COLUMN DetailURL TEXT')
+
+    try:
+        c.execute('SELECT ForceContinuing from comics')
+    except:
+        c.execute('ALTER TABLE comics ADD COLUMN ForceContinuing INTEGER')
+
+    try:
+        c.execute('SELECT ComicName_Filesafe from comics')
+    except:
+        c.execute('ALTER TABLE comics ADD COLUMN ComicName_Filesafe TEXT')
+
+
+    # -- Issues Table --
+
+    try:
         c.execute('SELECT ComicSize from issues')
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE issues ADD COLUMN ComicSize TEXT')
 
     try:
-        c.execute('SELECT UseFuzzy from comics')
+        c.execute('SELECT inCacheDir from issues')
     except sqlite3.OperationalError:
-        c.execute('ALTER TABLE comics ADD COLUMN UseFuzzy TEXT')
+        c.execute('ALTER TABLE issues ADD COLUMN inCacheDIR TEXT')
+
+    try:
+        c.execute('SELECT AltIssueNumber from issues')
+    except:
+        c.execute('ALTER TABLE issues ADD COLUMN AltIssueNumber TEXT')
+
+    try:
+        c.execute('SELECT IssueDate_Edit from issues')
+    except:
+        c.execute('ALTER TABLE issues ADD COLUMN IssueDate_Edit TEXT')
+
+
+    ## -- ImportResults Table --
 
     try:
         c.execute('SELECT WatchMatch from importresults')
@@ -1421,9 +1490,20 @@ def dbcheck():
         c.execute('ALTER TABLE importresults ADD COLUMN impID TEXT')
 
     try:
-        c.execute('SELECT inCacheDir from issues')
-    except sqlite3.OperationalError:
-        c.execute('ALTER TABLE issues ADD COLUMN inCacheDIR TEXT')
+        c.execute('SELECT implog from importresults')
+    except:
+        c.execute('ALTER TABLE importresults ADD COLUMN implog TEXT')
+
+    try:
+        c.execute('SELECT DisplayName from importresults')
+    except:
+        c.execute('ALTER TABLE importresults ADD COLUMN DisplayName TEXT')
+
+    try:
+        c.execute('SELECT SRID from importresults')
+    except:
+        c.execute('ALTER TABLE importresults ADD COLUMN SRID TEXT')
+    ## -- Readlist Table --
 
     try:
         c.execute('SELECT inCacheDIR from readlist')
@@ -1450,20 +1530,16 @@ def dbcheck():
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE readlist ADD COLUMN ComicID TEXT')
 
-    try:
-        c.execute('SELECT DetailURL from comics')
-    except sqlite3.OperationalError:
-        c.execute('ALTER TABLE comics ADD COLUMN DetailURL TEXT')
+
+    ## -- Weekly Table --
 
     try:
         c.execute('SELECT ComicID from weekly')
     except:
         c.execute('ALTER TABLE weekly ADD COLUMN ComicID TEXT')
 
-    try:
-        c.execute('SELECT implog from importresults')
-    except:
-        c.execute('ALTER TABLE importresults ADD COLUMN implog TEXT')
+
+    ## -- Nzblog Table --
 
     try:
         c.execute('SELECT SARC from nzblog')
@@ -1479,6 +1555,9 @@ def dbcheck():
         c.execute('SELECT ID from nzblog')
     except:
         c.execute('ALTER TABLE nzblog ADD COLUMN ID TEXT')
+
+
+    ## -- Annuals Table --
 
     try:
         c.execute('SELECT Location from annuals')
@@ -1505,26 +1584,6 @@ def dbcheck():
     if annual_update == "yes":
         logger.info("Updating Annuals table for new fields - one-time update.")
         helpers.annual_update()
-  
-    try:
-        c.execute('SELECT Provider from snatched')
-    except:
-        c.execute('ALTER TABLE snatched ADD COLUMN Provider TEXT')
-
-    try:
-        c.execute('SELECT DisplayComicName from upcoming')
-    except:
-        c.execute('ALTER TABLE upcoming ADD COLUMN DisplayComicName TEXT')
-
-    try:
-        c.execute('SELECT ForceContinuing from comics')
-    except:
-        c.execute('ALTER TABLE comics ADD COLUMN ForceContinuing INTEGER')
-
-    try:
-        c.execute('SELECT AltIssueNumber from issues')
-    except:
-        c.execute('ALTER TABLE issues ADD COLUMN AltIssueNumber TEXT')
 
     try:
         c.execute('SELECT ReleaseDate from annuals')
@@ -1542,24 +1601,75 @@ def dbcheck():
         c.execute('ALTER TABLE annuals ADD COLUMN ReleaseComicName TEXT')
 
     try:
-        c.execute('SELECT DisplayName from importresults')
-    except:
-        c.execute('ALTER TABLE importresults ADD COLUMN DisplayName TEXT')
-
-    try:
-        c.execute('SELECT ComicName_Filesafe from comics')
-    except:
-        c.execute('ALTER TABLE comics ADD COLUMN ComicName_Filesafe TEXT')
-
-    try:
-        c.execute('SELECT IssueDate_Edit from issues')
-    except:
-        c.execute('ALTER TABLE issues ADD COLUMN IssueDate_Edit TEXT')
-
-    try:
         c.execute('SELECT IssueDate_Edit from annuals')
     except:
         c.execute('ALTER TABLE annuals ADD COLUMN IssueDate_Edit TEXT')
+
+
+    ## -- Snatched Table --
+  
+    try:
+        c.execute('SELECT Provider from snatched')
+    except:
+        c.execute('ALTER TABLE snatched ADD COLUMN Provider TEXT')
+
+
+    ## -- Upcoming Table --
+
+    try:
+        c.execute('SELECT DisplayComicName from upcoming')
+    except:
+        c.execute('ALTER TABLE upcoming ADD COLUMN DisplayComicName TEXT')
+
+
+    ## -- Readinglist Table --
+
+    try:
+        c.execute('SELECT ComicID from readinglist')
+    except:
+        c.execute('ALTER TABLE readinglist ADD COLUMN ComicID TEXT')
+
+    try:
+        c.execute('SELECT StoreDate from readinglist')
+    except:
+        c.execute('ALTER TABLE readinglist ADD COLUMN StoreDate TEXT')
+
+    try:
+        c.execute('SELECT IssueDate from readinglist')
+    except:
+        c.execute('ALTER TABLE readinglist ADD COLUMN IssueDate TEXT')
+
+    try:
+        c.execute('SELECT Publisher from readinglist')
+    except:
+        c.execute('ALTER TABLE readinglist ADD COLUMN Publisher TEXT')
+
+    try:
+        c.execute('SELECT IssuePublisher from readinglist')
+    except:
+        c.execute('ALTER TABLE readinglist ADD COLUMN IssuePublisher TEXT')
+
+    try:
+        c.execute('SELECT IssueName from readinglist')
+    except:
+        c.execute('ALTER TABLE readinglist ADD COLUMN IssueName TEXT')
+
+    ## -- searchresults Table --
+    try:
+        c.execute('SELECT SRID from searchresults')
+    except:
+        c.execute('ALTER TABLE searchresults ADD COLUMN SRID TEXT')
+
+    try:
+        c.execute('SELECT Series from searchresults')
+    except:
+        c.execute('ALTER TABLE searchresults ADD COLUMN Series TEXT')
+
+    try:
+        c.execute('SELECT sresults from searchresults')
+    except:
+        c.execute('ALTER TABLE searchresults ADD COLUMN sresults TEXT')
+
 
     #if it's prior to Wednesday, the issue counts will be inflated by one as the online db's everywhere
     #prepare for the next 'new' release of a series. It's caught in updater.py, so let's just store the 
@@ -1585,9 +1695,10 @@ def dbcheck():
 #        c.execute('ALTER TABLE importresults ADD COLUMN MetaData TEXT')
 
     #let's delete errant comics that are stranded (ie. Comicname = Comic ID: )
-    c.execute("DELETE from COMICS WHERE ComicName='None' OR ComicName LIKE 'Comic ID%' OR ComicName is NULL")
-    c.execute("DELETE from ISSUES WHERE ComicName='None' OR ComicName LIKE 'Comic ID%' OR ComicName is NULL")
-    c.execute("DELETE from UPCOMING WHERE ComicName='None' OR ComicName is NULL or IssueNumber is NULL")
+    c.execute("DELETE from comics WHERE ComicName='None' OR ComicName LIKE 'Comic ID%' OR ComicName is NULL")
+    c.execute("DELETE from issues WHERE ComicName='None' OR ComicName LIKE 'Comic ID%' OR ComicName is NULL")
+    c.execute("DELETE from annuals WHERE ComicName='None' OR ComicName is NULL or Issue_Number is NULL")
+    c.execute("DELETE from upcoming WHERE ComicName='None' OR ComicName is NULL or IssueNumber is NULL")
     logger.info('Ensuring DB integrity - Removing all Erroneous Comics (ie. named None)')
 
     logger.info('Correcting Null entries that make the main page break on startup.')
