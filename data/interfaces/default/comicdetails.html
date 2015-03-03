@@ -146,11 +146,11 @@
                                                archive_path = 'None'
                                         %>
                                         %if os.path.exists(archive_path) and archive_path != comic['ComicLocation']:
-                                            <label><big>Directories</big><br/>
-                                            <norm>Primary: ${comic['ComicLocation']}</norm></label>
-                                            <norm>Secondary: ${archive_path}</norm></label>
+                                            <label><big>Directories:</big></label><br/>
+                                            <p class="tab"><norm>Primary: ${comic['ComicLocation']}</norm><br/>
+                                            <norm>Secondary: ${archive_path}</norm></label></p>
                                         %else:
-                                            <label><big>Directory</big><br/>
+                                            <label><big>Directory:</big><br/>
                                             <norm>${comic['ComicLocation']}</norm></label>
                                         %endif
                                     %else:
@@ -292,6 +292,14 @@
                                        <a href="#" title="Seperate multiple entries with ##"><img src="interfaces/default/images/info32.png" height="16" alt="" /></a>
                                        <small>Alternate comic names to be searched in case naming is different (ie. Hack/Slash = hack-slash)</small>
                                    </div>
+
+                                   <div class="row">
+                                       <label>Alternate File-Naming</label>
+                                       <input type="text" name="alt_filename" value="${comic['AlternateFileName']}" size="90">
+                                       <a href="#" title="Alternate File Naming"><img src="interfaces/default/images/info32.png" height="16" alt="" /></a>
+                                       <small>Alternate file-naming to be used when post-processing / renaming files instead of the actual title.</small>
+                                   </div>
+
                                 <div class="row">
                                         <%
                                              year_options = "Default - Keep the Year as is\nYear Removal - Remove issue publication year from searches (dangerous)\nFuzzy the Year - Increase & Decrease the issue publication year by one"
@@ -335,7 +343,6 @@
                         <option disabled="disabled" selected="selected">Choose...</option>
                         <option value="Wanted">Wanted</option>
                         <option value="Skipped">Skipped</option>
-                        <option value="Downloaded">Downloaded</option>
                         <option value="Archived">Archived</option>
                         <option value="Ignored">Ignored</option>
                         %if mylar.FAILED_DOWNLOAD_HANDLING:
@@ -429,7 +436,7 @@
                                             %if linky:
                                             <a href="downloadthis?pathfile=${linky |u}"><img src="interfaces/default/images/download_icon.png" height="25" width="25" title="Download the Issue" class="highqual" /></a>
                                                 %if linky.endswith('.cbz'):
-                                                <a href="#issue-box" onclick="return runMetaIssue('${linky}');" class="issue-window"><img src="interfaces/default/images/issueinfo.png" height="25" width="25" title="View Issue Details" class="highqual" /></a> 
+                                                <a href="#issue-box" onclick="return runMetaIssue('${linky |u}');" class="issue-window"><img src="interfaces/default/images/issueinfo.png" height="25" width="25" title="View Issue Details" class="highqual" /></a> 
                                                     <div id="issue-box" class="issue-popup">
                                                     <a href="#" class="close"><img src="interfaces/default/images/close_pop.png" class="btn_close" title="Close Window" alt="Close" class="highqual" /></a>
                                                      <fieldset>
@@ -441,7 +448,7 @@
                                                 %endif
 
                                                 %if mylar.ENABLE_META:
-                                                    <a href="#" title="Manually meta-tag issue" onclick="doAjaxCall('manual_metatag?dirName=${comic['ComicLocation'] |u}&issueid=${issue['IssueID']}&filename=${linky |u}&comicid=${issue['ComicID']}',$(this),'table')" data-success="${issue['Issue_Number']} successfully tagged."><img src="interfaces/default/images/comictagger.png" height="25" width="25" class="highqual" /></a>
+                                                    <a href="#" title="Manually meta-tag issue" onclick="doAjaxCall('manual_metatag?dirName=${comic['ComicLocation'] |u}&issueid=${issue['IssueID']}&filename=${linky |u}&comicid=${issue['ComicID']}&comversion=${comic['ComicVersion']}',$(this),'table')" data-success="${issue['Issue_Number']} successfully tagged."><img src="interfaces/default/images/comictagger.png" height="25" width="25" class="highqual" /></a>
                                                 %endif
                                         %endif
 <!--
@@ -511,19 +518,23 @@
 
                         <%
                                 if annual['Status'] == 'Skipped':
-                                        grade = 'Z'
+                                        agrade = 'Z'
                                 elif annual['Status'] == 'Wanted':
-                                        grade = 'X'
+                                        agrade = 'X'
                                 elif annual['Status'] == 'Snatched':
-                                        grade = 'C'
+                                        agrade = 'C'
                                 elif annual['Status'] == 'Downloaded':
-                                        grade = 'A'
+                                        agrade = 'A'
                                 elif annual['Status'] == 'Archived':
-                                        grade = 'A'
+                                        agrade = 'A'
+                                elif annual['Status'] == 'Ignored':
+                                        agrade = 'A'
+                                elif annual['Status'] == 'Failed':
+                                        agrade = 'C'
                                 else:
-                                        grade = 'A'
+                                        agrade = 'A'
                         %>
-                        <tr class="${annual['Status']} grade${grade}">
+                        <tr class="${annual['Status']} grade${agrade}">
                                 <td id="select"><input type="checkbox" name="${annual['IssueID']}" class="checkbox" value="${annual['IssueID']}" /></td>
                                 <% 
                                     if annual['Int_IssueNumber'] is None:
@@ -546,7 +557,7 @@
                                    <% amode = 'want_ann' %>
                                         <a href="#" title="Manual Search" onclick="doAjaxCall('queueit?ComicID=${annual['ComicID']}&IssueID=${annual['IssueID']}&ComicIssue=${annual['Issue_Number']}&ComicYear=${annual['IssueDate']}&mode=${amode}&manualsearch=True',$(this),'table')" data-success="Manually searching for ${annual['ComicName']} #${annual['Issue_Number']}"><img src="interfaces/default/images/search.png" height="25" width="25" class="highqual" /></a>
                                 %if annual['Status'] == 'Skipped' or annual['Status'] == 'Ignored':
-                                        <a href="#" title="Mark annual as Wanted" onclick="doAjaxCall('queueissue?ComicID=${annual['ComicID']}&IssueID=${annual['IssueID']}&ComicIssue=${annual['Issue_Number']}&ComicYear=${annual['IssueDate']}&mode=${amode}',$(this),'table')"><img src="interfaces/default/images/wanted_icon.png" height="25" width="25" class="highqual" /></a>
+                                        <a href="#" title="Mark annual as Wanted" onclick="doAjaxCall('queueit?ComicID=${annual['ComicID']}&IssueID=${annual['IssueID']}&ComicIssue=${annual['Issue_Number']}&ComicYear=${annual['IssueDate']}&mode=${amode}',$(this),'table')" data-success="Marked ${annual['ReleaseComicName']} #${annual['Issue_Number']} as Wanted"><img src="interfaces/default/images/wanted_icon.png" height="25" width="25" class="highqual" /></a>
                                 %elif (annual['Status'] == 'Wanted'):
                                         <a href="#" title="Mark annual as Skipped" onclick="doAjaxCall('unqueueissue?IssueID=${annual['IssueID']}&ComicID=${annual['ComicID']}&ReleaseComicID=${annual['ReleaseComicID']}',$(this),'table')" data-success="'${annual['Issue_Number']}' has been marked as skipped"><img src="interfaces/default/images/skipped_icon.png" height="25" width="25" class="highqual" /></a>
                                 %elif (annual['Status'] == 'Snatched'):
@@ -567,7 +578,7 @@
                                             %if linky:
                                               <a href="downloadthis?pathfile=${linky |u}"><img src="interfaces/default/images/download_icon.png" height="25" width="25" title="Download the annual" class="highqual" /></a>
                                                 %if linky.endswith('.cbz'):
-                                                   <a href="#issue-box" onclick="return runMetaIssue('${linky}');" class="issue-window"><img src="interfaces/default/images/issueinfo.png" height="25" width="25" title="View Issue Details" class="highqual" /></a> 
+                                                   <a href="#issue-box" onclick="return runMetaIssue('${linky |u}');" class="issue-window"><img src="interfaces/default/images/issueinfo.png" height="25" width="25" title="View Issue Details" class="highqual" /></a> 
                                                     <div id="issue-box" class="issue-popup">
                                                     <a href="#" class="close"><img src="interfaces/default/images/close_pop.png" class="btn_close" title="Close Window" alt="Close" class="highqual" /></a>
                                                      <fieldset>
@@ -686,7 +697,7 @@
 
         <script>
         function runMetaIssue(filelink) {
-              alert(filelink);
+              // alert(filelink);
               $.ajax({
                  type: "GET",
                  url: "IssueInfo",

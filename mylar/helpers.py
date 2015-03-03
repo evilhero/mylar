@@ -299,24 +299,54 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
             issuenum = issuenzb['Issue_Number']
             #issueno = str(issuenum).split('.')[0]
             issue_except = 'None'
-            if 'au' in issuenum.lower() and issuenum[:1].isdigit():
-                issuenum = re.sub("[^0-9]", "", issuenum)
-                issue_except = ' AU'
-            elif 'ai' in issuenum.lower() and issuenum[:1].isdigit():
-                issuenum = re.sub("[^0-9]", "", issuenum)
-                issue_except = ' AI'
-            elif 'inh' in issuenum.lower() and issuenum[:1].isdigit():
-                issuenum = re.sub("[^0-9]", "", issuenum)
-                issue_except = '.INH'
-            elif 'now' in issuenum.lower() and issuenum[:1].isdigit():
-                if '!' in issuenum: issuenum = re.sub('\!', '', issuenum)
-                issuenum = re.sub("[^0-9]", "", issuenum)
-                issue_except = '.NOW'
+            issue_exceptions = ['AU',
+                                'INH',
+                                'NOW',
+                                'AI',
+                                'A',
+                                'B',
+                                'C',
+                                'X',
+                                'O']
+            valid_spaces = ('.','-')
+            for issexcept in issue_exceptions:
+                if issexcept.lower() in issuenum.lower():
+                    logger.fdebug('ALPHANUMERIC EXCEPTION : [' + issexcept + ']')
+                    if any(v in issuenum for v in valid_spaces):
+                        logger.fdebug('character space denoted as : ' + iss_space)
+                    else:
+                        logger.fdebug('character space not denoted.')
+                        iss_space = ''                        
+#                    if issexcept == 'INH': 
+#                       issue_except = '.INH'
+                    if issexcept == 'NOW':
+                       if '!' in issuenum: issuenum = re.sub('\!', '', issuenum)
+#                       issue_except = '.NOW'
 
+                    issue_except = iss_space + issexcept
+                    logger.fdebug('issue_except denoted as : ' + issue_except)
+                    issuenum = re.sub("[^0-9]", "", issuenum)
+                    break
+
+#            if 'au' in issuenum.lower() and issuenum[:1].isdigit():
+#                issue_except = ' AU'
+#            elif 'ai' in issuenum.lower() and issuenum[:1].isdigit():
+#                issuenum = re.sub("[^0-9]", "", issuenum)
+#                issue_except = ' AI'
+#            elif 'inh' in issuenum.lower() and issuenum[:1].isdigit():
+#                issuenum = re.sub("[^0-9]", "", issuenum)
+#                issue_except = '.INH'
+#            elif 'now' in issuenum.lower() and issuenum[:1].isdigit():
+#                if '!' in issuenum: issuenum = re.sub('\!', '', issuenum)
+#                issuenum = re.sub("[^0-9]", "", issuenum)
+#                issue_except = '.NOW'
+                
             if '.' in issuenum:
                 iss_find = issuenum.find('.')
                 iss_b4dec = issuenum[:iss_find]
                 iss_decval = issuenum[iss_find+1:]
+                if iss_decval.endswith('.'): 
+                    iss_decval = iss_decval[:-1]
                 if int(iss_decval) == 0:
                     iss = iss_b4dec
                     issdec = int(iss_decval)
@@ -347,19 +377,23 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
             logger.fdebug('Zero Suppression set to : ' + str(mylar.ZERO_LEVEL_N))
             prettycomiss = None
 
-            try:
-                x = float(issueno)
-                #validity check
-                if x < 0:
-                    logger.info('I\'ve encountered a negative issue #: ' + str(issueno) + '. Trying to accomodate.')
-                    prettycomiss = '-' + str(zeroadd) + str(issueno[1:])
-                elif x >= 0:
-                    pass
-                else:
-                    raise ValueError
-            except ValueError, e:
-                logger.warn('Unable to properly determine issue number [' + str(issueno) + '] - you should probably log this on github for help.')
-                return
+            if issueno.isalpha():
+                logger.fdebug('issue detected as an alpha.')
+                prettycomiss = str(issueno)
+            else:
+                try:
+                    x = float(issueno)
+                    #validity check
+                    if x < 0:
+                        logger.info('I\'ve encountered a negative issue #: ' + str(issueno) + '. Trying to accomodate.')
+                        prettycomiss = '-' + str(zeroadd) + str(issueno[1:])
+                    elif x >= 0:
+                        pass
+                    else:
+                        raise ValueError
+                except ValueError, e:
+                    logger.warn('Unable to properly determine issue number [' + str(issueno) + '] - you should probably log this on github for help.')
+                    return
 
             if prettycomiss is None and len(str(issueno)) > 0:
                 logger.info('here')
@@ -419,6 +453,11 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
             logger.fdebug('Publisher: ' + str(publisher))
             series = comicnzb['ComicName']
             logger.fdebug('Series: ' + str(series))
+            if comicnzb['AlternateFileName'] is None or comicnzb['AlternateFileName'] == 'None':
+                seriesfilename = series
+            else:
+                seriesfilename = comicnzb['AlternateFileName']
+                logger.fdebug('Alternate File Naming has been enabled for this series. Will rename series title to : ' + seriesfilename)
             seriesyear = comicnzb['ComicYear']
             logger.fdebug('Year: '  + str(seriesyear))
             comlocation = comicnzb['ComicLocation']
@@ -494,18 +533,18 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
 
                     logger.fdebug('Annual detected within series title of ' + series + '. Not auto-correcting issue #')
 
-            series = series.encode('ascii', 'ignore').strip()
+            seriesfilename = seriesfilename.encode('ascii', 'ignore').strip()
             filebad = [':',',','/','?','!','\''] #in u_comicname or '/' in u_comicname or ',' in u_comicname or '?' in u_comicname:
             for dbd in filebad:
-                if dbd in series:
+                if dbd in seriesfilename:
                     if dbd == '/': repthechar = '-'
                     else: repthechar = ''
-                    series = series.replace(dbd,repthechar)
-                    logger.fdebug('Altering series name due to filenaming restrictions: ' + series)
+                    seriesfilename = seriesfilename.replace(dbd,repthechar)
+                    logger.fdebug('Altering series name due to filenaming restrictions: ' + seriesfilename)
            
             publisher = re.sub('!','', publisher)
 
-            file_values = {'$Series':    series,
+            file_values = {'$Series':    seriesfilename,
                            '$Issue':     prettycomiss,
                            '$Year':      issueyear,
                            '$series':    series.lower(),
@@ -518,7 +557,7 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                            '$Annual':    'Annual'
                           }
 
-            extensions = ('.cbr', '.cbz')
+            extensions = ('.cbr', '.cbz', '.cb7')
 
             if ofilename.lower().endswith(extensions):
                 path, ext = os.path.splitext(ofilename)
@@ -574,17 +613,16 @@ def ComicSort(comicorder=None,sequence=None,imported=None):
         # if it's on startup, load the sql into a tuple for use to avoid record-locking
         i = 0
         import logger
-        #if mylar.DBCHOICE == 'postgresql':
-        #    import db_postgresql as db
-        #    myDB = db.DBConnection()
-        #    comicsort = myDB.select("SELECT * FROM comics ORDER BY ComicSortName COLLATE ?", [mylar.OS_LANG])
-        #else:
-        #    import db
-        #    myDB = db.DBConnection()
-        #    comicsort = myDB.select("SELECT * FROM comics ORDER BY ComicSortName COLLATE NOCASE")
-        import db
-        myDB = db.DBConnection()
-        comicsort = myDB.select("SELECT * FROM comics ORDER BY ComicSortName COLLATE NOCASE")
+        if mylar.DBCHOICE == 'postgresql':
+            import db_postgresql as db
+            myDB = db.DBConnection()
+            oscollate = mylar.OS_LANG + '.UTF8' 
+            logger.info('OS_LANG: ' + oscollate)
+            comicsort = myDB.select('SELECT * FROM comics ORDER BY ComicSortName')# COLLATE "%s"', [oscollate])
+        else:
+            import db
+            myDB = db.DBConnection()
+            comicsort = myDB.select("SELECT * FROM comics ORDER BY ComicSortName COLLATE NOCASE")
         comicorderlist = []
         comicorder = {}
         comicidlist = []
@@ -1077,17 +1115,14 @@ def havetotals(refreshit=None):
 
 
         if refreshit is None:
-            #if mylar.DBCHOICE == 'postgresql':
-            #    import db_postgresql as db
-            #    myDB = db.DBConnection()
-            #    comiclist = myDB.select("SELECT * from comics order by ComicSortName COLLATE ?",[mylar.OS_LANG])
-            #else:
-            #    import db
-            #    myDB = db.DBConnection()
-            #    comiclist = myDB.select('SELECT * from comics order by ComicSortName COLLATE NOCASE')
-            import db
-            myDB = db.DBConnection()
-            comiclist = myDB.select('SELECT * from comics order by ComicSortName COLLATE NOCASE')
+            if mylar.DBCHOICE == 'postgresql':
+                import db_postgresql as db
+                myDB = db.DBConnection()
+                comiclist = myDB.select('SELECT * from comics order by ComicSortName')# COLLATE "%s"',[mylar.OS_LANG])
+            else:
+                import db
+                myDB = db.DBConnection()
+                comiclist = myDB.select('SELECT * from comics order by ComicSortName COLLATE NOCASE')
         else:
             comiclist = []
             myDB = db.DBConnection()
@@ -1140,7 +1175,10 @@ def havetotals(refreshit=None):
                 percent = 0
                 totalissuess = '?'
 
-            if comic['ComicPublished'] is None or comic['ComicPublished'] == '':
+            if comic['LatestDate'] is None:
+                logger.warn(comic['ComicName'] + ' has not finished loading. Nulling some values so things display properly until they can populate.')
+                recentstatus = 'Loading'
+            elif comic['ComicPublished'] is None or comic['ComicPublished'] == '' or comic['LatestDate'] is None:
                 recentstatus = 'Unknown'
             elif comic['ForceContinuing'] == 1:
                 recentstatus = 'Continuing'
@@ -1481,13 +1519,17 @@ def get_issue_title(IssueID=None, ComicID=None, IssueNumber=None):
     if IssueID:
         issue = myDB.selectone('SELECT * FROM issues WHERE IssueID=?', [IssueID]).fetchone()
         if issue is None:
-            logger.warn('Unable to locate given IssueID within the db.')
-            return None
+            issue = myDB.selectone('SELECT * FROM annuals WHERE IssueID=?', [IssueID]).fetchone()
+            if issue is None:
+                logger.fdebug('Unable to locate given IssueID within the db. Assuming Issue Title is None.')
+                return None
     else:
         issue = myDB.selectone('SELECT * FROM issues WHERE ComicID=? AND Int_IssueNumber=?', [ComicID, issuedigits(IssueNumber)]).fetchone()
         if issue is None:
-            logger.warn('Unable to locate given IssueID within the db.')
-            return None
+            issue = myDB.selectone('SELECT * FROM annuals WHERE IssueID=?', [IssueID]).fetchone()
+            if issue is None:
+                logger.fdebug('Unable to locate given IssueID within the db. Assuming Issue Title is None.')
+                return None
         
     return issue['IssueName']
 
@@ -1530,7 +1572,7 @@ def duplicate_filecheck(filename, ComicID=None, IssueID=None, StoryArcID=None):
     import db, logger
     myDB = db.DBConnection()
 
-    logger.info('duplicate check for ' + filename)
+    logger.info('[DUPECHECK] Duplicate check for ' + filename)
     filesz = os.path.getsize(filename)
 
     if IssueID:
@@ -1538,35 +1580,109 @@ def duplicate_filecheck(filename, ComicID=None, IssueID=None, StoryArcID=None):
     if dupchk is None:
         dupchk = myDB.selectone("SELECT * FROM annuals WHERE IssueID=?", [IssueID]).fetchone()
         if dupchk is None:
-            logger.info('Unable to find corresponding Issue within the DB. Do you still have the series on your watchlist?')
+            logger.info('[DUPECHECK] Unable to find corresponding Issue within the DB. Do you still have the series on your watchlist?')
             return
 
     if any( [ dupchk['Status'] == 'Downloaded', dupchk['Status'] == 'Archived' ] ):
-        logger.info('Existing Status already set to ' + dupchk['Status'])
+        logger.info('[DUPECHECK] Existing Status already set to ' + dupchk['Status'])
         dupsize = dupchk['ComicSize']
+        cid = []
         if dupsize is None:
-            logger.info('Existing filesize is 0 bytes as I cannot locate the orginal entry - it is probably archived.')
-            rtnval = "dupe"
+            logger.info('[DUPECHECK] Existing filesize is 0 bytes as I cannot locate the orginal entry - it is probably archived.')
+            logger.fdebug('[DUPECHECK] Checking series for unrefreshed series syndrome (USS).')
+            havechk = myDB.selectone('SELECT * FROM comics WHERE ComicID=?', [ComicID]).fetchone()
+            if havechk:
+                if havechk['Have'] > havechk['Total']:
+                    logger.info('[DUPECHECK] Series has invalid issue totals [' + str(havechk['Have']) + '/' + str(havechk['Total']) + '] Attempting to Refresh & continue post-processing this issue.')
+                    cid.append(ComicID)
+                    logger.fdebug('[DUPECHECK] ComicID: ' + str(ComicID))
+                    mylar.updater.dbUpdate(ComicIDList=cid,calledfrom='dupechk')
+                    return duplicate_filecheck(filename, ComicID, IssueID, StoryArcID)
+                else:
+                    rtnval = "dupe"            
+            else:
+                rtnval = "dupe"
         else:
-            logger.info('Existing file :' + dupchk['Location'] + ' has a filesize of : ' + str(dupsize) + ' bytes.')
+            logger.info('[DUPECHECK] Existing file :' + dupchk['Location'] + ' has a filesize of : ' + str(dupsize) + ' bytes.')
 
             #keywords to force keep / delete
             #this will be eventually user-controlled via the GUI once the options are enabled.
 
-            if int(dupsize) >= filesz:
-                logger.info('Existing filesize is greater than : ' + str(filesz) + ' bytes.')
-                rtnval = "dupe"
-            elif int(dupsize) == 0:
-                logger.info('Existing filesize is 0 as I cannot locate the original entry. Will assume it is Archived already.')
+            if int(dupsize) == 0:
+                logger.info('[DUPECHECK] Existing filesize is 0 as I cannot locate the original entry. Will assume it is Archived already.')
                 rtnval = "dupe"
             else:
-                logger.info('Existing filesize is less than : ' + str(filesz) + ' bytes. Checking configuration if I should keep this or  not.')
-                rtnval = "write"
+                logger.fdebug('[DUPECHECK] Based on duplication preferences I will retain based on : ' + mylar.DUPECONSTRAINT)
+                if 'cbr' in mylar.DUPECONSTRAINT or 'cbz' in mylar.DUPECONSTRAINT:
+                    if 'cbr' in mylar.DUPECONSTRAINT:
+                        #this has to be configured in config - either retain cbr or cbz.
+                        if dupchk['Location'].endswith('.cbz'):
+                            #keep dupechk['Location']
+                            logger.info('[DUPECHECK-CBR PRIORITY] [#' + dupchk['Issue_Number'] + '] Retaining currently scanned in file : ' + dupchk['Location'])
+                            rtnval = "dupe"
+                        else:
+                            #keep filename
+                            logger.info('[DUPECHECK-CBR PRIORITY] [#' + dupchk['Issue_Number'] + '] Retaining newly scanned in file : ' + filename)
+                            rtnval = "write"
+
+                    elif 'cbz' in mylar.DUPECONSTRAINT:
+                        if dupchk['Location'].endswith('.cbr'):
+                            #keep dupchk['Location']
+                            logger.info('[DUPECHECK-CBZ PRIORITY] [#' + dupchk['Issue_Number'] + '] Retaining currently scanned in filename : ' + dupchk['Location'])
+                            rtnval = "dupe"
+                        else:
+                            #keep filename
+                            logger.info('[DUPECHECK-CBZ PRIORITY] [#' + dupchk['Issue_Number'] + '] Retaining newly scanned in filename : ' + filename)
+                            rtnval = "write"
+
+                if mylar.DUPECONSTRAINT == 'filesize':
+                    if filesz <= dupsize:
+                        logger.info('[DUPECHECK-FILESIZE PRIORITY] [#' + dupchk['Issue_Number'] + '] Retaining currently scanned in filename : ' + dupchk['Location'])
+                        rtnval = "dupe"
+                    else:
+                        logger.info('[DUPECHECK-FILESIZE PRIORITY] [#' + dupchk['Issue_Number'] + '] Retaining newly scanned in filename : ' + filename)
+                        rtnval = "write"
 
     else:
-        logger.info('Duplication detection returned no hits. This is not a duplicate of anything currently on your watchlist.')
+        logger.info('[DUPECHECK] Duplication detection returned no hits. This is not a duplicate of anything that I have scanned in as of yet.')
         rtnval = "write"
     return rtnval
+
+def create_https_certificates(ssl_cert, ssl_key):
+    """
+    Create a pair of self-signed HTTPS certificares and store in them in
+    'ssl_cert' and 'ssl_key'. Method assumes pyOpenSSL is installed.
+
+    This code is stolen from SickBeard (http://github.com/midgetspy/Sick-Beard).
+    """
+
+    from mylar import logger
+
+    from OpenSSL import crypto
+    from lib.certgen import createKeyPair, createCertRequest, createCertificate, \
+        TYPE_RSA, serial
+
+    # Create the CA Certificate
+    cakey = createKeyPair(TYPE_RSA, 2048)
+    careq = createCertRequest(cakey, CN="Certificate Authority")
+    cacert = createCertificate(careq, (careq, cakey), serial, (0, 60 * 60 * 24 * 365 * 10)) # ten years
+
+    pkey = createKeyPair(TYPE_RSA, 2048)
+    req = createCertRequest(pkey, CN="Mylar")
+    cert = createCertificate(req, (cacert, cakey), serial, (0, 60 * 60 * 24 * 365 * 10)) # ten years
+
+    # Save the key and certificate to disk
+    try:
+        with open(ssl_key, "w") as fp:
+            fp.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, pkey))
+        with open(ssl_cert, "w") as fp:
+            fp.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
+    except IOError as e:
+        logger.error("Error creating SSL key and certificate: %s", e)
+        return False
+
+    return True
+
 
 from threading import Thread
 

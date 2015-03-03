@@ -51,8 +51,8 @@ def dbUpdate(ComicIDList=None, calledfrom=None):
             else:
                 if CV_EXcomicid['variloop'] == '99':
                     mismatch = "yes"
-            if ComicID[:1] == "G": threading.Thread(target=importer.GCDimport, args=[ComicID]).start()
-            else: threading.Thread(target=importer.addComictoDB, args=[ComicID,mismatch]).start()
+            if ComicID[:1] == "G": mylar.importer.GCDimport(ComicID)
+            else: importer.addComictoDB(ComicID,mismatch)
         else:
             if mylar.CV_ONETIMER == 1:
                 logger.fdebug("CV_OneTimer option enabled...")
@@ -264,6 +264,7 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate, forcecheck=None,
         issuechk = myDB.selectone("SELECT * FROM issues WHERE ComicID=? AND Int_IssueNumber=?", [ComicID, helpers.issuedigits(altissuenumber)]).fetchone()
     if issuechk is None:
         if futurepull is None:
+            og_status = None
             logger.fdebug(adjComicName + ' Issue: ' + str(IssueNumber) + ' not present in listings to mark for download...updating comic and adding to Upcoming Wanted Releases.')
             # we need to either decrease the total issue count, OR indicate that an issue is upcoming.
             upco_results = myDB.select("SELECT COUNT(*) FROM UPCOMING WHERE ComicID=?",[ComicID])
@@ -298,36 +299,53 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate, forcecheck=None,
             nKey = {"ComicID": ComicID}
             nVal = {"Status": "Wanted"}
             myDB.upsert("future", nVal, nKey)
+            return
 
     if issuechk is not None:
         if issuechk['Issue_Number'] == IssueNumber or issuechk['Issue_Number'] == altissuenumber:
+            og_status = issuechk['Status']
             #check for 'out-of-whack' series here.
             whackness = dbUpdate([ComicID], calledfrom='weekly')
             if whackness == True:
+                if any( [issuechk['Status'] == 'Downloaded', issuechk['Status'] == 'Archived', issuechk['Status'] == 'Snatched'] ):
+                    logger.fdebug('Forcibly maintaining status of : ' + og_status + ' for #' + issuechk['Issue_Number'] + ' to ensure integrity.')
                 logger.fdebug('Comic series has an incorrect total count. Forcily refreshing series to ensure data is current.')
                 dbUpdate([ComicID])
                 issuechk = myDB.selectone("SELECT * FROM issues WHERE ComicID=? AND Int_IssueNumber=?", [ComicID, helpers.issuedigits(IssueNumber)]).fetchone()
+                if issuechk['Status'] != og_status and (issuechk['Status'] != 'Downloaded' or issuechk['Status'] != 'Archived' or issuechk['Status'] != 'Snatched'):
+                    logger.fdebug('Forcibly changing status of ' + issuechk['Status'] + ' back to ' + og_status + ' for #' + issuechk['Issue_Number'] + ' to stop repeated downloads.')
+                else:
+                    logger.fdebug('[' + issuechk['Status'] + '] / [' + og_status + '] Status has not changed during refresh or is marked as being Wanted/Skipped correctly.')
+                    og_status = issuechk['Status']
             else:
                 logger.fdebug('Comic series already up-to-date ... no need to refresh at this time.')
 
             logger.fdebug('Available to be marked for download - checking...' + adjComicName + ' Issue: ' + str(issuechk['Issue_Number']))
-            logger.fdebug('...Existing status: ' + str(issuechk['Status']))
+            logger.fdebug('...Existing status: ' + og_status)
             control = {"IssueID":   issuechk['IssueID']}
             newValue['IssueID'] = issuechk['IssueID']
-            if issuechk['Status'] == "Snatched":
+            if og_status == "Snatched":
                 values = { "Status":   "Snatched"}
                 newValue['Status'] = "Snatched"
-            elif issuechk['Status'] == "Downloaded":
+            elif og_status == "Downloaded":
                 values = { "Status":    "Downloaded"}
                 newValue['Status'] = "Downloaded"
                 #if the status is Downloaded and it's on the pullist - let's mark it so everyone can bask in the glory
 
-            elif issuechk['Status'] == "Wanted":
+            elif og_status == "Wanted":
                 values = { "Status":    "Wanted"}
                 newValue['Status'] = "Wanted"            
-            elif issuechk['Status'] == "Archived":
+            elif og_status == "Archived":
                 values = { "Status":    "Archived"}
                 newValue['Status'] = "Archived"
+            elif og_status == 'Failed':
+                if mylar.FAILED_DOWNLOAD_HANDLING:
+                    if mylar.FAILED_AUTO:
+                        values = { "Status":   "Wanted" }
+                    else:
+                        values = { "Status":   "Failed" }
+                else:
+                    values = { "Status":   "Skipped" }
             else:
                 values = { "Status":    "Skipped"}
                 newValue['Status'] = "Skipped"
@@ -338,18 +356,18 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate, forcecheck=None,
 
     if mylar.AUTOWANT_UPCOMING:
         #for issues not in db - to be added to Upcoming table.
-        if issuechk is None:
+        if og_status is None:
             newValue['Status'] = "Wanted"
             logger.fdebug('...Changing Status to Wanted and throwing it in the Upcoming section since it is not published yet.')
         #this works for issues existing in DB...        
-        elif issuechk['Status'] == "Skipped":
+        elif og_status == "Skipped":
             newValue['Status'] = "Wanted"
             values = {"Status":  "Wanted"}
             logger.fdebug('...New status of Wanted')
-        elif issuechk['Status'] == "Wanted":
+        elif og_status == "Wanted":
             logger.fdebug('...Status already Wanted .. not changing.')
         else:
-            logger.fdebug('...Already have issue - keeping existing status of : ' + str(issuechk['Status']))
+            logger.fdebug('...Already have issue - keeping existing status of : ' + og_status)
 
     if issuechk is None:
         myDB.upsert("upcoming", newValue, controlValue)
@@ -376,9 +394,9 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate, forcecheck=None,
         else:
             myDB.upsert("issues", values, control)
 
-        if issuechk['Status'] == 'Downloaded' or issuechk['Status'] == 'Archived' or issuechk['Status'] == 'Snatched': 
+        if any( [og_status == 'Downloaded', og_status == 'Archived', og_status == 'Snatched'] ): 
             logger.fdebug('updating Pull-list to reflect status.')
-            downstats = {"Status":  issuechk['Status'],
+            downstats = {"Status":  og_status,
                          "ComicID": issuechk['ComicID']}
             return downstats
 
@@ -425,7 +443,7 @@ def weekly_update(ComicName,IssueNumber,CStatus,CID,futurepull=None,altissuenumb
 
 def newpullcheck(ComicName, ComicID, issue=None):
     # When adding a new comic, let's check for new issues on this week's pullist and update.
-    mylar.weeklypull.pullitcheck(ComicName, ComicID, issue)
+    mylar.weeklypull.pullitcheck(comic1off_name=ComicName, comic1off_id=ComicID, issue=issue)
     return
 
 def no_searchresults(ComicID):
@@ -438,15 +456,15 @@ def no_searchresults(ComicID):
                 "LatestIssue":  "Error"}    
     myDB.upsert("comics", newValue, controlValue)
 
-def nzblog(IssueID, NZBName, ComicName, SARC=None, IssueArcID=None, id=None, prov=None):
+def nzblog(IssueID, NZBName, ComicName, SARC=None, IssueArcID=None, id=None, prov=None, alt_nzbname=None):
     myDB = db.DBConnection()
 
-    newValue = {"NZBName":  NZBName}
+    newValue = {'NZBName':  NZBName}
 
     if IssueID is None or IssueID == 'None':
        #if IssueID is None, it's a one-off download from the pull-list.
        #give it a generic ID above the last one so it doesn't throw an error later.
-       print "SARC detected as: " + str(SARC)
+       logger.fdebug("Story Arc (SARC) detected as: " + str(SARC))
        if mylar.HIGHCOUNT == 0:
            IssueID = '900000'
        else: 
@@ -462,10 +480,23 @@ def nzblog(IssueID, NZBName, ComicName, SARC=None, IssueArcID=None, id=None, pro
 
     if id:
         logger.info('setting the nzbid for this download grabbed by ' + prov + ' in the nzblog to : ' + str(id))
-        newValue["ID"] = id
+        newValue['ID'] = id
 
+    if alt_nzbname:
+        logger.info('setting the alternate nzbname for this download grabbed by ' + prov + ' in the nzblog to : ' + alt_nzbname)
+        newValue['AltNZBName'] = alt_nzbname
+
+    #check if it exists already in the log.
+    chkd = myDB.selectone('SELECT * FROM nzblog WHERE IssueID=? and Provider=?', [IssueID, prov]).fetchone()
+    if chkd is None:
+        pass
+    else:
+        if chkd['AltNZBName'] is None or chkd['AltNZBName'] == '':
+            #we need to wipe the entry so we can re-update with the alt-nzbname if required
+            myDB.action('DELETE FROM nzblog WHERE IssueID=? and Provider=?', [IssueID, prov])
+            logger.fdebug('Deleted stale entry from nzblog for IssueID: ' + str(IssueID) + ' [' + prov + ']')       
     myDB.upsert("nzblog", newValue, controlValue)
-
+    
 
 def foundsearch(ComicID, IssueID, mode=None, down=None, provider=None, SARC=None, IssueArcID=None, module=None):
     # When doing a Force Search (Wanted tab), the resulting search calls this to update.
@@ -624,16 +655,16 @@ def forceRescan(ComicID,archive=None,module=None):
     if archive is None:
         tmpval = filechecker.listFiles(dir=rescan['ComicLocation'], watchcomic=rescan['ComicName'], Publisher=rescan['ComicPublisher'], AlternateSearch=altnames)
         comiccnt = int(tmpval['comiccount'])
-        logger.info('comiccnt is:' + str(comiccnt))
+        logger.fdebug(module + 'comiccnt is:' + str(comiccnt))
         fca.append(tmpval)
         if mylar.MULTIPLE_DEST_DIRS is not None and mylar.MULTIPLE_DEST_DIRS != 'None' and os.path.join(mylar.MULTIPLE_DEST_DIRS, os.path.basename(rescan['ComicLocation'])) != rescan['ComicLocation']:
-            logger.info('multiple_dest_dirs:' + mylar.MULTIPLE_DEST_DIRS)
-            logger.info('dir: ' + rescan['ComicLocation'])
-            logger.info('os.path.basename: ' + os.path.basename(rescan['ComicLocation']))
+            logger.fdebug(module + 'multiple_dest_dirs:' + mylar.MULTIPLE_DEST_DIRS)
+            logger.fdebug(module + 'dir: ' + rescan['ComicLocation'])
+            logger.fdebug(module + 'os.path.basename: ' + os.path.basename(rescan['ComicLocation']))
             pathdir = os.path.join(mylar.MULTIPLE_DEST_DIRS, os.path.basename(rescan['ComicLocation']))
             logger.info(module + ' Now checking files for ' + rescan['ComicName'] + ' (' + str(rescan['ComicYear']) + ') in :' + pathdir )
             tmpv = filechecker.listFiles(dir=pathdir, watchcomic=rescan['ComicName'], Publisher=rescan['ComicPublisher'], AlternateSearch=altnames)
-            logger.info('tmpv filecount: ' + str(tmpv['comiccount']))
+            logger.fdebug(module + 'tmpv filecount: ' + str(tmpv['comiccount']))
             comiccnt += int(tmpv['comiccount'])
             fca.append(tmpv)
     else:
@@ -712,199 +743,148 @@ def forceRescan(ComicID,archive=None,module=None):
                 break
         temploc= tmpfc['JusttheDigits'].replace('_', ' ')
 
-#        temploc = tmpfc['ComicFilename'].replace('_', ' ')
         temploc = re.sub('[\#\']', '', temploc)
         logger.fdebug(module + ' temploc: ' + str(temploc))
         if 'annual' not in temploc.lower():
             #remove the extension here
-            extensions = ('.cbr','.cbz')
+            extensions = ('.cbr','.cbz','.cb7')
             if temploc.lower().endswith(extensions):
                 logger.fdebug(module + ' Removed extension for issue: ' + str(temploc))
                 temploc = temploc[:-4]
-#            deccnt = str(temploc).count('.')
-#            if deccnt > 1:
-                #logger.fdebug('decimal counts are :' + str(deccnt))
-                #if the file is formatted with '.' in place of spaces we need to adjust.
-                #before replacing - check to see if digits on either side of decimal and if yes, DON'T REMOVE
-#                occur=1
-#                prevstart = 0
-#                digitfound = "no"
-#                decimalfound = "no"
-#                tempreconstruct = ''
-#                while (occur <= deccnt):
-#                    n = occur
-#                    start = temploc.find('.')
-#                    while start >=0 and n > 1:
-#                        start = temploc.find('.', start+len('.'))
-#                        n-=1
-#                    #logger.fdebug('occurance ' + str(occur) + ' of . at position: ' + str(start))
-#                    if temploc[prevstart:start].isdigit():
-#                        if digitfound == "yes":
-#                            #logger.fdebug('this is a decimal, assuming decimal issue.')
-#                            decimalfound = "yes"
-#                            reconst = "." + temploc[prevstart:start] + " "
-#                        else:
-#                            #logger.fdebug('digit detected.')
-#                            digitfound = "yes"
-#                            reconst = temploc[prevstart:start]
-#                    else:
-#                        reconst = temploc[prevstart:start] + " "
-#                    #logger.fdebug('word: ' + reconst)
-#                    tempreconstruct = tempreconstruct + reconst 
-#                    #logger.fdebug('tempreconstruct is : ' + tempreconstruct)
-#                    prevstart = (start+1)
-#                    occur+=1
-#                #logger.fdebug('word: ' + temploc[prevstart:])
-#                tempreconstruct = tempreconstruct + " " + temploc[prevstart:]
-#                #logger.fdebug('final filename to use is : ' + str(tempreconstruct))
-#                temploc = tempreconstruct            
-            #logger.fdebug("checking " + str(temploc))
-            #fcnew_b4 = shlex.split(str(temploc))            
             fcnew_af = re.findall('[^\()]+', temploc)
             fcnew = shlex.split(fcnew_af[0])
 
             fcn = len(fcnew)
             n = 0
-            while (n <= iscnt):
-                som = 0
+            while True:
                 try:
                     reiss = reissues[n]
                 except IndexError:
                     break
-#                int_iss, iss_except = helpers.decimal_issue(reiss['Issue_Number'])
                 int_iss = helpers.issuedigits(reiss['Issue_Number'])
                 issyear = reiss['IssueDate'][:4]
                 old_status = reiss['Status']
                 issname = reiss['IssueName']
-                #logger.fdebug('integer_issue:' + str(int_iss) + ' ... status: ' + str(old_status))
 
-                #if comic in format of "SomeSeries 5(c2c)(2013).cbr" whatever...it'll die.
-                #can't distinguish the 5(c2c) to tell it's the issue #...
                 fnd_iss_except = 'None'
-                #print ("Issue, int_iss, iss_except: " + str(reiss['Issue_Number']) + "," + str(int_iss) + "," + str(iss_except))
-
-
-                while (som < fcn):
-                    #counts get buggered up when the issue is the last field in the filename - ie. '50.cbr'
-                    #logger.fdebug('checking word - ' + str(fcnew[som]))
-                    if ".cbr" in fcnew[som].lower():
-                        fcnew[som] = fcnew[som].replace(".cbr", "")
-                    elif ".cbz" in fcnew[som].lower():
-                        fcnew[som] = fcnew[som].replace(".cbz", "")
-                    if "(c2c)" in fcnew[som].lower():
-                        fcnew[som] = fcnew[som].replace("(c2c)", " ")
-                        get_issue = shlex.split(str(fcnew[som]))
-                        if fcnew[som] != " ":
-                            fcnew[som] = get_issue[0]
-
-
-                    if som+1 < len(fcnew) and len(fcnew[som+1]) == 2:
-                        #print "fcnew[som+1]: " + str(fcnew[som+1])
-                        #print "fcnew[som]: " + str(fcnew[som])
-                        if 'au' in fcnew[som+1].lower():
-                            #if the 'AU' is in 005AU vs 005 AU it will yield different results.
-                            fcnew[som] = fcnew[som] + 'AU'
-                            fcnew[som+1] = '93939999919190933'
-                            logger.info(module + ' AU Detected seperate from issue - combining and continuing')
-                        elif 'ai' in fcnew[som+1].lower():
-                            #if the 'AI' is in 005AI vs 005 AI it will yield different results.
-                            fcnew[som] = fcnew[som] + 'AI'
-                            fcnew[som+1] = '93939999919190933'
-                            logger.info(module + ' AI Detected seperate from issue - combining and continuing')
-
-                    #sometimes scanners refuse to use spaces between () and lump the issue right at the start
-                    #mylar assumes it's all one word in this case..let's dump the brackets.
                     
-                    fcdigit = helpers.issuedigits(fcnew[som])
+                fcdigit = helpers.issuedigits(temploc)
 
-                    #logger.fdebug("fcdigit: " + str(fcdigit))
-                    #logger.fdebug("int_iss: " + str(int_iss))
+                if int(fcdigit) == int_iss:
+                    logger.fdebug(module + ' [' + str(reiss['IssueID']) + '] Issue match - fcdigit: ' + str(fcdigit) + ' ... int_iss: ' + str(int_iss))
 
-                    if int(fcdigit) == int_iss:
-                        logger.fdebug(module + ' [' + str(reiss['IssueID']) + '] Issue match - fcdigit: ' + str(fcdigit) + ' ... int_iss: ' + str(int_iss))
-
-                        if '-' in temploc and temploc.find(reiss['Issue_Number']) > temploc.find('-'):
-                            logger.fdebug(module + ' I have detected a possible Title in the filename')
-                            logger.fdebug(module + ' the issue # has occured after the -, so I assume that it is part of the Title')
-                            break
-
-                        multiplechk = False
-
-                        for d in issuedupechk:
-                            if int(d['fcdigit']) == int(fcdigit):
-                                if len(mc_issue) > 1:
-                                    logger.fdebug('[Initial Check] multiple check issue detected - more than one issue with identical numbering for series.')
-                                    for mi in mc_issue:
-                                        if (mi['IssueYear'] in tmpfc['ComicFilename']):# and (int(d['issueyear']) == int(mi['IssueYear'])) and (d['fcdigit'] == mi['Int_IssueNumber']):
-                                            logger.fdebug('[Initial Check] detected : ' + str(mi['IssueYear']) + ' within filename.')
-                                            multiplechk = False  
-                                            issuedupe = "no"
-                                            break
-                                        else:
-                                            logger.fdebug('[Initial Check] ' + str(mi['Int_IssueNumber']) + ' - did not detect year within filename - expecting (' + str(mi['IssueYear']) + '). Assuming this is the identical numbered issue.')
-                                            multiplechk = True
-                                    if multiplechk == False: break
-
-                        
-                        if multiplechk == True:
-                            logger.fdebug(module + ' Duplicate issue detected - not counting this: ' + str(tmpfc['ComicFilename']))
-                            #logger.fdebug(module + ' is a duplicate of ' + d['filename'])
-                            #logger.fdebug('fcdigit:' + str(fcdigit) + ' === dupedigit: ' + str(d['fcdigit']))
-                            issuedupe = "yes"
-                            break
-
-                        if issuedupe == "no":
-
-                            foundchk = False
-
-                            #make sure we are adding the correct issue.
-                            for d in issuedupechk:
-                                if int(d['fcdigit']) == int(fcdigit):
-                                    if len(mc_issue) > 1 and multiplechk == False:
-                                    #if len(mc_issue) > 1 and multiplechk != False and any d['Int_IssueNumber'] == int_iss for d in mc_issue):
-                                        for mi in mc_issue:
-                                            logger.fdebug('[DupeCheck]' + str(mi['IssueID']) + ' comparing to ' + str(d['issueid']))
-                                            if mi['IssueID'] != d['issueid'] and mi['IssueID'] == reiss['IssueID']:
-                                                logger.fdebug('Most likely, I should not be marking this as a dupe.')
-                                                if (mi['IssueYear'] in tmpfc['ComicFilename']) and (d['fcdigit'] == mi['Int_IssueNumber']):
-                                                    logger.fdebug('[DupeCheck] detected : ' + str(mi['IssueYear']) + ' within filename. This is an issue that happens to have duplicate numbering and is acceptable')
-                                                    foundchk = True
-                                                    break
-                                                else:
-                                                    logger.fdebug('[DupeCheck] ' + str(mi['Int_IssueNumber']) + ': did not detect year (' + str(mi['IssueYear']) + ').')
-                                                    foundchk = False
-                                            else:  
-                                                foundchk = True
-                                  
-
-                                        if foundchk == True:
-                                            logger.fdebug('[DupeCheck] This is not a duplicate. foundchk is : ' + str(foundchk))
-                                            letitgo = True
-                                            break
-
-                            if foundchk == False:  
-                                logger.fdebug(module + ' Matched...issue: ' + rescan['ComicName'] + '#' + reiss['Issue_Number'] + ' --- ' + str(int_iss))
-                                havefiles+=1
-                                haveissue = "yes"
-                                isslocation = str(tmpfc['ComicFilename'])
-                                issSize = str(tmpfc['ComicSize'])
-                                logger.fdebug(module + ' .......filename: ' + str(isslocation))
-                                logger.fdebug(module + ' .......filesize: ' + str(tmpfc['ComicSize'])) 
-                                # to avoid duplicate issues which screws up the count...let's store the filename issues then 
-                                # compare earlier...
-                                issuedupechk.append({'fcdigit':   int(fcdigit),
-                                                     'filename':  tmpfc['ComicFilename'],
-                                                     'issueyear': issyear,
-                                                     'issueid':   reiss['IssueID']})
-                                break
-                        #else:
-                        # if the issue # matches, but there is no year present - still match.
-                        # determine a way to match on year if present, or no year (currently).
-
-                    if issuedupe == "yes":
-                        logger.fdebug(module + ' I should break out here because of a dupe.')
+                    if '-' in temploc and temploc.find(reiss['Issue_Number']) > temploc.find('-'):
+                        logger.fdebug(module + ' I have detected a possible Title in the filename')
+                        logger.fdebug(module + ' the issue # has occured after the -, so I assume that it is part of the Title')
                         break
-                    som+=1
+
+                    #baseline these to default to normal scanning
+                    multiplechk = False
+                    issuedupe = "no"
+                    foundchk = False
+
+                    #check here if muliple identical numbering issues exist for the series
+                    if len(mc_issue) > 1:
+                        for mi in mc_issue:
+                            if mi['Int_IssueNumber'] == int_iss:
+                                if mi['IssueID'] == reiss['IssueID']:
+                                    logger.fdebug(module + ' IssueID matches to multiple issues : ' + str(mi['IssueID']) + '. Checking dupe.')
+                                    logger.fdebug(module + ' miISSUEYEAR: ' + str(mi['IssueYear']) + ' -- issyear : ' + str(issyear))
+                                    if any(mi['IssueID'] == d['issueid'] for d in issuedupechk):
+                                        logger.fdebug(module + ' IssueID already within dupe. Checking next if available.')
+                                        multiplechk = True                    
+                                        break
+                                    if (mi['IssueYear'] in tmpfc['ComicFilename']) and (issyear == mi['IssueYear']):
+                                        logger.fdebug(module + ' Matched to year within filename : ' + str(issyear))
+                                        multiplechk = False
+                                        break
+                                    else:
+                                        logger.fdebug(module + ' Did not match to year within filename : ' + str(issyear))
+                                        multiplechk = True
+                    if multiplechk == True:
+                        n+=1
+                        continue
+
+                    #this will detect duplicate filenames within the same directory.
+                    for di in issuedupechk:
+                        if di['fcdigit'] == fcdigit:
+                            #base off of config - base duplication keep on filesize or file-type (or both)
+                            logger.fdebug('[DUPECHECK] Duplicate issue detected [' + di['filename'] + '] [' + tmpfc['ComicFilename'] + ']')
+                            # mylar.DUPECONSTRAINT = 'filesize' / 'filetype-cbr' / 'filetype-cbz'
+                            logger.fdebug('[DUPECHECK] Based on duplication preferences I will retain based on : ' + mylar.DUPECONSTRAINT)
+                            removedupe = False
+                            if 'cbr' in mylar.DUPECONSTRAINT or 'cbz' in mylar.DUPECONSTRAINT:
+                                if 'cbr' in mylar.DUPECONSTRAINT:
+                                    #this has to be configured in config - either retain cbr or cbz.
+                                    if tmpfc['ComicFilename'].endswith('.cbz'):
+                                        #keep di['filename']
+                                        logger.fdebug('[DUPECHECK-CBR PRIORITY] [#' + reiss['Issue_Number'] + '] Retaining currently scanned in file : ' + di['filename'])
+                                        issuedupe = "yes"
+                                        break
+                                    else:
+                                        #keep tmpfc['ComicFilename']
+                                        logger.fdebug('[DUPECHECK-CBR PRIORITY] [#' + reiss['Issue_Number'] + '] Retaining newly scanned in file : ' + tmpfc['ComicFilename'])
+                                        removedupe = True
+                                elif 'cbz' in mylar.DUPECONSTRAINT:
+                                    if tmpfc['ComicFilename'].endswith('.cbr'):
+                                        #keep di['filename']
+                                        logger.fdebug('[DUPECHECK-CBZ PRIORITY] [#' + reiss['Issue_Number'] + '] Retaining currently scanned in filename : ' + di['filename'])
+                                        issuedupe = "yes"
+                                        break
+                                    else:
+                                        #keep tmpfc['ComicFilename']
+                                        logger.fdebug('[DUPECHECK-CBZ PRIORITY] [#' + reiss['Issue_Number'] + '] Retaining newly scanned in filename : ' + tmpfc['ComicFilename'])
+                                        removedupe = True
+
+                            if mylar.DUPECONSTRAINT == 'filesize':
+                                if tmpfc['ComicSize'] <= di['filesize']:
+                                    logger.fdebug('[DUPECHECK-FILESIZE PRIORITY] [#' + reiss['Issue_Number'] + '] Retaining currently scanned in filename : ' + di['filename'])
+                                    issuedupe = "yes"
+                                    break
+                                else:
+                                    logger.fdebug('[DUPECHECK-FILESIZE PRIORITY] [#' + reiss['Issue_Number'] + '] Retaining newly scanned in filename : ' + tmpfc['ComicFilename'])
+                                    removedupe = True
+
+                            if removedupe:
+                                #need to remove the entry from issuedupechk so can add new one.
+                                #tuple(y for y in x if y) for x in a
+                                issuedupe_temp = []
+                                tmphavefiles = 0
+                                for x in issuedupechk:
+                                    logger.fdebug('Comparing x: ' + x['filename'] + ' to di:' + di['filename'])
+                                    if x['filename'] != di['filename']:
+                                        logger.fdebug('Matched.')
+                                        issuedupe_temp.append(x)
+                                        tmphavefiles+=1
+                                issuedupechk = issuedupe_temp
+                                havefiles = tmphavefiles
+                                logger.fdebug(issuedupechk)
+                                foundchk = False
+                                break
+
+                    if issuedupe == "no":
+
+                        if foundchk == False:  
+                            logger.fdebug(module + ' Matched...issue: ' + rescan['ComicName'] + '#' + reiss['Issue_Number'] + ' --- ' + str(int_iss))
+                            havefiles+=1
+                            haveissue = "yes"
+                            isslocation = str(tmpfc['ComicFilename'])
+                            issSize = str(tmpfc['ComicSize'])
+                            logger.fdebug(module + ' .......filename: ' + str(isslocation))
+                            logger.fdebug(module + ' .......filesize: ' + str(tmpfc['ComicSize'])) 
+                            # to avoid duplicate issues which screws up the count...let's store the filename issues then 
+                            # compare earlier...
+                            issuedupechk.append({'fcdigit':   fcdigit,
+                                                 'filename':  tmpfc['ComicFilename'],
+                                                 'filesize':  tmpfc['ComicSize'],
+                                                 'issueyear': issyear,
+                                                 'issueid':   reiss['IssueID']})
+                            break
+
+                if issuedupe == "yes":
+                    logger.fdebug(module + ' I should break out here because of a dupe.')
+                    break
+
                 if haveissue == "yes" or issuedupe == "yes": break
                 n+=1
         else:
@@ -1146,7 +1126,7 @@ def forceRescan(ComicID,archive=None,module=None):
                 else:
                     if mylar.MULTIPLE_DEST_DIRS is not None and mylar.MULTIPLE_DEST_DIRS != 'None':
                         if os.path.exists(os.path.join(mylar.MULTIPLE_DEST_DIRS, os.path.basename(rescan['ComicLocation']))):
-                            logger.info('Issues found within multiple destination directory location')
+                            #logger.fdebug('Issue(s) currently exist and found within multiple destination directory location')
                             continue
                     #print "Changing status from Downloaded to Archived - cannot locate file"
                     controlValue = {"IssueID":   down['IssueID']}

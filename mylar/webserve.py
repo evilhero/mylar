@@ -1,3 +1,4 @@
+
 #  This file is part of Mylar.
 #
 #  Mylar is free software: you can redistribute it and/or modify
@@ -320,20 +321,38 @@ class WebInterface(object):
         raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % comicid)
     addComic.exposed = True
 
-    def addbyid(self,comicid):
+    def addbyid(self,comicid,calledby=None,imported=None,ogcname=None):
         mismatch = "no"
         logger.info('Attempting to add directly by ComicVineID: ' + str(comicid))
         if comicid.startswith('4050-'): comicid = re.sub('4050-','', comicid)
-        threading.Thread(target=importer.addComictoDB, args=[comicid,mismatch,None]).start()
-        raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % comicid)
+        threading.Thread(target=importer.addComictoDB, args=[comicid,mismatch,None,imported,ogcname]).start()
+        if calledby == True or calledby == 'True':
+           return
+        elif calledby == 'web-import':
+           raise cherrypy.HTTPRedirect("importResults")
+        else:
+           raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % comicid)
     addbyid.exposed = True
 
     def addStoryArc(self, storyarcname, storyarcyear, storyarcpublisher, storyarcissues, arcid, arclist , desc, image):
         # used when a choice is selected to 'add story arc' via the searchresults screen (via the story arc search).
         # arclist contains ALL the issueid's in sequence, along with the issue titles.
         # call the function within cv.py to grab all the issueid's and return all the issue data
+        module = '[STORY ARC]'
+        myDB = db.DBConnection()
+        #check if it already exists.
+        arc_chk = myDB.selectone('SELECT * FROM readinglist WHERE CV_ArcID=?', [arcid]).fetchone()
+        if arc_chk is None:
+            logger.fdebug(module + ' No match in db based on ComicVine ID. Making sure and checking against Story Arc Name.')
+            arc_chk = myDB.selectone('SELECT * FROM readinglist WHERE StoryArc=?', [storyarcname]).fetchone()
+            if arc_chk is not None:
+                logger.warn(module + ' ' + storyarcname + ' already exists on your Story Arc Watchlist.')
+                raise cherrypy.HTTPRedirect("readlist")
+        else:
+            logger.warn(module + ' ' + storyarcname + ' already exists on your Story Arc Watchlist.')
+            raise cherrypy.HTTPRedirect("readlist")
         arc_results = mylar.cv.getComic(comicid=None, type='issue', arcid=arcid, arclist=arclist)
-        logger.info('arcresults: ' + str(arc_results))
+        logger.fdebug(module + ' Arcresults: ' + str(arc_results))
         if len(arc_results) > 0:
             import random
 
@@ -375,7 +394,7 @@ class WebInterface(object):
                         int_issnum = (int(issnum[:-4]) * 1000) + ord('n') + ord('o') + ord('w')
                     elif u'\xbd' in issnum:
                         int_issnum = .5 * 1000
-                        logger.info('1/2 issue detected :' + issnum + ' === ' + str(int_issnum))
+                        logger.fdebug(module + ' 1/2 issue detected :' + issnum + ' === ' + str(int_issnum))
                     elif u'\xbc' in issnum:
                         int_issnum = .25 * 1000
                     elif u'\xbe' in issnum:
@@ -405,10 +424,9 @@ class WebInterface(object):
                             decisval = decis
                             issaftdec = str(decisval)
                         try:
-#                           int_issnum = str(issnum)
                             int_issnum = (int(issb4dec) * 1000) + (int(issaftdec) * 10)
                         except ValueError:
-                            logger.error('This has no issue # for me to get - Either a Graphic Novel or one-shot.')
+                            logger.error(module + ' This has no issue # for me to get - Either a Graphic Novel or one-shot.')
                             updater.no_searchresults(comicid)
                             return
                     else:
@@ -416,8 +434,8 @@ class WebInterface(object):
                             x = float(issnum)
                             #validity check
                             if x < 0:
-                                logger.info('I have encountered a negative issue #: ' + str(issnum) + '. Trying to accomodate.')
-                                logger.fdebug('value of x is : ' + str(x))
+                                logger.fdebug(module + ' I have encountered a negative issue #: ' + str(issnum) + '. Trying to accomodate.')
+                                logger.fdebug(module + ' value of x is : ' + str(x))
                                 int_issnum = (int(x)*1000) - 1
                             else: raise ValueError
                         except ValueError, e:
@@ -434,9 +452,9 @@ class WebInterface(object):
                                         isschk = float(issno)
                                     except ValueError, e:
                                         if len(issnum) == 1 and issnum.isalpha():
-                                            logger.fdebug('detected lone alpha issue. Attempting to figure this out.')
+                                            logger.fdebug(module + ' Detected lone alpha issue. Attempting to figure this out.')
                                             break
-                                        logger.fdebug('invalid numeric for issue - cannot be found. Ignoring.')
+                                        logger.fdebug(module + ' Invalid numeric for issue - cannot be found. Ignoring.')
                                         issno = None
                                         tstord = None
                                         invchk = "true"
@@ -453,10 +471,10 @@ class WebInterface(object):
                                         a+=1
                                     int_issnum = (int(issno) * 1000) + ordtot
                             elif invchk == "true":
-                                logger.fdebug('this does not have an issue # that I can parse properly.')
+                                logger.fdebug(module + ' This does not have an issue # that I can parse properly.')
                                 return
                             else:
-                                logger.error(str(issnum) + ' this has an alpha-numeric in the issue # which I cannot account for.')
+                                logger.error(module + ' ' + str(issnum) + ' This has an alpha-numeric in the issue # which I cannot account for.')
                                 return
 
                 issuedata.append({"ComicID":            comicid,
@@ -475,9 +493,7 @@ class WebInterface(object):
             comicid_results = mylar.cv.getComic(comicid=None, type='comicyears', comicidlist=cidlist)
             #logger.info('comicid_results: ' + str(comicid_results))
 
-            logger.fdebug('initiating issue updating - just the info')
-
-            myDB = db.DBConnection()
+            logger.fdebug(module + ' Initiating issue updating - just the info')
 
             for AD in issuedata:
                 seriesYear = 'None'
@@ -512,6 +528,9 @@ class WebInterface(object):
 
                 myDB.upsert("readinglist", newVals, newCtrl)
 
+        #run the Search for Watchlist matches now.
+        logger.fdebug(module + ' Now searching your watchlist for matches belonging to this story arc.')
+        self.ArcWatchlist(storyarcid)
         raise cherrypy.HTTPRedirect("detailReadlist?StoryArcID=%s&StoryArcName=%s" % (storyarcid, storyarcname))
     
     addStoryArc.exposed = True
@@ -1102,7 +1121,7 @@ class WebInterface(object):
                     logger.error('nzb.su is not enabled - unable to process retry request until provider is re-enabled.')
                     return
                 # http://nzb.su/getnzb/ea1befdeee0affd663735b2b09010140.nzb&i=<uid>&r=<passkey>
-                link = 'http://nzb.su/getnzb/' + str(id) + '.nzb&i=' + str(mylar.NZBSU_ID) + '&r=' + str(mylar.NZBSU_APIKEY)
+                link = 'http://nzb.su/getnzb/' + str(id) + '.nzb&i=' + str(mylar.NZBSU_UID) + '&r=' + str(mylar.NZBSU_APIKEY)
                 logger.info('fetched via nzb.su. Retrying the send : ' + str(link))
             elif Provider == 'dognzb':
                 if not mylar.DOGNZB:
@@ -1177,12 +1196,21 @@ class WebInterface(object):
             else:
                 logger.info(u"Story Arc : " + str(SARC) + " queueing selected issue...")
                 logger.info(u"IssueArcID : " + str(IssueArcID))
+                #try to load the issue dates - can now sideload issue details.
+                dateload = myDB.selectone('SELECT * FROM readinglist WHERE IssueArcID=?', [IssueArcID]).fetchone()
+                if dateload is None:
+                    IssueDate = None
+                    StoreDate = None
+                else:
+                    IssueDate = dateload['IssueDate']
+                    StoreDate = dateload['StoreDate']
+
             if ComicYear is None: ComicYear = SeriesYear
             logger.info(u"Marking " + ComicName + " " + ComicIssue + " as wanted...")
             controlValueDict = {"IssueArcID": IssueArcID}
             newStatus = {"Status": "Wanted"}
             myDB.upsert("readinglist", newStatus, controlValueDict)
-            foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=None, IssueDate=None, StoreDate=None, IssueID=None, AlternateSearch=None, UseFuzzy=None, ComicVersion=None, SARC=SARC, IssueArcID=IssueArcID)
+            foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=None, IssueDate=IssueDate, StoreDate=StoreDate, IssueID=None, AlternateSearch=None, UseFuzzy=None, ComicVersion=None, SARC=SARC, IssueArcID=IssueArcID)
             if foundcom  == "yes":
                 logger.info(u"Downloaded " + ComicName + " #" + ComicIssue + " (" + str(ComicYear) + ")")
             #raise cherrypy.HTTPRedirect("readlist")
@@ -1203,8 +1231,14 @@ class WebInterface(object):
             raise cherrypy.HTTPRedirect("pullist")
             #return
         elif mode == 'want' or mode == 'want_ann' or manualsearch:
-            cdname = myDB.selectone("SELECT ComicName, ComicName_Filesafe from comics where ComicID=?", [ComicID]).fetchone()
-            ComicName = cdname['ComicName_Filesafe']
+            cdname = myDB.selectone("SELECT * from comics where ComicID=?", [ComicID]).fetchone()
+            ComicName_Filesafe = cdname['ComicName_Filesafe']
+            SeriesYear = cdname['ComicYear']
+            AlternateSearch = cdname['AlternateSearch']
+            Publisher = cdname['ComicPublisher']
+            UseAFuzzy = cdname['UseFuzzy']
+            ComicVersion = cdname['ComicVersion']
+            ComicName = cdname['ComicName']
             controlValueDict = {"IssueID": IssueID}
             newStatus = {"Status": "Wanted"}
             if mode == 'want':
@@ -1244,13 +1278,13 @@ class WebInterface(object):
             storedate = issues['IssueDate']
         else:
             storedate = issues['ReleaseDate']
-        miy = myDB.selectone("SELECT * FROM comics WHERE ComicID=?", [ComicID]).fetchone()
-        SeriesYear = miy['ComicYear']
-        AlternateSearch = miy['AlternateSearch']
-        Publisher = miy['ComicPublisher']
-        UseAFuzzy = miy['UseFuzzy']
-        ComicVersion = miy['ComicVersion']
-        foundcom, prov = search.search_init(ComicName, ComicIssue, ComicYear, SeriesYear, Publisher, issues['IssueDate'], storedate, IssueID, AlternateSearch, UseAFuzzy, ComicVersion, mode=mode, ComicID=ComicID, manualsearch=manualsearch, filesafe=miy['ComicName_Filesafe'])
+        #miy = myDB.selectone("SELECT * FROM comics WHERE ComicID=?", [ComicID]).fetchone()
+        #SeriesYear = miy['ComicYear']
+        #AlternateSearch = miy['AlternateSearch']
+        #Publisher = miy['ComicPublisher']
+        #UseAFuzzy = miy['UseFuzzy']
+        #ComicVersion = miy['ComicVersion']
+        foundcom, prov = search.search_init(ComicName, ComicIssue, ComicYear, SeriesYear, Publisher, issues['IssueDate'], storedate, IssueID, AlternateSearch, UseAFuzzy, ComicVersion, mode=mode, ComicID=ComicID, manualsearch=manualsearch, filesafe=ComicName_Filesafe)
         if foundcom  == "yes":
             # file check to see if issue exists and update 'have' count
             if IssueID is not None:
@@ -1383,6 +1417,15 @@ class WebInterface(object):
 
     def pullist(self):
         myDB = db.DBConnection()
+        autowants = myDB.select("SELECT * FROM futureupcoming WHERE Status='Wanted'")
+        autowant = []
+        if autowants:
+            for aw in autowants:
+                autowant.append({"ComicName":        aw['ComicName'],
+                                 "IssueNumber":      aw['IssueNumber'],
+                                 "Publisher":        aw['Publisher'],
+                                 "Status":           aw['Status'],
+                                 "DisplayComicName": aw['DisplayComicName']})
         weeklyresults = []
         wantedcount = 0
         popit = myDB.select("SELECT * FROM sqlite_master WHERE name='weekly' and type='table'")
@@ -1397,12 +1440,32 @@ class WebInterface(object):
                         x = weekly['ISSUE']            
 
                 if x is not None:
-                    weeklyresults.append({
+                    if not autowant:
+                        weeklyresults.append({
                                            "PUBLISHER"  : weekly['PUBLISHER'],
                                            "ISSUE"      : weekly['ISSUE'],
                                            "COMIC"      : weekly['COMIC'],
-                                           "STATUS"     : weekly['STATUS']
+                                           "STATUS"     : weekly['STATUS'],
+                                           "AUTOWANT"   : False
                                          })
+                    else:
+                        if any(x['ComicName'].lower() == weekly['COMIC'].lower() for x in autowant):
+                            weeklyresults.append({
+                                           "PUBLISHER"  : weekly['PUBLISHER'],
+                                           "ISSUE"      : weekly['ISSUE'],
+                                           "COMIC"      : weekly['COMIC'],
+                                           "STATUS"     : weekly['STATUS'],
+                                           "AUTOWANT"   : True
+                                         })
+                        else:
+                            weeklyresults.append({
+                                           "PUBLISHER"  : weekly['PUBLISHER'],
+                                           "ISSUE"      : weekly['ISSUE'],
+                                           "COMIC"      : weekly['COMIC'],
+                                           "STATUS"     : weekly['STATUS'],
+                                           "AUTOWANT"   : False
+                                         })
+                            
                     if weekly['STATUS'] == 'Wanted':
                         wantedcount +=1
 
@@ -1811,7 +1874,7 @@ class WebInterface(object):
         comic = myDB.selectone("SELECT * FROM comics WHERE ComicID=?", [comicid]).fetchone()
         comicdir = comic['ComicLocation']
         comicname = comic['ComicName']
-        extensions = ('.cbr', '.cbz')
+        extensions = ('.cbr', '.cbz', '.cb7')
         issues = myDB.select("SELECT * FROM issues WHERE ComicID=?", [comicid])
         if mylar.ANNUALS_ON:
             issues += myDB.select("SELECT * FROM annuals WHERE ComicID=?", [comicid])
@@ -1865,13 +1928,15 @@ class WebInterface(object):
     manageComics.exposed = True
     
     def manageIssues(self, **kwargs):
-        print 'here'
-        print kwargs
+        #print kwargs
         status = kwargs['status']
+        results = []
         myDB = db.DBConnection()
         issues = myDB.select('SELECT * from issues WHERE Status=?', [status])
-
-        return serve_template(templatename="manageissues.html", title="Manage " + str(status) + " Issues", issues=issues)
+        for iss in issues:
+            results.append(iss)
+        annuals = myDB.select('SELECT * from annuals WHERE Status=?', [status])
+        return serve_template(templatename="manageissues.html", title="Manage " + str(status) + " Issues", issues=results)
     manageIssues.exposed = True
     
     def manageNew(self):
@@ -1986,6 +2051,9 @@ class WebInterface(object):
             logger.info("Removed " + str(IssueID) + " from Reading List")
         elif StoryArcID:
             myDB.action('DELETE from readinglist WHERE StoryArcID=?', [StoryArcID])
+            stid = 'S' + str(StoryArcID) + '_%'  
+            #delete from the nzblog so it will always find the most current downloads. Nzblog has issueid, but starts with ArcID
+            myDB.action('DELETE from nzblog WHERE IssueID LIKE ?', [stid])
             logger.info("Removed " + str(StoryArcID) + " from Story Arcs.")
         elif IssueArcID:
             myDB.action('DELETE from readinglist WHERE IssueArcID=?', [IssueArcID])
@@ -2239,11 +2307,15 @@ class WebInterface(object):
                 #cycle through the story arcs here for matches on the watchlist
 
                 if sarc_title != arc['storyarc']:
-                    dstloc = os.path.join(mylar.DESTINATION_DIR, 'StoryArcs', arc['storyarc'])
+                    if mylar.STORYARCDIR:
+                        dstloc = os.path.join(mylar.DESTINATION_DIR, 'StoryArcs', arc['storyarc'])
+                    else:
+                        dstloc = os.path.join(mylar.DESTINATION_DIR, mylar.GRABBAG_DIR)
+
                     if os.path.isdir(dstloc):
                         logger.info('Validating Directory (' + dstloc + '). Already exists! Continuing...')
                     else:
-                        logger.fdebug('Updated Directory doesn not exist! - attempting to create now.')
+                        logger.fdebug('Updated Directory does not exist! - attempting to create now.')
                         filechecker.validateAndCreateDirectory(dstloc, True)
 
 
@@ -2269,8 +2341,8 @@ class WebInterface(object):
                             isschk = myDB.selectone("SELECT * FROM issues WHERE Issue_Number=? AND ComicID=?", [str(GCDissue), comic['ComicID']]).fetchone()
                         else:
                             issue_int = helpers.issuedigits(arc['IssueNumber'])
-                            logger.info('int_issue = ' + str(issue_int))
-                            isschk = myDB.selectone("SELECT * FROM issues WHERE Int_IssueNumber=? AND ComicID=?", [issue_int, comic['ComicID']]).fetchone()
+                            logger.fdebug('int_issue = ' + str(issue_int))
+                            isschk = myDB.selectone("SELECT * FROM issues WHERE Int_IssueNumber=? AND ComicID=? AND STATUS !='Snatched'", [issue_int, comic['ComicID']]).fetchone()
                         if isschk is None:
                             logger.fdebug("we matched on name, but issue " + str(arc['IssueNumber']) + " doesn't exist for " + comic['ComicName'])
                         else:
@@ -2306,7 +2378,10 @@ class WebInterface(object):
                          "IssueNumber":    arc['IssueNumber'],
                          "IssueYear":      arc['IssueYear']})
 
-                    dstloc = os.path.join(mylar.DESTINATION_DIR, 'StoryArcs', arc['storyarc'])
+                    if mylar.STORYARCDIR:
+                        dstloc = os.path.join(mylar.DESTINATION_DIR, 'StoryArcs', arc['storyarc'])
+                    else:
+                        dstloc = mylar.GRABBAG_DIR
                     logger.fdebug('destination location set to  : ' + dstloc)
 
                     filechk = filechecker.listFiles(dstloc, arc['ComicName'], Publisher=None, sarc='true')
@@ -2368,27 +2443,32 @@ class WebInterface(object):
                             if issue['Status'] == 'Downloaded':
                                 issloc = os.path.join(m_arc['match_filedirectory'], issue['Location'])
                                 logger.fdebug('source location set to  : ' + issloc)
-                                dstloc = os.path.join(mylar.DESTINATION_DIR, 'StoryArcs', m_arc['match_storyarc'])
+                                if mylar.STORYARCDIR:
+                                    dstloc = os.path.join(mylar.DESTINATION_DIR, 'StoryArcs', m_arc['match_storyarc'])
+                                else:
+                                    dstloc = mylar.GRABBAG_DIR
+
                                 logger.fdebug('destination location set to  : ' + dstloc)
 
-                                logger.fdebug('attempting to copy into StoryArc directory')
-                                #copy into StoryArc directory...
-                                if os.path.isfile(issloc):
-                                    if not os.path.isfile(dstloc):
-                                        if mylar.READ2FILENAME:
-                                            readorder = helpers.renamefile_readingorder(m_arc['match_readingorder'])
-                                            dfilename = str(readorder) + "-" + issue['Location']
+                                if mylar.COPY2ARCDIR:
+                                    logger.fdebug('attempting to copy into StoryArc directory')
+                                    #copy into StoryArc directory...
+                                    if os.path.isfile(issloc):
+                                        if not os.path.isfile(dstloc):
+                                            if mylar.READ2FILENAME:
+                                                readorder = helpers.renamefile_readingorder(m_arc['match_readingorder'])
+                                                dfilename = str(readorder) + "-" + issue['Location']
+                                            else:
+                                                dfilename = issue['Location']
+
+                                            dstloc = os.path.join(dstloc, dfilename)
+
+                                            logger.fdebug('copying ' + issloc + ' to ' + dstloc)
+                                            shutil.copy(issloc, dstloc)
                                         else:
-                                            dfilename = issue['Location']
-
-                                        dstloc = os.path.join(mylar.DESTINATION_DIR, 'StoryArcs', m_arc['match_storyarc'], dfilename)
-
-                                        logger.fdebug('copying ' + issloc + ' to ' + dstloc)
-                                        shutil.copy(issloc, dstloc)
+                                            logger.fdebug('destination file exists: ' + dstloc)
                                     else:
-                                        logger.fdebug('destination file exists: ' + dstloc)
-                                else:
-                                    logger.fdebug('source file does not exist: ' + issloc)
+                                        logger.fdebug('source file does not exist: ' + issloc)
 
                         else:
                             logger.fdebug("We don't have " + issue['ComicName'] + " :# " + str(issue['Issue_Number']))
@@ -2398,19 +2478,20 @@ class WebInterface(object):
                             myDB.upsert("readinglist",newVal,ctrlVal)
                             logger.info("Marked " + issue['ComicName'] + " :# " + str(issue['Issue_Number']) + " as Wanted.")
 
+            return 
 
     ArcWatchlist.exposed = True
 
     def ReadGetWanted(self, StoryArcID):
         # this will queue up (ie. make 'Wanted') issues in a given Story Arc that are 'Not Watched'
-        print StoryArcID
+        #print StoryArcID
         stupdate = []
         mode = 'story_arc'
         myDB = db.DBConnection()
         wantedlist = myDB.select("SELECT * FROM readinglist WHERE StoryArcID=? AND Status is Null", [StoryArcID])
         if wantedlist is not None:
             for want in wantedlist:
-                print want
+                #print want
                 issuechk = myDB.selectone("SELECT * FROM issues WHERE IssueID=?", [want['IssueArcID']]).fetchone()
                 SARC = want['StoryArc']
                 IssueArcID = want['IssueArcID']
@@ -2422,10 +2503,10 @@ class WebInterface(object):
                     issdate = want['IssueDate']
                     logger.info("-- NOT a watched series queue.")
                     logger.info(want['ComicName'] + " -- #" + str(want['IssueNumber']))
-                    logger.info(u"Story Arc : " + str(SARC) + " queueing selected issue...")
+                    logger.info(u"Story Arc : " + str(SARC) + " queueing the selected issue...")
                     logger.info(u"IssueArcID : " + str(IssueArcID))
-                    logger.info('ComicID: ' + str(s_comicid) + ' --- IssueID: ' + str(s_issueid))
-                    logger.info('StoreDate: ' + str(stdate) + ' --- IssueDate: ' + str(issdate))
+                    logger.info(u"ComicID: " + s_comicid + " --- IssueID: " + s_issueid)
+                    logger.info(u"StoreDate: " + str(stdate) + " --- IssueDate: " + str(issdate))
                     foundcom, prov = search.search_init(ComicName=want['ComicName'], IssueNumber=want['IssueNumber'], ComicYear=want['IssueYear'], SeriesYear=want['SeriesYear'], Publisher=want['Publisher'], IssueDate=issdate, StoreDate=stdate, IssueID=None, AlternateSearch=None, UseFuzzy=None, ComicVersion=None, SARC=SARC, IssueArcID=IssueArcID, mode=None, rsscheck=None, ComicID=None)
                 else:
                     # it's a watched series
@@ -2436,11 +2517,11 @@ class WebInterface(object):
                     foundcom, prov = search.search_init(ComicName=issuechk['ComicName'], IssueNumber=issuechk['Issue_Number'], ComicYear=issuechk['IssueYear'], SeriesYear=issuechk['SeriesYear'], Publisher=None, IssueDate=None, StoreDate=issuechk['ReleaseDate'], IssueID=issuechk['IssueID'], AlternateSearch=None, UseFuzzy=None, ComicVersion=None, SARC=SARC, IssueArcID=IssueArcID)
 
                 if foundcom == "yes":
-                    print "sucessfully found."
+                    logger.fdebug('sucessfully found.')
                     #update the status - this is necessary for torrents as they are in 'snatched' status.
                     updater.foundsearch(s_comicid, s_issueid, mode=mode, provider=prov, SARC=SARC, IssueArcID=IssueArcID)
                 else:
-                    print "not sucessfully found."
+                    logger.fdebug('not sucessfully found.')
                     stupdate.append({"Status":     "Wanted",
                                      "IssueArcID": IssueArcID,
                                      "IssueID":    "None"})
@@ -2448,7 +2529,7 @@ class WebInterface(object):
         watchlistchk = myDB.select("SELECT * FROM readinglist WHERE StoryArcID=? AND Status='Wanted'", [StoryArcID])
         if watchlistchk is not None:
             for watchchk in watchlistchk:
-                print "Watchlist hit - " + str(watchchk['ComicName'])
+                logger.fdebug('Watchlist hit - ' + str(watchchk['ComicName']))
                 issuechk = myDB.selectone("SELECT * FROM issues WHERE IssueID=?", [watchchk['IssueArcID']]).fetchone()
                 SARC = watchchk['StoryArc']
                 IssueArcID = watchchk['IssueArcID']
@@ -2458,9 +2539,21 @@ class WebInterface(object):
                     s_issueid = None
                     logger.fdebug("-- NOT a watched series queue.")
                     logger.fdebug(watchchk['ComicName'] + " -- #" + str(watchchk['IssueNumber']))
-                    logger.info(u"Story Arc : " + str(SARC) + " queueing selected issue...")
+                    logger.info(u"Story Arc : " + str(SARC) + " queueing up the selected issue...")
                     logger.info(u"IssueArcID : " + str(IssueArcID))
-                    foundcom, prov = search.search_init(ComicName=watchchk['ComicName'], IssueNumber=watchchk['IssueNumber'], ComicYear=watchchk['IssueYEAR'], SeriesYear=watchchk['SeriesYear'], Publisher=watchchk['ComicPublisher'], IssueDate=None, StoreDate=None, IssueID=None, AlternateSearch=None, UseFuzzy=None, ComicVersion=None, SARC=SARC, IssueArcID=IssueArcID, mode=None, rsscheck=None, ComicID=None)
+                    try:
+                        issueyear = watchchk['IssueYEAR']
+                        logger.fdebug('issueYEAR : ' + issueyear)
+                    except:
+                        issueyear = watchchk['StoreDate'][:4]
+                    logger.info('issueyear : ' + str(issueyear))
+                    logger.info('comicname : ' + watchchk['ComicName'])
+                    logger.info('issuenumber : ' + watchchk['IssueNumber'])
+                    logger.info('comicyear : ' + watchchk['SeriesYear'])
+                    logger.info('publisher : ' + watchchk['IssuePublisher'])
+                    logger.info('SARC : ' + SARC)
+                    logger.info('IssueArcID : ' + IssueArcID)
+                    foundcom, prov = search.search_init(ComicName=watchchk['ComicName'], IssueNumber=watchchk['IssueNumber'], ComicYear=issueyear, SeriesYear=watchchk['SeriesYear'], Publisher=watchchk['IssuePublisher'], IssueDate=None, StoreDate=None, IssueID=None, AlternateSearch=None, UseFuzzy=None, ComicVersion=None, SARC=SARC, IssueArcID=IssueArcID, mode=None, rsscheck=None, ComicID=None)
                 else:
                     # it's a watched series
                     s_comicid = issuechk['ComicID']
@@ -2469,23 +2562,22 @@ class WebInterface(object):
                     logger.fdebug(issuechk['ComicName'] + " -- #" + str(issuechk['Issue_Number']))
                     foundcom,prov = search.search_init(ComicName=issuechk['ComicName'], IssueNumber=issuechk['Issue_Number'], ComicYear=issuechk['IssueYear'], SeriesYear=issuechk['SeriesYear'], Publisher=None, IssueDate=None, StoreDate=issuechk['ReleaseDate'], IssueID=issuechk['IssueID'], AlternateSearch=None, UseFuzzy=None, ComicVersion=None, SARC=SARC, IssueArcID=IssueArcID, mode=None, rsscheck=None, ComicID=None)
                 if foundcom == "yes":
-                    print "sucessfully found."
                     updater.foundsearch(s_comicid, s_issueid, mode=mode, provider=prov, SARC=SARC, IssueArcID=IssueArcID)
                 else:
-                    print "Watchlist issue not sucessfully found."
-                    print "issuearcid: " + str(IssueArcID)
-                    print "issueid: " + str(s_issueid)
+                    logger.fdebug('Watchlist issue not sucessfully found')
+                    logger.fdebug('issuearcid: ' + str(IssueArcID))
+                    logger.fdebug('issueid: ' + str(s_issueid))
                     stupdate.append({"Status":     "Wanted",
                                      "IssueArcID": IssueArcID,
                                      "IssueID":    s_issueid})
 
         if len(stupdate) > 0:
-            print str(len(stupdate)) + " issues need to get updated to Wanted Status"
+            logger.fdebug(str(len(stupdate)) + ' issues need to get updated to Wanted Status')
             for st in stupdate:
                 ctrlVal = {'IssueArcID':  st['IssueArcID']}
                 newVal = {'Status':   st['Status']}
                 if st['IssueID']:
-                    print "issueid:" + str(st['IssueID'])
+                    logger.fdebug('issueid:' + str(st['IssueID']))
                     newVal['IssueID'] = st['IssueID']
                 myDB.upsert("readinglist", newVal, ctrlVal)
     ReadGetWanted.exposed = True
@@ -2508,12 +2600,18 @@ class WebInterface(object):
 
     ReadMassCopy.exposed = True
 
-    def importLog(self, ComicName):
+    def importLog(self, ComicName, SRID=None):
         myDB = db.DBConnection()
-        impchk = myDB.selectone("SELECT * FROM importresults WHERE ComicName=?", [ComicName]).fetchone()
+        impchk = None
+        if SRID != 'None':
+            impchk = myDB.selectone("SELECT * FROM importresults WHERE SRID=?", [SRID]).fetchone()
+            if impchk is None:
+                logger.error('No associated log found for this ID : ' + SRID)
         if impchk is None:
-            logger.error(u"No associated log found for this import : " + ComicName)
-            return
+            impchk = myDB.selectone("SELECT * FROM importresults WHERE ComicName=?", [ComicName]).fetchone()
+            if impchk is None:
+                logger.error('No associated log found for this ComicName : ' + ComicName)
+                return
 
         implog = impchk['implog'].replace("\n","<br />\n")
         return implog
@@ -2714,13 +2812,19 @@ class WebInterface(object):
         myDB = db.DBConnection()
         results = myDB.select("SELECT * FROM importresults WHERE WatchMatch is Null OR WatchMatch LIKE 'C%' group by ComicName COLLATE NOCASE")
         #this is to get the count of issues;
+        res = []
+        countit = []
         for result in results:
-            countthis = myDB.select("SELECT count(*) FROM importresults WHERE ComicName=?", [result['ComicName']])
-            countit = countthis[0][0]
-            ctrlVal = {"ComicName":  result['ComicName']}
-            newVal = {"IssueCount":       countit}
+            res.append(result)
+        for x in res:
+            countthis = myDB.select("SELECT count(*) FROM importresults WHERE ComicName=?", [x['ComicName']])
+            countit.append({"ComicName": x['ComicName'],
+                            "IssueCount": countthis[0][0]})
+        for ct in countit:
+            ctrlVal = {"ComicName":  ct['ComicName']}
+            newVal = {"IssueCount":  ct['IssueCount']}
             myDB.upsert("importresults", newVal, ctrlVal)
-            #logger.info("counted " + str(countit) + " issues for " + str(result['ComicName']))
+        #logger.info("counted " + str(countit) + " issues for " + str(result['ComicName']))
         #need to reload results now
         results = myDB.select("SELECT * FROM importresults WHERE WatchMatch is Null OR WatchMatch LIKE 'C%' group by ComicName COLLATE NOCASE")
         watchresults = myDB.select("SELECT * FROM importresults WHERE WatchMatch is not Null AND WatchMatch NOT LIKE 'C%' group by ComicName COLLATE NOCASE")
@@ -2735,13 +2839,13 @@ class WebInterface(object):
     deleteimport.exposed = True
 
     def preSearchit(self, ComicName, comiclist=None, mimp=0, displaycomic=None):
-        implog = ''
-        implog = implog + "imp_rename:" + str(mylar.IMP_RENAME) + "\n"
-        implog = implog + "imp_move:" + str(mylar.IMP_MOVE) + "\n"
         if mimp == 0:
             comiclist = []
             comiclist.append(ComicName) 
         for cl in comiclist:
+            implog = ''
+            implog = implog + "imp_rename:" + str(mylar.IMP_RENAME) + "\n"
+            implog = implog + "imp_move:" + str(mylar.IMP_MOVE) + "\n"
             ComicName = cl
             logger.info('comicname is :' + ComicName)
             implog = implog + "comicName: " + str(ComicName) + "\n"
@@ -2800,20 +2904,21 @@ class WebInterface(object):
                     if (result['ComicYear'] not in yearRANGE) or (yearRANGE is None):
                         if result['ComicYear'] <> "0000":
                             implog = implog + "adding..." + str(result['ComicYear']) + "\n"
-                            yearRANGE.append(result['ComicYear'])
+                            yearRANGE.append(str(result['ComicYear']))
                             yearTOP = str(result['ComicYear'])
                     getiss_num = helpers.issuedigits(getiss)
                     miniss_num = helpers.issuedigits(str(minISSUE))
                     startiss_num = helpers.issuedigits(str(startISSUE))
                     if int(getiss_num) > int(miniss_num):
                         implog = implog + "issue now set to : " + str(getiss) + " ... it was : " + str(minISSUE) + "\n"
+                        logger.fdebug('Minimum issue now set to : ' + str(getiss) + ' - it was : ' + str(minISSUE))
                         minISSUE = str(getiss)
                     if int(getiss_num) < int(startiss_num):
                         implog = implog + "issue now set to : " + str(getiss) + " ... it was : " + str(startISSUE) + "\n"
+                        logger.fdebug('Start issue now set to : ' + str(getiss) + ' - it was : ' + str(startISSUE))
                         startISSUE = str(getiss)
-     
-                    if helpers.issuedigits(startISSUE) == 1000:  # if it's an issue #1, get the year and assume that's the start.
-                        starttheyear = result['ComicYear']
+                        if helpers.issuedigits(startISSUE) == 1000:  # if it's an issue #1, get the year and assume that's the start.
+                            startyear = result['ComicYear']
 
             #taking this outside of the transaction in an attempt to stop db locking.
             if mylar.IMP_MOVE and movealreadyonlist == "yes":
@@ -2826,8 +2931,12 @@ class WebInterface(object):
             #figure out # of issues and the year range allowable
             if starttheyear is None:
                 if yearTOP > 0:
-                    maxyear = int(yearTOP) - (int(minISSUE) / 12)
-                    yearRANGE.append(str(maxyear))
+                    if helpers.int_num(minISSUE) < 1000:
+                        maxyear = int(yearTOP)
+                    else:
+                        maxyear = int(yearTOP) - (int(minISSUE) / 12)
+                    if str(maxyear) not in yearRANGE:
+                        yearRANGE.append(str(maxyear))
                     implog = implog + "there is a " + str(maxyear) + " year variation based on the 12 issues/year\n"
                 else:
                     implog = implog + "no year detected in any issues...Nulling the value\n"
@@ -2838,7 +2947,7 @@ class WebInterface(object):
             #determine a best-guess to # of issues in series
             #this needs to be reworked / refined ALOT more.
             #minISSUE = highest issue #, startISSUE = lowest issue #
-            numissues = helpers.int_num(minISSUE) - helpers.int_num(startISSUE)
+            numissues = helpers.int_num(minISSUE) - helpers.int_num(startISSUE) +1  # add 1 to account for one issue itself.
             #normally minissue would work if the issue #'s started at #1.
             implog = implog + "the years involved are : " + str(yearRANGE) + "\n"
             implog = implog + "highest issue # is : " + str(minISSUE) + "\n"
@@ -2851,7 +2960,6 @@ class WebInterface(object):
             #cnvers = cnsplit[cnwords-1]
             ogcname = ComicName
             for splitt in cnsplit:
-                print ("split")
                 if 'v' in str(splitt):
                     implog = implog + "possible versioning detected.\n"
                     if splitt[1:].isdigit():
@@ -2863,8 +2971,8 @@ class WebInterface(object):
         
             mode='series'
             displaycomic = helpers.filesafe(ComicName)
-            logger.info('displaycomic : ' + displaycomic)
-            logger.info('comicname : ' + ComicName)
+            logger.fdebug('displaycomic : ' + displaycomic)
+            logger.fdebug('comicname : ' + ComicName)
             if yearRANGE is None:
                 sresults, explicit = mb.findComic(displaycomic, mode, issue=numissues, explicit='all') #ogcname, mode, issue=numissues, explicit='all') #ComicName, mode, issue=numissues)
             else:
@@ -2874,54 +2982,79 @@ class WebInterface(object):
             if len(sresults) == 1:
                 sr = sresults[0]
                 implog = implog + "only one result...automagik-mode enabled for " + displaycomic + " :: " + str(sr['comicid']) + "\n"
+                logger.fdebug("only one result...automagik-mode enabled for " + displaycomic + " :: " + str(sr['comicid']))
                 resultset = 1
 #            #need to move the files here.
             elif len(sresults) == 0 or len(sresults) is None:
                 implog = implog + "no results, removing the year from the agenda and re-querying.\n"
+                logger.fdebug("no results, removing the year from the agenda and re-querying.")
                 sresults, explicit = mb.findComic(ogcname, mode, issue=numissues, explicit='all') #ComicName, mode, issue=numissues)
                 if len(sresults) == 1:
                     sr = sresults[0]
                     implog = implog + "only one result...automagik-mode enabled for " + displaycomic + " :: " + str(sr['comicid']) + "\n"
+                    logger.fdebug("only one result...automagik-mode enabled for " + displaycomic + " :: " + str(sr['comicid']))
                     resultset = 1
                 else: 
                     resultset = 0
             else:
                 implog = implog + "returning results to screen - more than one possibility.\n"
+                logger.fdebug("Returning results to Select option - more than one possibility, manual intervention required.")
                 resultset = 0
 
-            #write implog to db here.
-            print "Writing import log to db for viewing pleasure."
-            ctrlVal = {"ComicName":  ComicName}
-            newVal = {"implog":       implog}
-            myDB.upsert("importresults", newVal, ctrlVal)
+            #generate random Search Results ID to allow for easier access for viewing logs / search results.
+            import random
+            SRID = str(random.randint(100000,999999))
 
-            logger.info('sresults: ' + str(sresults))
+            #write implog to db here.
+            ctrlVal = {"ComicName":   ogcname}  #{"ComicName": ComicName}
+            newVal = {"implog":       implog,
+                      "SRID":         SRID}
+            myDB.upsert("importresults", newVal, ctrlVal)
 
             # store the search results for series that returned more than one result for user to select later / when they want.
             # should probably assign some random numeric for an id to reference back at some point. 
-            cVal = {"Series": ComicName}
             for sr in sresults:
-                nVal = {"results":     len(sresults),
+                cVal = {"SRID": SRID,
+                        "comicid":  sr['comicid']}
+                #should store ogcname in here somewhere to account for naming conversions above.
+                nVal = {"Series":      ComicName,
+                        "results":     len(sresults),
                         "publisher":   sr['publisher'],
                         "haveit":      sr['haveit'],
                         "name":        sr['name'],
                         "deck":        sr['deck'],
                         "url":         sr['url'],
                         "description":  sr['description'],
-                        "comicid":     sr['comicid'],
                         "comicimage":  sr['comicimage'],
                         "issues":      sr['issues'],
                         "comicyear":   sr['comicyear']}
                 myDB.upsert("searchresults", nVal, cVal)
 
             if resultset == 1:
+                self.addbyid(sr['comicid'], calledby=True, imported='yes', ogcname=ogcname)
                 #implog = implog + "ogcname -- " + str(ogcname) + "\n"
-                cresults = self.addComic(comicid=sr['comicid'],comicname=sr['name'],comicyear=sr['comicyear'],comicpublisher=sr['publisher'],comicimage=sr['comicimage'],comicissues=sr['issues'],imported='yes',ogcname=ogcname)  #imported=comicstoIMP,ogcname=ogcname)
-                return serve_template(templatename="searchfix.html", title="Error Check", comicname=sr['name'], comicid=sr['comicid'], comicyear=sr['comicyear'], comicimage=sr['comicimage'], comicissues=sr['issues'], cresults=cresults, imported='yes', ogcname=str(ogcname))
+                #cresults = self.addComic(comicid=sr['comicid'],comicname=sr['name'],comicyear=sr['comicyear'],comicpublisher=sr['publisher'],comicimage=sr['comicimage'],comicissues=sr['issues'],imported='yes',ogcname=ogcname)  #imported=comicstoIMP,ogcname=ogcname)
+                #return serve_template(templatename="searchfix.html", title="Error Check", comicname=sr['name'], comicid=sr['comicid'], comicyear=sr['comicyear'], comicimage=sr['comicimage'], comicissues=sr['issues'], cresults=cresults, imported='yes', ogcname=str(ogcname))
             #else:
             #    return serve_template(templatename="searchresults.html", title='Import Results for: "' + displaycomic + '"',searchresults=sresults, type=type, imported='yes', ogcname=ogcname, name=ogcname, explicit=explicit, serinfo=None) #imported=comicstoIMP, ogcname=ogcname)
+                #status update.
+                ctrlVal = {"ComicName":   ComicName}
+                newVal = {"Status":       'Imported',
+                          "SRID":         SRID,
+                          "ComicID":      sr['comicid']}
+                myDB.upsert("importresults", newVal, ctrlVal)                
 
     preSearchit.exposed = True
+
+    def importresults_popup(self,SRID,ComicName,imported=None,ogcname=None):
+        myDB = db.DBConnection()
+        results = myDB.select("SELECT * FROM searchresults WHERE SRID=?", [SRID])
+        if results:
+            return serve_template(templatename="importresults_popup.html", title="results", searchtext=ComicName, searchresults=results)
+        else:
+            logger.warn('There are no search results to view for this entry ' + ComicName + ' [' + str(SRID) + ']. Something is probably wrong.')
+            return
+    importresults_popup.exposed = True
 
     def pretty_git(self, br_history):
         #in order to 'prettify' the history log for display, we need to break it down so it's line by line.
@@ -2962,7 +3095,6 @@ class WebInterface(object):
     pretty_git.exposed = True
     #---
     def config(self):
-    
         interface_dir = os.path.join(mylar.PROG_DIR, 'data/interfaces/')
         interface_list = [ name for name in os.listdir(interface_dir) if os.path.isdir(os.path.join(interface_dir, name)) ]
 #----
@@ -2995,9 +3127,13 @@ class WebInterface(object):
                     "http_user" : mylar.HTTP_USERNAME,
                     "http_port" : mylar.HTTP_PORT,
                     "http_pass" : mylar.HTTP_PASSWORD,
+                    "enable_https" : helpers.checked(mylar.ENABLE_HTTPS),
+                    "https_cert" : mylar.HTTPS_CERT,
+                    "https_key" : mylar.HTTPS_KEY,
                     "api_enabled" : helpers.checked(mylar.API_ENABLED),
                     "api_key"   : mylar.API_KEY,
                     "launch_browser" : helpers.checked(mylar.LAUNCH_BROWSER),
+                    "auto_update" : helpers.checked(mylar.AUTO_UPDATE),
                     "logverbose" : helpers.checked(mylar.LOGVERBOSE),
                     "max_logsize" : mylar.MAX_LOGSIZE,
                     "annuals_on" : helpers.checked(mylar.ANNUALS_ON), 
@@ -3058,7 +3194,7 @@ class WebInterface(object):
                     "enable_kat" : helpers.checked(mylar.ENABLE_KAT),
                     "enable_cbt" : helpers.checked(mylar.ENABLE_CBT),
                     "cbt_passkey" : mylar.CBT_PASSKEY,
-                    "snatchedtorrent_notify" : mylar.SNATCHEDTORRENT_NOTIFY,
+                    "snatchedtorrent_notify" : helpers.checked(mylar.SNATCHEDTORRENT_NOTIFY),
                     "destination_dir" : mylar.DESTINATION_DIR,
                     "create_folders" : helpers.checked(mylar.CREATE_FOLDERS),
                     "chmod_dir" : mylar.CHMOD_DIR,
@@ -3070,6 +3206,7 @@ class WebInterface(object):
                     "use_maxsize" : helpers.checked(mylar.USE_MAXSIZE),
                     "maxsize" : mylar.MAXSIZE,
                     "interface_list" : interface_list,
+                    "dupeconstraint" : mylar.DUPECONSTRAINT,
                     "autowant_all" : helpers.checked(mylar.AUTOWANT_ALL),
                     "autowant_upcoming" : helpers.checked(mylar.AUTOWANT_UPCOMING),
                     "comic_cover_local" : helpers.checked(mylar.COMIC_COVER_LOCAL),
@@ -3177,25 +3314,25 @@ class WebInterface(object):
         raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % comicid)
     manual_annual_add.exposed = True
 
-    def comic_config(self, com_location, ComicID, alt_search=None, fuzzy_year=None, comic_version=None, force_continuing=None):
+    def comic_config(self, com_location, ComicID, alt_search=None, fuzzy_year=None, comic_version=None, force_continuing=None, alt_filename=None):
         myDB = db.DBConnection()
-#--- this is for multipe search terms............
+#--- this is for multiple search terms............
 #--- works, just need to redo search.py to accomodate multiple search terms
         ffs_alt = []
         if '##' in alt_search:
             ffs = alt_search.find('##')
             ffs_alt.append(alt_search[:ffs])
             ffs_alt_st = str(ffs_alt[0])
-            print ("ffs_alt: " + str(ffs_alt[0]))
+            logger.fdebug("ffs_alt: " + str(ffs_alt[0]))
 
         ffs_test = alt_search.split('##')
         if len(ffs_test) > 0:
-            print("ffs_test names: " + str(len(ffs_test)))
+            logger.fdebug("ffs_test names: " + str(len(ffs_test)))
             ffs_count = len(ffs_test)
             n=1
             while (n < ffs_count):
                 ffs_alt.append(ffs_test[n])
-                print("adding : " + str(ffs_test[n]))
+                logger.fdebug("adding : " + str(ffs_test[n]))
                #print("ffs_alt : " + str(ffs_alt))
                 ffs_alt_st = str(ffs_alt_st) + "..." + str(ffs_test[n])
                 n+=1
@@ -3262,6 +3399,11 @@ class WebInterface(object):
         else:
             newValues['ForceContinuing'] = 1
 
+        if alt_filename is None or alt_filename == 'None':
+            newValues['AlternateFileName'] = "None"
+        else:
+            newValues['AlternateFileName'] = str(alt_filename)
+
         #force the check/creation of directory com_location here
         if os.path.isdir(str(com_location)):
             logger.info(u"Validating Directory (" + str(com_location) + "). Already exists! Continuing...")
@@ -3278,14 +3420,18 @@ class WebInterface(object):
         raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % ComicID)
     comic_config.exposed = True
 
-    def readOptions(self, StoryArcID=None, StoryArcName=None, read2filename=0, storyarcdir=0):
+    def readOptions(self, StoryArcID=None, StoryArcName=None, read2filename=0, storyarcdir=0, copy2arcdir=0):
+        print 'initial'
         print mylar.READ2FILENAME
         print mylar.STORYARCDIR
+        print mylar.COPY2ARCDIR
         mylar.READ2FILENAME = int(read2filename)
         mylar.STORYARCDIR = int(storyarcdir)
+        mylar.COPY2ARCDIR = int(copy2arcdir)
+        print 'after int'
         print mylar.READ2FILENAME
         print mylar.STORYARCDIR
-
+        print mylar.COPY2ARCDIR
         mylar.config_write()
 
         #force the check/creation of directory com_location here
@@ -3303,7 +3449,7 @@ class WebInterface(object):
     readOptions.exposed = True
 
     
-    def configUpdate(self, comicvine_api=None, http_host='0.0.0.0', http_username=None, http_port=8090, http_password=None, api_enabled=0, api_key=None, launch_browser=0, logverbose=0, annuals_on=0, max_logsize=None, download_scan_interval=None, nzb_search_interval=None, nzb_startup_search=0, libraryscan_interval=None,
+    def configUpdate(self, comicvine_api=None, http_host='0.0.0.0', http_username=None, http_port=8090, http_password=None, enable_https=0, https_cert=None, https_key=None, api_enabled=0, api_key=None, launch_browser=0, auto_update=0, logverbose=0, annuals_on=0, max_logsize=None, download_scan_interval=None, nzb_search_interval=None, nzb_startup_search=0, libraryscan_interval=None,
         nzb_downloader=0, sab_host=None, sab_username=None, sab_apikey=None, sab_password=None, sab_category=None, sab_priority=None, sab_directory=None, log_dir=None, log_level=0, blackhole_dir=None,
         nzbget_host=None, nzbget_port=None, nzbget_username=None, nzbget_password=None, nzbget_category=None, nzbget_priority=None, nzbget_directory=None,
         usenet_retention=None, nzbsu=0, nzbsu_uid=None, nzbsu_apikey=None, dognzb=0, dognzb_uid=None, dognzb_apikey=None, newznab=0, newznab_host=None, newznab_name=None, newznab_apikey=None, newznab_uid=None, newznab_enabled=0,
@@ -3313,15 +3459,19 @@ class WebInterface(object):
         prowl_enabled=0, prowl_onsnatch=0, prowl_keys=None, prowl_priority=None, nma_enabled=0, nma_apikey=None, nma_priority=0, nma_onsnatch=0, pushover_enabled=0, pushover_onsnatch=0, pushover_apikey=None, pushover_userkey=None, pushover_priority=None, boxcar_enabled=0, boxcar_onsnatch=0, boxcar_token=None,
         pushbullet_enabled=0, pushbullet_apikey=None, pushbullet_deviceid=None, pushbullet_onsnatch=0,
         preferred_quality=0, move_files=0, rename_files=0, add_to_csv=1, cvinfo=0, lowercase_filenames=0, folder_format=None, file_format=None, enable_extra_scripts=0, extra_scripts=None, enable_pre_scripts=0, pre_scripts=None, post_processing=0, syno_fix=0, search_delay=None, chmod_dir=0777, chmod_file=0660, cvapifix=0,
-        tsab=None, destination_dir=None, create_folders=1, replace_spaces=0, replace_char=None, use_minsize=0, minsize=None, use_maxsize=0, maxsize=None, autowant_all=0, autowant_upcoming=0, comic_cover_local=0, zero_level=0, zero_level_n=None, interface=None, **kwargs):
+        tsab=None, destination_dir=None, create_folders=1, replace_spaces=0, replace_char=None, use_minsize=0, minsize=None, use_maxsize=0, maxsize=None, autowant_all=0, autowant_upcoming=0, comic_cover_local=0, zero_level=0, zero_level_n=None, interface=None, dupeconstraint=None, **kwargs):
         mylar.COMICVINE_API = comicvine_api
         mylar.HTTP_HOST = http_host
         mylar.HTTP_PORT = http_port
         mylar.HTTP_USERNAME = http_username
         mylar.HTTP_PASSWORD = http_password
+        mylar.ENABLE_HTTPS = enable_https
+        mylar.HTTPS_CERT = https_cert
+        mylar.HTTPS_KEY = https_key
         mylar.API_ENABLED = api_enabled
         mylar.API_KEY = api_key
         mylar.LAUNCH_BROWSER = launch_browser
+        mylar.AUTO_UPDATE = auto_update
         mylar.LOGVERBOSE = logverbose
         mylar.ANNUALS_ON = int(annuals_on)
         mylar.MAX_LOGSIZE = max_logsize
@@ -3431,6 +3581,7 @@ class WebInterface(object):
         mylar.AUTOWANT_UPCOMING = autowant_upcoming
         mylar.COMIC_COVER_LOCAL = comic_cover_local
         mylar.INTERFACE = interface
+        mylar.DUPECONSTRAINT = dupeconstraint
         mylar.ENABLE_EXTRA_SCRIPTS = enable_extra_scripts
         mylar.EXTRA_SCRIPTS = extra_scripts
         mylar.ENABLE_PRE_SCRIPTS = enable_pre_scripts
@@ -3676,6 +3827,8 @@ class WebInterface(object):
     downloadthis.exposed = True
 
     def IssueInfo(self, filelocation):
+        filelocation = filelocation.encode('ASCII')
+        filelocation = urllib.unquote_plus(filelocation).decode('utf8')
         issuedetails = helpers.IssueDetails(filelocation)
         #print str(issuedetails)
         issueinfo = '<table width="500"><tr><td>'
@@ -3701,7 +3854,11 @@ class WebInterface(object):
             issueinfo += 'Editor: ' + issuedetails[0]['editor'] + '</br>'
         issueinfo += '</td></tr>'
         #issueinfo += '<img src="interfaces/default/images/rename.png" height="25" width="25"></td></tr>'
-        issueinfo += '<tr><td>Summary: ' + issuedetails[0]['summary'] + '</br></td></tr>'
+        if len(issuedetails[0]['summary']) > 1000:
+            issuesumm = issuedetails[0]['summary'][:1000] + '...'
+        else:
+            issuesumm = issuedetails[0]['summary']
+        issueinfo += '<tr><td>Summary: ' + issuesumm + '</br></td></tr>'
         issueinfo += '<tr><td><center>' + os.path.split(filelocation)[1] + '</center>'
         issueinfo += '</td></tr></table>'
         return issueinfo
@@ -3712,11 +3869,11 @@ class WebInterface(object):
         #return json_dump
     IssueInfo.exposed = True
 
-    def manual_metatag(self, dirName, issueid, filename, comicid):
+    def manual_metatag(self, dirName, issueid, filename, comicid, comversion):
         module = '[MANUAL META-TAGGING]'
         try:
             import cmtagmylar
-            metaresponse = cmtagmylar.run(dirName, issueid=issueid, filename=filename)
+            metaresponse = cmtagmylar.run(dirName, issueid=issueid, filename=filename, comversion=comversion)
         except ImportError:
             logger.warn(module + ' comictaggerlib not found on system. Ensure the ENTIRE lib directory is located within mylar/lib/comictaggerlib/ directory.')
             metaresponse = "fail"
@@ -3733,13 +3890,14 @@ class WebInterface(object):
 
     def group_metatag(self, dirName, ComicID):
         myDB = db.DBConnection()
+        cinfo = myDB.selectone('SELECT ComicVersion FROM comics WHERE ComicID=?', [ComicID]).fetchone()
         groupinfo = myDB.select('SELECT * FROM issues WHERE ComicID=? and Location is not NULL', [ComicID])
         if groupinfo is None:
             logger.warn('No issues physically exist within the series directory for me to (re)-tag.')
             return
         for ginfo in groupinfo:
             logger.info('tagging : ' + str(ginfo))
-            self.manual_metatag(dirName, ginfo['IssueID'], os.path.join(dirName, ginfo['Location']), ComicID)
+            self.manual_metatag(dirName, ginfo['IssueID'], os.path.join(dirName, ginfo['Location']), ComicID, comversion=cinfo['ComicVersion'])
         logger.info('Finished doing a complete series (re)tagging of metadata.')
     group_metatag.exposed = True
 

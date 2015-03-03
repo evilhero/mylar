@@ -51,6 +51,7 @@ DAEMON = False
 PIDFILE= None
 CREATEPID = False
 SAFESTART = False
+AUTO_UPDATE = False
 
 SCHED = Scheduler()
 
@@ -80,6 +81,12 @@ CFG = None
 CONFIG_VERSION = None
 
 DB_FILE = None
+DBCHOICE = None
+
+#these are used depending on dbchoice.
+DBUSER = None
+DBPASS = None
+DBNAME = None
 
 LOG_DIR = None
 LOG_LIST = []
@@ -98,6 +105,9 @@ HTTP_HOST = None
 HTTP_USERNAME = None
 HTTP_PASSWORD = None
 HTTP_ROOT = None
+ENABLE_HTTPS = False
+HTTPS_CERT = None
+HTTPS_KEY = None
 HTTPS_FORCE_ON = False
 API_ENABLED = False
 API_KEY = None
@@ -142,7 +152,7 @@ DOWNLOAD_SCAN_INTERVAL = 5
 CHECK_FOLDER = None
 ENABLE_CHECK_FOLDER = False
 INTERFACE = None
-
+DUPECONSTRAINT = None
 PREFERRED_QUALITY = 0
 CORRECT_METADATA = False
 MOVE_FILES = False
@@ -266,6 +276,8 @@ GRABBAG_DIR = None
 HIGHCOUNT = 0
 READ2FILENAME = 0
 STORYARCDIR = 0
+COPY2ARCDIR = 0
+
 CVAPIFIX = 0
 CVURL = None
 WEEKFOLDER = 0
@@ -364,10 +376,10 @@ def initialize():
 
     with INIT_LOCK:
     
-        global __INITIALIZED__, COMICVINE_API, DEFAULT_CVAPI, CVAPI_COUNT, CVAPI_TIME, CVAPI_MAX, FULL_PATH, PROG_DIR, VERBOSE, DAEMON, COMICSORT, DATA_DIR, CONFIG_FILE, CFG, CONFIG_VERSION, LOG_DIR, CACHE_DIR, MAX_LOGSIZE, LOGVERBOSE, OLDCONFIG_VERSION, OS_DETECT, OS_LANG, OS_ENCODING, \
-                queue, HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, HTTPS_FORCE_ON, API_ENABLED, API_KEY, LAUNCH_BROWSER, GIT_PATH, SAFESTART, \
+        global __INITIALIZED__, DBCHOICE, DBUSER, DBPASS, DBNAME, COMICVINE_API, DEFAULT_CVAPI, CVAPI_COUNT, CVAPI_TIME, CVAPI_MAX, FULL_PATH, PROG_DIR, VERBOSE, DAEMON, COMICSORT, DATA_DIR, CONFIG_FILE, CFG, CONFIG_VERSION, LOG_DIR, CACHE_DIR, MAX_LOGSIZE, LOGVERBOSE, OLDCONFIG_VERSION, OS_DETECT, OS_LANG, OS_ENCODING, \
+                queue, HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, ENABLE_HTTPS, HTTPS_CERT, HTTPS_KEY, HTTPS_FORCE_ON, API_ENABLED, API_KEY, LAUNCH_BROWSER, GIT_PATH, SAFESTART, AUTO_UPDATE, \
                 CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, USER_AGENT, DESTINATION_DIR, MULTIPLE_DEST_DIRS, CREATE_FOLDERS, \
-                DOWNLOAD_DIR, USENET_RETENTION, SEARCH_INTERVAL, NZB_STARTUP_SEARCH, INTERFACE, AUTOWANT_ALL, AUTOWANT_UPCOMING, ZERO_LEVEL, ZERO_LEVEL_N, COMIC_COVER_LOCAL, HIGHCOUNT, \
+                DOWNLOAD_DIR, USENET_RETENTION, SEARCH_INTERVAL, NZB_STARTUP_SEARCH, INTERFACE, DUPECONSTRAINT, AUTOWANT_ALL, AUTOWANT_UPCOMING, ZERO_LEVEL, ZERO_LEVEL_N, COMIC_COVER_LOCAL, HIGHCOUNT, \
                 LIBRARYSCAN, LIBRARYSCAN_INTERVAL, DOWNLOAD_SCAN_INTERVAL, NZB_DOWNLOADER, USE_SABNZBD, SAB_HOST, SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_PRIORITY, SAB_DIRECTORY, USE_BLACKHOLE, BLACKHOLE_DIR, ADD_COMICS, COMIC_DIR, IMP_MOVE, IMP_RENAME, IMP_METADATA, \
                 USE_NZBGET, NZBGET_HOST, NZBGET_PORT, NZBGET_USERNAME, NZBGET_PASSWORD, NZBGET_CATEGORY, NZBGET_PRIORITY, NZBGET_DIRECTORY, NZBSU, NZBSU_UID, NZBSU_APIKEY, DOGNZB, DOGNZB_UID, DOGNZB_APIKEY, \
                 NEWZNAB, NEWZNAB_NAME, NEWZNAB_HOST, NEWZNAB_APIKEY, NEWZNAB_UID, NEWZNAB_ENABLED, EXTRA_NEWZNABS, NEWZNAB_EXTRA, \
@@ -378,7 +390,7 @@ def initialize():
                 ENABLE_RSS, RSS_CHECKINTERVAL, RSS_LASTRUN, FAILED_DOWNLOAD_HANDLING, FAILED_AUTO, ENABLE_TORRENT_SEARCH, ENABLE_KAT, KAT_PROXY, ENABLE_CBT, CBT_PASSKEY, SNATCHEDTORRENT_NOTIFY, \
                 PROWL_ENABLED, PROWL_PRIORITY, PROWL_KEYS, PROWL_ONSNATCH, NMA_ENABLED, NMA_APIKEY, NMA_PRIORITY, NMA_ONSNATCH, PUSHOVER_ENABLED, PUSHOVER_PRIORITY, PUSHOVER_APIKEY, PUSHOVER_USERKEY, PUSHOVER_ONSNATCH, BOXCAR_ENABLED, BOXCAR_ONSNATCH, BOXCAR_TOKEN, \
                 PUSHBULLET_ENABLED, PUSHBULLET_APIKEY, PUSHBULLET_DEVICEID, PUSHBULLET_ONSNATCH, LOCMOVE, NEWCOM_DIR, FFTONEWCOM_DIR, \
-                PREFERRED_QUALITY, MOVE_FILES, RENAME_FILES, LOWERCASE_FILENAMES, USE_MINSIZE, MINSIZE, USE_MAXSIZE, MAXSIZE, CORRECT_METADATA, FOLDER_FORMAT, FILE_FORMAT, REPLACE_CHAR, REPLACE_SPACES, ADD_TO_CSV, CVINFO, LOG_LEVEL, POST_PROCESSING, POST_PROCESSING_SCRIPT, SEARCH_DELAY, GRABBAG_DIR, READ2FILENAME, STORYARCDIR, CVURL, CVAPIFIX, CHECK_FOLDER, ENABLE_CHECK_FOLDER, \
+                PREFERRED_QUALITY, MOVE_FILES, RENAME_FILES, LOWERCASE_FILENAMES, USE_MINSIZE, MINSIZE, USE_MAXSIZE, MAXSIZE, CORRECT_METADATA, FOLDER_FORMAT, FILE_FORMAT, REPLACE_CHAR, REPLACE_SPACES, ADD_TO_CSV, CVINFO, LOG_LEVEL, POST_PROCESSING, POST_PROCESSING_SCRIPT, SEARCH_DELAY, GRABBAG_DIR, READ2FILENAME, STORYARCDIR, COPY2ARCDIR, CVURL, CVAPIFIX, CHECK_FOLDER, ENABLE_CHECK_FOLDER, \
                 COMIC_LOCATION, QUAL_ALTVERS, QUAL_SCANNER, QUAL_TYPE, QUAL_QUALITY, ENABLE_EXTRA_SCRIPTS, EXTRA_SCRIPTS, ENABLE_PRE_SCRIPTS, PRE_SCRIPTS, PULLNEW, ALT_PULL, COUNT_ISSUES, COUNT_HAVES, COUNT_COMICS, SYNO_FIX, CHMOD_FILE, CHMOD_DIR, ANNUALS_ON, CV_ONLY, CV_ONETIMER, WEEKFOLDER, UMASK
                 
         if __INITIALIZED__:
@@ -402,8 +414,18 @@ def initialize():
             
         if HTTP_PORT < 21 or HTTP_PORT > 65535:
             HTTP_PORT = 8090
+
+        if HTTPS_CERT == '':
+            HTTPS_CERT = os.path.join(DATA_DIR, 'server.crt')
+        if HTTPS_KEY == '':
+            HTTPS_KEY = os.path.join(DATA_DIR, 'server.key')
             
         CONFIG_VERSION = check_setting_str(CFG, 'General', 'config_version', '')
+        DBCHOICE = check_setting_str(CFG, 'General', 'dbchoice', 'sqlite3')
+        DBUSER = check_setting_str(CFG, 'General', 'dbuser', '')
+        DBPASS = check_setting_str(CFG, 'General', 'dbpass', '')
+        DBNAME = check_setting_str(CFG, 'General', 'dbname', '')
+
         COMICVINE_API = check_setting_str(CFG, 'General', 'comicvine_api', '')
         if not COMICVINE_API:
             COMICVINE_API = None
@@ -414,10 +436,14 @@ def initialize():
         HTTP_USERNAME = check_setting_str(CFG, 'General', 'http_username', '')
         HTTP_PASSWORD = check_setting_str(CFG, 'General', 'http_password', '')
         HTTP_ROOT = check_setting_str(CFG, 'General', 'http_root', '/')
+        ENABLE_HTTPS = bool(check_setting_int(CFG, 'General', 'enable_https', 0))
+        HTTPS_CERT = check_setting_str(CFG, 'General', 'https_cert', '')
+        HTTPS_KEY = check_setting_str(CFG, 'General', 'https_key', '')      
         HTTPS_FORCE_ON = bool(check_setting_int(CFG, 'General', 'https_force_on', 0))
         API_ENABLED = bool(check_setting_int(CFG, 'General', 'api_enabled', 0))
         API_KEY = check_setting_str(CFG, 'General', 'api_key', '') 
         LAUNCH_BROWSER = bool(check_setting_int(CFG, 'General', 'launch_browser', 1))
+        AUTO_UPDATE = bool(check_setting_int(CFG, 'General', 'auto_update', 0))
         LOGVERBOSE = bool(check_setting_int(CFG, 'General', 'logverbose', 0))
         if LOGVERBOSE:
             VERBOSE = 2
@@ -455,6 +481,7 @@ def initialize():
         CHECK_FOLDER = check_setting_str(CFG, 'General', 'check_folder', '')
         ENABLE_CHECK_FOLDER = bool(check_setting_int(CFG, 'General', 'enable_check_folder', 0))
         INTERFACE = check_setting_str(CFG, 'General', 'interface', 'default')
+        DUPECONSTRAINT = check_setting_str(CFG, 'General', 'dupeconstraint', 'filesize')
         AUTOWANT_ALL = bool(check_setting_int(CFG, 'General', 'autowant_all', 0))
         AUTOWANT_UPCOMING = bool(check_setting_int(CFG, 'General', 'autowant_upcoming', 1))
         COMIC_COVER_LOCAL = bool(check_setting_int(CFG, 'General', 'comic_cover_local', 0))
@@ -494,6 +521,7 @@ def initialize():
         if not HIGHCOUNT: HIGHCOUNT = 0
         READ2FILENAME = bool(check_setting_int(CFG, 'General', 'read2filename', 0))
         STORYARCDIR = bool(check_setting_int(CFG, 'General', 'storyarcdir', 0))
+        COPY2ARCDIR = bool(check_setting_int(CFG, 'General', 'copy2arcdir', 0))
         PROWL_ENABLED = bool(check_setting_int(CFG, 'Prowl', 'prowl_enabled', 0))
         PROWL_KEYS = check_setting_str(CFG, 'Prowl', 'prowl_keys', '')
         PROWL_ONSNATCH = bool(check_setting_int(CFG, 'Prowl', 'prowl_onsnatch', 0))
@@ -833,14 +861,18 @@ def initialize():
         logger.initLogger(verbose=VERBOSE) #logger.mylar_log.initLogger(verbose=VERBOSE)
 
         # verbatim back the logger being used since it's now started.
-#        if LOGTYPE == 'clog':
-#            logprog = 'Concurrent Log Handler'
-#        else:
-#            logprog = 'Rotational Log Handler (default)'
-#            logger.fdebug('ConcurrentLogHandler package not installed. Using builtin log handler for Rotational logs (default)')
-#            logger.fdebug('[Windows Users] If you are experiencing log file locking, you should install the ConcurrentLogHandler ( https://pypi.python.org/pypi/ConcurrentLogHandler/0.8.7 )')
+        if LOGTYPE == 'clog':
+            logprog = 'Concurrent Rotational Log Handler'
+        else:
+            logprog = 'Rotational Log Handler (default)'
 
-#        logger.fdebug('Logger set to use : ' + logprog)
+        logger.fdebug('Logger set to use : ' + logprog)
+        if LOGTYPE == 'log' and platform.system() == 'Windows':
+            logger.fdebug('ConcurrentLogHandler package not installed. Using builtin log handler for Rotational logs (default)')
+            logger.fdebug('[Windows Users] If you are experiencing log file locking and want this auto-enabled, you need to install Python Extensions for Windows ( http://sourceforge.net/projects/pywin32/ )')
+
+        # verbatim DB module.
+        logger.info('[DB Module] Loading : ' + DBCHOICE + ' as the database module to use.')
 
         # Put the cache dir in the data dir for now
         if not CACHE_DIR:
@@ -904,6 +936,11 @@ def initialize():
                 LATEST_VERSION = CURRENT_VERSION
         else:
             LATEST_VERSION = CURRENT_VERSION
+
+#        if AUTO_UPDATE:
+#            if CURRENT_VERSION != LATEST_VERSION and INSTALL_TYPE != 'win' and COMMITS_BEHIND > 0:
+#                logger.info('Auto-updating has been enabled. Attempting to auto-update.')
+#                SIGNAL = 'update'
 
         #check for syno_fix here
         if SYNO_FIX:
@@ -1062,6 +1099,11 @@ def config_write():
     new_config.encoding = 'UTF8'
     new_config['General'] = {}
     new_config['General']['config_version'] = CONFIG_VERSION
+    new_config['General']['dbchoice'] = DBCHOICE
+    new_config['General']['dbuser'] = DBUSER
+    new_config['General']['dbpass'] = DBPASS
+    new_config['General']['dbname'] = DBNAME
+
     if COMICVINE_API is None or COMICVINE_API == '':
         new_config['General']['comicvine_api'] = COMICVINE_API
     else:
@@ -1076,10 +1118,14 @@ def config_write():
     new_config['General']['http_username'] = HTTP_USERNAME
     new_config['General']['http_password'] = HTTP_PASSWORD
     new_config['General']['http_root'] = HTTP_ROOT
+    new_config['General']['enable_https'] = int(ENABLE_HTTPS)
+    new_config['General']['https_cert'] = HTTPS_CERT
+    new_config['General']['https_key'] = HTTPS_KEY
     new_config['General']['https_force_on'] = int(HTTPS_FORCE_ON)
     new_config['General']['api_enabled'] = int(API_ENABLED)
     new_config['General']['api_key'] = API_KEY   
     new_config['General']['launch_browser'] = int(LAUNCH_BROWSER)
+    new_config['General']['auto_update'] = int(AUTO_UPDATE)
     new_config['General']['log_dir'] = LOG_DIR
     new_config['General']['max_logsize'] = MAX_LOGSIZE
     new_config['General']['logverbose'] = int(LOGVERBOSE)
@@ -1113,6 +1159,7 @@ def config_write():
     new_config['General']['download_scan_interval'] = DOWNLOAD_SCAN_INTERVAL
     new_config['General']['check_folder'] = CHECK_FOLDER
     new_config['General']['interface'] = INTERFACE
+    new_config['General']['dupeconstraint'] = DUPECONSTRAINT
     new_config['General']['autowant_all'] = int(AUTOWANT_ALL)
     new_config['General']['autowant_upcoming'] = int(AUTOWANT_UPCOMING)
     new_config['General']['preferred_quality'] = int(PREFERRED_QUALITY)
@@ -1137,6 +1184,7 @@ def config_write():
     new_config['General']['highcount'] = HIGHCOUNT
     new_config['General']['read2filename'] = int(READ2FILENAME)
     new_config['General']['storyarcdir'] = int(STORYARCDIR)
+    new_config['General']['copy2arcdir'] = int(COPY2ARCDIR)
     new_config['General']['use_minsize'] = int(USE_MINSIZE)
     new_config['General']['minsize'] = MINSIZE
     new_config['General']['use_maxsize'] = int(USE_MAXSIZE)
@@ -1352,20 +1400,26 @@ def start():
         started = True
     
 def dbcheck():
+    #if DBCHOICE == 'postgresql':
+    #    import psycopg2
+    #    conn = psycopg2.connect(database=DBNAME, user=DBUSER, password=DBPASS)
+    #    c_error = 'psycopg2.DatabaseError'
+    #else:
 
-    conn=sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE)
+    c_error = 'sqlite3.OperationalError' 
     c=conn.cursor()
 
-    c.execute('CREATE TABLE IF NOT EXISTS comics (ComicID TEXT UNIQUE, ComicName TEXT, ComicSortName TEXT, ComicYear TEXT, DateAdded TEXT, Status TEXT, IncludeExtras INTEGER, Have INTEGER, Total INTEGER, ComicImage TEXT, ComicPublisher TEXT, ComicLocation TEXT, ComicPublished TEXT, LatestIssue TEXT, LatestDate TEXT, Description TEXT, QUALalt_vers TEXT, QUALtype TEXT, QUALscanner TEXT, QUALquality TEXT, LastUpdated TEXT, AlternateSearch TEXT, UseFuzzy TEXT, ComicVersion TEXT, SortOrder INTEGER, ForceContinuing INTEGER, ComicName_Filesafe TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS issues (IssueID TEXT, ComicName TEXT, IssueName TEXT, Issue_Number TEXT, DateAdded TEXT, Status TEXT, Type TEXT, ComicID, ArtworkURL Text, ReleaseDate TEXT, Location TEXT, IssueDate TEXT, Int_IssueNumber INT, ComicSize TEXT, AltIssueNumber TEXT, IssueDate_Edit TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS comics (ComicID TEXT UNIQUE, ComicName TEXT, ComicSortName TEXT, ComicYear TEXT, DateAdded TEXT, Status TEXT, IncludeExtras INTEGER, Have INTEGER, Total INTEGER, ComicImage TEXT, ComicPublisher TEXT, ComicLocation TEXT, ComicPublished TEXT, LatestIssue TEXT, LatestDate TEXT, Description TEXT, QUALalt_vers TEXT, QUALtype TEXT, QUALscanner TEXT, QUALquality TEXT, LastUpdated TEXT, AlternateSearch TEXT, UseFuzzy TEXT, ComicVersion TEXT, SortOrder INTEGER, DetailURL TEXT, ForceContinuing INTEGER, ComicName_Filesafe TEXT, AlternateFileName TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS issues (IssueID TEXT, ComicName TEXT, IssueName TEXT, Issue_Number TEXT, DateAdded TEXT, Status TEXT, Type TEXT, ComicID TEXT, ArtworkURL Text, ReleaseDate TEXT, Location TEXT, IssueDate TEXT, Int_IssueNumber INT, ComicSize TEXT, AltIssueNumber TEXT, IssueDate_Edit TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS snatched (IssueID TEXT, ComicName TEXT, Issue_Number TEXT, Size INTEGER, DateAdded TEXT, Status TEXT, FolderName TEXT, ComicID TEXT, Provider TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS upcoming (ComicName TEXT, IssueNumber TEXT, ComicID TEXT, IssueID TEXT, IssueDate TEXT, Status TEXT, DisplayComicName TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS nzblog (IssueID TEXT, NZBName TEXT, SARC TEXT, PROVIDER TEXT, ID TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS nzblog (IssueID TEXT, NZBName TEXT, SARC TEXT, PROVIDER TEXT, ID TEXT, AltNZBName TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS weekly (SHIPDATE text, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text)')
 #    c.execute('CREATE TABLE IF NOT EXISTS sablog (nzo_id TEXT, ComicName TEXT, ComicYEAR TEXT, ComicIssue TEXT, name TEXT, nzo_complete TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS importresults (impID TEXT, ComicName TEXT, ComicYear TEXT, Status TEXT, ImportDate TEXT, ComicFilename TEXT, ComicLocation TEXT, WatchMatch TEXT, DisplayName TEXT, SRID TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS importresults (impID TEXT, ComicName TEXT, ComicYear TEXT, Status TEXT, ImportDate TEXT, ComicFilename TEXT, ComicLocation TEXT, WatchMatch TEXT, DisplayName TEXT, SRID TEXT, ComicID TEXT, IssueID TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS readlist (IssueID TEXT, ComicName TEXT, Issue_Number TEXT, Status TEXT, DateAdded TEXT, Location TEXT, inCacheDir TEXT, SeriesYear TEXT, ComicID TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS readinglist(StoryArcID TEXT, ComicName TEXT, IssueNumber TEXT, SeriesYear TEXT, IssueYEAR TEXT, StoryArc TEXT, TotalIssues TEXT, Status TEXT, inCacheDir TEXT, Location TEXT, IssueArcID TEXT, ReadingOrder INT, IssueID TEXT, ComicID TEXT, StoreDate TEXT, IssueDate TEXT, Publisher TEXT, IssuePublisher TEXT, IssueName TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS readinglist(StoryArcID TEXT, ComicName TEXT, IssueNumber TEXT, SeriesYear TEXT, IssueYEAR TEXT, StoryArc TEXT, TotalIssues TEXT, Status TEXT, inCacheDir TEXT, Location TEXT, IssueArcID TEXT, ReadingOrder INT, IssueID TEXT, ComicID TEXT, StoreDate TEXT, IssueDate TEXT, Publisher TEXT, IssuePublisher TEXT, IssueName TEXT, CV_ArcID TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS annuals (IssueID TEXT, Issue_Number TEXT, IssueName TEXT, IssueDate TEXT, Status TEXT, ComicID TEXT, GCDComicID TEXT, Location TEXT, ComicSize TEXT, Int_IssueNumber INT, ComicName TEXT, ReleaseDate TEXT, ReleaseComicID TEXT, ReleaseComicName TEXT, IssueDate_Edit TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS rssdb (Title TEXT UNIQUE, Link TEXT, Pubdate TEXT, Site TEXT, Size TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS futureupcoming (ComicName TEXT, IssueNumber TEXT, ComicID TEXT, IssueID TEXT, IssueDate TEXT, Publisher TEXT, Status TEXT, DisplayComicName TEXT)')
@@ -1430,14 +1484,18 @@ def dbcheck():
 
     try:
         c.execute('SELECT ForceContinuing from comics')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE comics ADD COLUMN ForceContinuing INTEGER')
 
     try:
         c.execute('SELECT ComicName_Filesafe from comics')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE comics ADD COLUMN ComicName_Filesafe TEXT')
 
+    try:
+        c.execute('SELECT AlternateFileName from comics')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE comics ADD COLUMN AlternateFileName TEXT')
 
     # -- Issues Table --
 
@@ -1453,12 +1511,12 @@ def dbcheck():
 
     try:
         c.execute('SELECT AltIssueNumber from issues')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE issues ADD COLUMN AltIssueNumber TEXT')
 
     try:
         c.execute('SELECT IssueDate_Edit from issues')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE issues ADD COLUMN IssueDate_Edit TEXT')
 
 
@@ -1491,18 +1549,29 @@ def dbcheck():
 
     try:
         c.execute('SELECT implog from importresults')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE importresults ADD COLUMN implog TEXT')
 
     try:
         c.execute('SELECT DisplayName from importresults')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE importresults ADD COLUMN DisplayName TEXT')
 
     try:
         c.execute('SELECT SRID from importresults')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE importresults ADD COLUMN SRID TEXT')
+
+    try:
+        c.execute('SELECT ComicID from importresults')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE importresults ADD COLUMN ComicID TEXT')
+
+    try:
+        c.execute('SELECT IssueID from importresults')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE importresults ADD COLUMN IssueID TEXT')
+
     ## -- Readlist Table --
 
     try:
@@ -1535,7 +1604,7 @@ def dbcheck():
 
     try:
         c.execute('SELECT ComicID from weekly')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE weekly ADD COLUMN ComicID TEXT')
 
 
@@ -1543,41 +1612,45 @@ def dbcheck():
 
     try:
         c.execute('SELECT SARC from nzblog')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE nzblog ADD COLUMN SARC TEXT')
 
     try:
         c.execute('SELECT PROVIDER from nzblog')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE nzblog ADD COLUMN PROVIDER TEXT')
 
     try:
         c.execute('SELECT ID from nzblog')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE nzblog ADD COLUMN ID TEXT')
 
+    try:
+        c.execute('SELECT AltNZBName from nzblog')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE nzblog ADD COLUMN ALTNZBName TEXT')
 
     ## -- Annuals Table --
 
     try:
         c.execute('SELECT Location from annuals')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE annuals ADD COLUMN Location TEXT')
 
     try:
         c.execute('SELECT ComicSize from annuals')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE annuals ADD COLUMN ComicSize TEXT')
 
     try:
         c.execute('SELECT Int_IssueNumber from annuals')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE annuals ADD COLUMN Int_IssueNumber INT')
 
     try:
         c.execute('SELECT ComicName from annuals')
         annual_update = "no"
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE annuals ADD COLUMN ComicName TEXT')
         annual_update = "yes"
 
@@ -1587,22 +1660,22 @@ def dbcheck():
 
     try:
         c.execute('SELECT ReleaseDate from annuals')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE annuals ADD COLUMN ReleaseDate TEXT')
 
     try:
         c.execute('SELECT ReleaseComicID from annuals')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE annuals ADD COLUMN ReleaseComicID TEXT')
 
     try:
         c.execute('SELECT ReleaseComicName from annuals')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE annuals ADD COLUMN ReleaseComicName TEXT')
 
     try:
         c.execute('SELECT IssueDate_Edit from annuals')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE annuals ADD COLUMN IssueDate_Edit TEXT')
 
 
@@ -1610,7 +1683,7 @@ def dbcheck():
   
     try:
         c.execute('SELECT Provider from snatched')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE snatched ADD COLUMN Provider TEXT')
 
 
@@ -1618,7 +1691,7 @@ def dbcheck():
 
     try:
         c.execute('SELECT DisplayComicName from upcoming')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE upcoming ADD COLUMN DisplayComicName TEXT')
 
 
@@ -1626,48 +1699,53 @@ def dbcheck():
 
     try:
         c.execute('SELECT ComicID from readinglist')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE readinglist ADD COLUMN ComicID TEXT')
 
     try:
         c.execute('SELECT StoreDate from readinglist')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE readinglist ADD COLUMN StoreDate TEXT')
 
     try:
         c.execute('SELECT IssueDate from readinglist')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE readinglist ADD COLUMN IssueDate TEXT')
 
     try:
         c.execute('SELECT Publisher from readinglist')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE readinglist ADD COLUMN Publisher TEXT')
 
     try:
         c.execute('SELECT IssuePublisher from readinglist')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE readinglist ADD COLUMN IssuePublisher TEXT')
 
     try:
         c.execute('SELECT IssueName from readinglist')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE readinglist ADD COLUMN IssueName TEXT')
+
+    try:
+        c.execute('SELECT CV_ArcID from readinglist')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE readinglist ADD COLUMN CV_ArcID TEXT')
 
     ## -- searchresults Table --
     try:
         c.execute('SELECT SRID from searchresults')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE searchresults ADD COLUMN SRID TEXT')
 
     try:
         c.execute('SELECT Series from searchresults')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE searchresults ADD COLUMN Series TEXT')
 
     try:
         c.execute('SELECT sresults from searchresults')
-    except:
+    except sqlite3.OperationalError:
         c.execute('ALTER TABLE searchresults ADD COLUMN sresults TEXT')
 
 
@@ -1710,7 +1788,7 @@ def dbcheck():
 
 def csv_load():
     # for redudant module calls..include this.
-    conn=sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE)
     c=conn.cursor()
 
     c.execute('DROP TABLE IF EXISTS exceptions')
@@ -1752,10 +1830,10 @@ def csv_load():
 
         for row in creader:
             try:
-                c.execute("INSERT INTO exceptions VALUES (?,?,?,?);", row)
+                #print row.split(',')
+                c.execute("INSERT INTO exceptions VALUES (?,?,?,?)", row)
             except Exception, e:
                 #print ("Error - invald arguments...-skipping")
-                pass
                 pass
         csvfile.close()
         i+=1
