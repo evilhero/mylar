@@ -24,7 +24,7 @@ import logging
 import mylar
 import subprocess
 import urllib2
-import sqlite3
+import sys
 from xml.dom.minidom import parseString
 
 
@@ -81,7 +81,7 @@ class PostProcessor(object):
 
     def _log(self, message, level=logger.message):  #level=logger.MESSAGE):
         """
-        A wrapper for the internal logger which also keeps track of messages and saves them to a string for $
+        A wrapper for the internal logger which also keeps track of messages and saves them to a string for sabnzbd post-processing logging functions.
 
         message: The string to log (unicode)
         level: The log level to use (optional)
@@ -95,23 +95,39 @@ class PostProcessor(object):
 
         ep_obj: The object to use when calling the pre script
         """
+        logger.fdebug("initiating pre script detection.")
         self._log("initiating pre script detection.")
+        logger.fdebug("mylar.PRE_SCRIPTS : " + mylar.PRE_SCRIPTS)
         self._log("mylar.PRE_SCRIPTS : " + mylar.PRE_SCRIPTS)
 #        for currentScriptName in mylar.PRE_SCRIPTS:
-        currentScriptName = str(mylar.PRE_SCRIPTS).decode("string_escape")
-        self._log("pre script detected...enabling: " + str(currentScriptName))
+        with open(mylar.PRE_SCRIPTS, 'r') as f:
+            first_line = f.readline()
+
+        if mylar.PRE_SCRIPTS.endswith('.sh'):
+            shell_cmd = re.sub('#!','', first_line).strip()
+            if shell_cmd == '' or shell_cmd is None:
+                shell_cmd = '/bin/bash'
+        else:
+            #forces mylar to use the executable that it was run with to run the extra script.
+            shell_cmd = sys.executable
+
+        currentScriptName = shell_cmd + ' ' + str(mylar.PRE_SCRIPTS).decode("string_escape")
+        logger.fdebug("pre script detected...enabling: " + str(currentScriptName))
             # generate a safe command line string to execute the script and provide all the parameters
         script_cmd = shlex.split(currentScriptName, posix=False) + [str(nzb_name), str(nzb_folder), str(seriesmetadata)]
+        logger.fdebug("cmd to be executed: " + str(script_cmd))
         self._log("cmd to be executed: " + str(script_cmd))
 
             # use subprocess to run the command and capture output
-        self._log(u"Executing command "+str(script_cmd))
-        self._log(u"Absolute path to script: "+script_cmd[0])
+        logger.fdebug(u"Executing command "+str(script_cmd))
+        logger.fdebug(u"Absolute path to script: "+script_cmd[0])
         try:
             p = subprocess.Popen(script_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=mylar.PROG_DIR)
             out, err = p.communicate() #@UnusedVariable
+            logger.fdebug(u"Script result: " + out)
             self._log(u"Script result: " + out)
         except OSError, e:
+           logger.warn(u"Unable to run pre_script: " + str(script_cmd))
            self._log(u"Unable to run pre_script: " + str(script_cmd))
 
     def _run_extra_scripts(self, nzb_name, nzb_folder, filen, folderp, seriesmetadata):
@@ -120,23 +136,39 @@ class PostProcessor(object):
 
         ep_obj: The object to use when calling the extra script
         """
+        logger.fdebug("initiating extra script detection.")
         self._log("initiating extra script detection.")
+        logger.fdebug("mylar.EXTRA_SCRIPTS : " + mylar.EXTRA_SCRIPTS)
         self._log("mylar.EXTRA_SCRIPTS : " + mylar.EXTRA_SCRIPTS)
 #        for curScriptName in mylar.EXTRA_SCRIPTS:
-        curScriptName = str(mylar.EXTRA_SCRIPTS).decode("string_escape")
-        self._log("extra script detected...enabling: " + str(curScriptName))
+        with open(mylar.EXTRA_SCRIPTS, 'r') as f:
+            first_line = f.readline()
+
+        if mylar.EXTRA_SCRIPTS.endswith('.sh'):
+            shell_cmd = re.sub('#!','', first_line)
+            if shell_cmd == '' or shell_cmd is None:
+                shell_cmd = '/bin/bash'
+        else:
+            #forces mylar to use the executable that it was run with to run the extra script.
+            shell_cmd = sys.executable
+
+        curScriptName = shell_cmd + ' ' + str(mylar.EXTRA_SCRIPTS).decode("string_escape")
+        logger.fdebug("extra script detected...enabling: " + str(curScriptName))
             # generate a safe command line string to execute the script and provide all the parameters
         script_cmd = shlex.split(curScriptName) + [str(nzb_name), str(nzb_folder), str(filen), str(folderp), str(seriesmetadata)]
+        logger.fdebug("cmd to be executed: " + str(script_cmd))
         self._log("cmd to be executed: " + str(script_cmd))
 
             # use subprocess to run the command and capture output
-        self._log(u"Executing command "+str(script_cmd))
-        self._log(u"Absolute path to script: "+script_cmd[0])
+        logger.fdebug(u"Executing command "+str(script_cmd))
+        logger.fdebug(u"Absolute path to script: "+script_cmd[0])
         try:
             p = subprocess.Popen(script_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=mylar.PROG_DIR)
             out, err = p.communicate() #@UnusedVariable
+            logger.fdebug(u"Script result: " + out)
             self._log(u"Script result: " + out)
         except OSError, e:
+            logger.warn(u"Unable to run extra_script: " + str(script_cmd))
             self._log(u"Unable to run extra_script: " + str(script_cmd))
 
 
@@ -259,10 +291,10 @@ class PostProcessor(object):
                                 if 'annual' in temploc.lower():
                                     biannchk = re.sub('-', '', temploc.lower()).strip()
                                     if 'biannual' in biannchk:
-                                        logger.info(module + ' Bi-Annual detected.')
+                                        logger.fdebug(module + ' Bi-Annual detected.')
                                         fcdigit = helpers.issuedigits(re.sub('biannual', '', str(biannchk)).strip())
                                     else:
-                                        logger.info(module + ' Annual detected.')
+                                        logger.fdebug(module + ' Annual detected.')
                                         fcdigit = helpers.issuedigits(re.sub('annual', '', str(temploc.lower())).strip())
                                     annchk = "yes"
                                     issuechk = myDB.selectone("SELECT * from annuals WHERE ComicID=? AND Int_IssueNumber=?", [cs['ComicID'],fcdigit]).fetchone()
@@ -340,10 +372,19 @@ class PostProcessor(object):
                     nzbname = re.sub(str(ext), '', str(nzbname))
 
                 #replace spaces
-                nzbname = re.sub(' ', '.', str(nzbname))
-                nzbname = re.sub('[\,\:\?\']', '', str(nzbname))
-                nzbname = re.sub('[\&]', 'and', str(nzbname))
-                nzbname = re.sub('_', '.', str(nzbname))
+                # let's change all space to decimals for simplicity
+                logger.fdebug('[NZBNAME]: ' + nzbname)
+                #gotta replace & or escape it
+                nzbname = re.sub("\&", 'and', nzbname)
+                nzbname = re.sub('[\,\:\?\']', '', nzbname)
+                nzbname = re.sub('[\(\)]', ' ', nzbname)
+                logger.fdebug('[NZBNAME] nzbname (remove chars): ' + nzbname)
+                nzbname = re.sub('.cbr', '', nzbname).strip()
+                nzbname = re.sub('.cbz', '', nzbname).strip()
+                nzbname = re.sub('[\.\_]', ' ', nzbname).strip()
+                nzbname = re.sub('\s+',' ', nzbname)  #make sure we remove the extra spaces.
+                logger.fdebug('[NZBNAME] nzbname (remove extensions, double spaces, convert underscores to spaces): ' + nzbname)
+                nzbname = re.sub('\s', '.', nzbname)
 
                 logger.fdebug(module + ' After conversions, nzbname is : ' + str(nzbname))
 #                if mylar.USE_NZBGET==1:
@@ -552,15 +593,28 @@ class PostProcessor(object):
                     logger.info(module + ' No matches for Manual Run ... exiting.')
                     return
 
+                i = 0
                 for ml in manual_list:
+                    i+=1
                     comicid = ml['ComicID']
                     issueid = ml['IssueID']
                     issuenumOG = ml['IssueNumber']
+                    #check to see if file is still being written to.
+                    while True:
+                        waiting = False
+                        ctime = max(os.path.getctime(ml['ComicLocation']), os.path.getmtime(ml['ComicLocation']))
+                        if time.time() > ctime > time.time() - 15:
+                            time.sleep(max(time.time() - ctime, 0))
+                            waiting = True
+                        else:
+                            break
+                      
                     dupthis = helpers.duplicate_filecheck(ml['ComicLocation'], ComicID=comicid, IssueID=issueid)
                     if dupthis == "write":
-                        self.Process_next(comicid,issueid,issuenumOG,ml)
+                        stat = ' [' + str(i) + '/' + str(len(manual_list)) + ']'
+                        self.Process_next(comicid,issueid,issuenumOG,ml,stat)
                         dupthis = None
-                logger.info(module + ' Manual post-processing completed.')
+                logger.info(module + ' Manual post-processing completed for ' + str(i) + ' issues.')
                 return
             else:
                 comicid = issuenzb['ComicID']
@@ -578,7 +632,8 @@ class PostProcessor(object):
                     return self.queue.put(self.valreturn)
 
 
-    def Process_next(self,comicid,issueid,issuenumOG,ml=None):
+    def Process_next(self,comicid,issueid,issuenumOG,ml=None,stat=None):
+            if stat is None: stat = ' [1/1]'
             module = self.module
             annchk = "no"
             extensions = ('.cbr', '.cbz')
@@ -587,7 +642,7 @@ class PostProcessor(object):
             comicnzb = myDB.selectone("SELECT * from comics WHERE comicid=?", [comicid]).fetchone()
             issuenzb = myDB.selectone("SELECT * from issues WHERE issueid=? AND comicid=? AND ComicName NOT NULL", [issueid,comicid]).fetchone()
             if ml is not None and mylar.SNATCHEDTORRENT_NOTIFY:
-                snatchnzb = myDB.selectone("SELECT * from snatched WHERE IssueID=? AND ComicID=? AND (provider=? OR provider=?) AND Status='Snatched'", [issueid,comicid,'KAT','CBT']).fetchone() 
+                snatchnzb = myDB.selectone("SELECT * from snatched WHERE IssueID=? AND ComicID=? AND (provider=? OR provider=?) AND Status='Snatched'", [issueid,comicid,'KAT','32P']).fetchone() 
                 if snatchnzb is None:
                     logger.fdebug(module + ' Was not downloaded with Mylar and the usage of torrents. Disabling torrent manual post-processing completion notification.')
                 else:
@@ -598,12 +653,11 @@ class PostProcessor(object):
                 issuenzb = myDB.selectone("SELECT * from annuals WHERE issueid=? and comicid=?", [issueid,comicid]).fetchone()
                 annchk = "yes"
             if annchk == "no":
-                logger.info(module + ' Starting Post-Processing for ' + issuenzb['ComicName'] + ' issue: ' + str(issuenzb['Issue_Number']))
+                logger.info(module + stat + ' Starting Post-Processing for ' + issuenzb['ComicName'] + ' issue: ' + issuenzb['Issue_Number'])
             else:
-                logger.info(module + ' Starting Post-Processing for ' + issuenzb['ReleaseComicName'] + ' issue: ' + str(issuenzb['Issue_Number']))
+                logger.info(module + stat + ' Starting Post-Processing for ' + issuenzb['ReleaseComicName'] + ' issue: ' + issuenzb['Issue_Number'])
             logger.fdebug(module + ' issueid: ' + str(issueid))
-            logger.fdebug(module + ' issuenumOG: ' + str(issuenumOG))
-
+            logger.fdebug(module + ' issuenumOG: ' + issuenumOG)
             #issueno = str(issuenum).split('.')[0]
             #new CV API - removed all decimals...here we go AGAIN!
             issuenum = issuenzb['Issue_Number']
@@ -622,6 +676,16 @@ class PostProcessor(object):
                 if '!' in issuenum: issuenum = re.sub('\!', '', issuenum)
                 issuenum = re.sub("[^0-9]", "", issuenum)
                 issue_except = '.NOW'
+
+            elif u'\xbd' in issuenum:
+                issuenum = '0.5'
+            elif u'\xbc' in issuenum:
+                issuenum = '0.25'
+            elif u'\xbe' in issuenum:
+                issuenum = '0.75'
+            elif u'\u221e' in issuenum:
+                #issnum = utf-8 will encode the infinity symbol without any help
+                issuenum = 'infinity'
 
             if '.' in issuenum:
                 iss_find = issuenum.find('.')
@@ -646,7 +710,7 @@ class PostProcessor(object):
                     logger.fdebug(module + ' Issue Number: ' + str(iss))
             else:
                 iss = issuenum
-                issueno = str(iss)
+                issueno = iss
 
             # issue zero-suppression here
             if mylar.ZERO_LEVEL == "0": 
@@ -719,7 +783,7 @@ class PostProcessor(object):
 #            comicnzb= myDB.action("SELECT * from comics WHERE comicid=?", [comicid]).fetchone()
             publisher = comicnzb['ComicPublisher']
             self._log("Publisher: " + publisher)
-            logger.fdebug(module + ' Publisher: ' + str(publisher))
+            logger.fdebug(module + ' Publisher: ' + publisher)
             #we need to un-unicode this to make sure we can write the filenames properly for spec.chars
             series = comicnzb['ComicName'].encode('ascii', 'ignore').strip()
             self._log("Series: " + series)
@@ -965,14 +1029,16 @@ class PostProcessor(object):
                 #downtype = for use with updater on history table to set status to 'Post-Processed'
                 downtype = 'PP'
                 #Manual Run, this is the portion.
+                src = os.path.join(odir, ofilename)
                 if mylar.RENAME_FILES:
                     if str(ofilename) != str(nfilename + ext):
                         logger.fdebug(module + ' Renaming ' + os.path.join(odir, str(ofilename)) + ' ..to.. ' + os.path.join(odir, self.nzb_folder,str(nfilename + ext)))
                         os.rename(os.path.join(odir, str(ofilename)), os.path.join(odir ,str(nfilename + ext)))
+                        src = os.path.join(odir, str(nfilename + ext))
                     else:
                         logger.fdebug(module + ' Filename is identical as original, not renaming.')
-                src = os.path.join(odir, nfilename + ext)
-                logger.fdebug(module + ' odir src : ' + os.path.join(odir, nfilename + ext))
+
+                logger.fdebug(module + ' odir src : ' + src)
                 logger.fdebug(module + ' Moving ' + src + ' ... to ... ' + dst)
                 try:
                     shutil.move(src, dst)
@@ -1013,20 +1079,20 @@ class PostProcessor(object):
             
             if annchk == "no":
                 updater.foundsearch(comicid, issueid, down=downtype, module=module)
-                dispiss = 'issue: ' + str(issuenumOG)
+                dispiss = 'issue: ' + issuenumOG
             else:
                 updater.foundsearch(comicid, issueid, mode='want_ann', down=downtype, module=module)
                 if 'annual' not in series.lower():
-                    dispiss = 'annual issue: ' + str(issuenumOG)
+                    dispiss = 'annual issue: ' + issuenumOG
                 else:
-                    dispiss = str(issuenumOG)
+                    dispiss = issuenumOG
 
             #force rescan of files
             updater.forceRescan(comicid,module=module)
 
             if mylar.WEEKFOLDER:
                 #if enabled, will *copy* the post-processed file to the weeklypull list folder for the given week.
-                weeklypull.weekly_singlecopy(comicid,issuenum,str(nfilename+ext),dst,module=module)
+                weeklypull.weekly_singlecopy(comicid,issuenum,str(nfilename+ext),dst,module=module,issueid=issueid)
 
             # retrieve/create the corresponding comic objects
             if mylar.ENABLE_EXTRA_SCRIPTS:
@@ -1110,12 +1176,18 @@ class PostProcessor(object):
 
 class FolderCheck():
 
-    def run(self):
-        module = '[FOLDER-CHECK]'
+    def __init__(self):
+        import Queue
         import PostProcessor, logger
+
+        self.module = '[FOLDER-CHECK]'
+        self.queue = Queue.Queue()
+
+    def run(self):
         #monitor a selected folder for 'snatched' files that haven't been processed
-        logger.info(module + ' Checking folder ' + mylar.CHECK_FOLDER + ' for newly snatched downloads')
-        PostProcess = PostProcessor.PostProcessor('Manual Run', mylar.CHECK_FOLDER)
+        #junk the queue as it's not needed for folder monitoring, but needed for post-processing to run without error.
+        logger.info(self.module + ' Checking folder ' + mylar.CHECK_FOLDER + ' for newly snatched downloads')
+        PostProcess = PostProcessor('Manual Run', mylar.CHECK_FOLDER, queue=self.queue)
         result = PostProcess.Process()
-        logger.info(module + ' Finished checking for newly snatched downloads')
+        logger.info(self.module + ' Finished checking for newly snatched downloads')
 

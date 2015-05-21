@@ -56,7 +56,8 @@
                             but you can contribute and support the development</br>
                             by buying me a coffee (or several)</strong></label></br></br>
                          </div>
-                         <div style="width: 55%; margin: 0px auto;">
+                         <div style="width: 60%; margin: 0px auto;">
+                            <a id="navDonate" href="https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&amp;hosted_button_id=EWQADB5AMVRFU" rel="noreferrer" onclick="window.open('http://dereferer.org/?' + this.href); return false;"><img src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_SM.gif" alt="[donate]" /></a>
                             <a href="https://flattr.com/submit/auto?user_id=evilhero&url=https://github.com/evilhero/mylar&title=Mylar%20Donation%description=Supporting&20the%development%20of%20Mylar&language=en_CA&hidden=1&category=software" target="_blank">
                                <img src="//api.flattr.com/button/flattr-badge-large.png" alt="Flattr this" title="Flattr this" border="0" align="center">
                             </a>
@@ -164,10 +165,6 @@
                                  <div class="row checkbox">
                                     <input type="checkbox" name="syno_fix" value="1" ${config['syno_fix']} /> <label>Synology Fix</label>
                                     <br/><small>*Use this if experiencing parsing problems*</small>
-                                 </div>
-                                 <div class="row checkbox">
-                                    <input type="checkbox" name="cvapifix" value="1" ${config['cvapifix']} /> <label>Comicvine URL Fix</label>
-                                    <br/><small>*Use this if CV's URL has changed*</small>
                                  </div>
 <!--
                                  <div class="row checkbox">
@@ -468,11 +465,6 @@
                                 </div>
                                 <div class="config">
                                         <div class="row">
-                                            <label>DOGNZB UID</label>
-                                            <input type="text" name="dognzb_uid" value="${config['dognzb_uid']}" size="15">
-                                            <small>( only needed for RSS feed )</small>
-                                        </div>
-                                        <div class="row">
                                                 <label>DOGNZB API</label>
                                                 <input type="text" name="dognzb_apikey" value="${config['dognzb_api']}" size="36">
                                          </div>
@@ -498,13 +490,71 @@
                                                 <input id="enable_kat" type="checkbox" name="enable_kat" value=1 ${config['enable_kat']} /><label>Enable KAT</label>
                                          </div>
                                          <div class="row checkbox left clearfix">
-                                                <input id="enable_cbt" type="checkbox" onclick="initConfigCheckbox($(this));" name="enable_cbt" value=1 ${config['enable_cbt']} /><label>Enable CBT</label>
+                                                <input type="checkbox" id="enable_32p" onclick="initConfigCheckbox($(this));" name="enable_32p" value=1 ${config['enable_32p']} /><label>Enable 32P</label>
+                                                <div align="right">
+                                                  <small class="heading"><span style="float: right; margin-right: .3em; margin-top: 4px;" class="ui-icon ui-icon-info"></span>python 2.7.9 required for 32P usage.</small>
+                                                </div>
                                          </div>
-                                         <div class="config">                                           
-                                                <label>&nbspPasskey</label>
-                                                <input type="text" name="cbt_passkey" value="${config['cbt_passkey']}" size="36">
+                                         <div class="config"> 
+                                             <fieldset>
+                                                <input type="radio" name="mode_32p" id="legacymode_32p" value="0" ${config['legacymode_32p']}> Legacy Mode <input type="radio" name="mode_32p" id="authmode_32p" value="1" ${config['authmode_32p']}> Auth Mode
+                                             </fieldset>
+                                             <fieldset id="legacy32p_options">
+                                                <div class="row">
+                                                   <label>&nbspPasskey</label>
+                                                   <input type="text" name="passkey_32p" value="${config['passkey_32p']}" size="36">
+                                                </div>
+                                                <div class="row">
+                                                   <label>&nbspRSS feed</label>
+                                                   <input type="text" name="rssfeed_32p" value="${config['rssfeed_32p']}" size="36">
+                                                   <small>( enter in the full url for any CURRENT 32P RSS feed )</small>
+                                                   <small>( Currently will only montior NEW releases feed )</small>
+                                                </div>
+                                             </fieldset>
+                                             <fieldset id="auth32p_options">
+                                                <div class="row">
+                                                    <label>&nbspUserName</label>
+                                                    <input type="text" name="username_32p" value="${config['username_32p']}" size="36">
+                                                </div>
+                                                <div class="row">
+                                                    <label>&nbspPassword</label>
+                                                    <input type="password" name="password_32p" value="${config['password_32p']}" size="36">
+                                                    <small>( monitor the NEW releases feed & your personal notifications )</small>
+                                                </div>
+                                             </fieldset>
                                          </div>
+<!--
+                                             <div class="row checkbox left clearfix">
+                                                <input type="checkbox" id="legacymode_32p" onclick="initConfigCheckbox($(this));" name="legacymode_32p" value=1 ${config['legacymode_32p']} /><label>RSS Feed mode (Legacy mode)</label>
+                                             </div>
+                                             <div class="config">
+                                                <div class="row">
+                                                   <label>&nbspPasskey</label>
+                                                   <input type="text" name="passkey_32p" value="${config['passkey_32p']}" size="36">
+                                                </div>
+                                                <div class="row">
+                                                   <label>&nbspRSS feed</label>
+                                                   <input type="text" name="rssfeed_32p" value="${config['rssfeed_32p']}" size="36">
+                                                   <small>( enter in the full url for any CURRENT 32P RSS feed )</small>
+                                                   <small>( Currently will only montior NEW releases feed )</small>
+                                                </div>
+                                             </div>
+                                             <div class="row checkbox left clearfix">
+                                                <input type="checkbox" id="authmode_32p" onclick="initConfigCheckbox($(this));" name="authmode_32p" value=1 ${config['authmode_32p']} /><label>Auth mode (User/Pass)</label>
+                                             </div>
+                                             <div class="config"">
+                                                <div class="row">
+                                                    <label>&nbspUserName</label>
+                                                    <input type="text" name="username_32p" value="${config['username_32p']}" size="36">
+                                                </div>
+                                                <div class="row">
+                                                    <label>&nbspPassword</label>
+                                                    <input type="password" name="password_32p" value="${config['password_32p']}" size="36">
+                                                    <small>( monitor the NEW releases feed & your personal notifications )</small>
+                                                </div>
+                                             </div>
                                          </div>
+-->
                                 </div>
                         </fieldset>
 
@@ -606,7 +656,7 @@
                                 </div>
                                 <div class="config">
                                        <div class="row">
-             <input type="text" name="minsize" value="${config['minsize']}" size="6">
+                                           <input type="text" name="minsize" value="${config['minsize']}" size="6">
                                        </div>
                                 </div>
                                 </div>
@@ -1123,7 +1173,29 @@
                         {
                                 $("#pushbulletoptions").slideUp();
                         }
-                
+                });
+
+                if ($("#legacymode_32p").is(":checked"))
+                        {
+                                $("#auth32p_options").hide();
+                                $("#legacy32p_options").show();
+                        }
+                else
+                        {
+                                $("#legacy32p_options").hide();
+                                $("#auth32p_options").show();
+                        }
+
+                $('input[type=radio]').change(function(){
+                        if ($("#legacymode_32p").is(":checked"))
+                        {
+                                $("#auth32p_options").fadeOut("fast", function() { $("#legacy32p_options").fadeIn() });
+                        }
+                        else
+                        {
+                                $("#legacy32p_options").fadeOut("fast", function() { $("#auth32p_options").fadeIn() });
+                        }
+                });
 
                 if ($("#nzb_downloader_sabnzbd").is(":checked"))
                         {
@@ -1140,7 +1212,6 @@
                                 $("#sabnzbd_options,#nzbget_options").hide();
                                 $("#blackhole_options").show();
                         }
-                });
 
                 $('input[type=radio]').change(function(){
                         if ($("#nzb_downloader_sabnzbd").is(":checked"))
@@ -1237,7 +1308,7 @@
                 initConfigCheckbox("#torrent_local");
                 initConfigCheckbox("#torrent_seedbox");
                 initConfigCheckbox("#enable_torrent_search");
-                initConfigCheckbox("#enable_cbt");
+                initConfigCheckbox("#enable_32p");
                 initConfigCheckbox("#enable_rss");
 		initConfigCheckbox("#useexperimental");
 		initConfigCheckbox("#useraw");
