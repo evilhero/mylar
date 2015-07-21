@@ -27,10 +27,10 @@ import imghdr
 from operator import itemgetter
 from cherrypy.lib.static import serve_file, serve_download
 
-cmd_list = ['getIndex', 'getComic', 'getUpcoming', 'getWanted', 'getHistory', 'getLogs',
+cmd_list = ['getIndex', 'getComic', 'getUpcoming', 'getWanted', 'getHistory', 'getLogs', 'clearLogs',
             'findComic', 'addComic', 'delComic', 'pauseComic', 'resumeComic', 'refreshComic',
             'addIssue', 'queueIssue', 'unqueueIssue', 'forceSearch', 'forceProcess', 'getVersion', 'checkGithub',
-            'shutdown', 'restart', 'update', 'getComicInfo', 'getIssueInfo', 'getArt', 'downloadIssue']
+            'shutdown', 'restart', 'update', 'getComicInfo', 'getIssueInfo', 'getArt', 'downloadIssue', 'downloadNZB']
 
 
 class Api(object):
@@ -45,32 +45,47 @@ class Api(object):
         self.kwargs = None
         self.data = None
         self.callback = None
+        self.apitype = None
 
-
-    def checkParams(self,*args,**kwargs):
-
-        if not mylar.API_ENABLED:
-            self.data = 'API not enabled'
-            return
-        if not mylar.API_KEY:
-            self.data = 'API key not generated'
-            return
-        if len(mylar.API_KEY) != 32:
-            self.data = 'API key not generated correctly'
-            return
+    def checkParams(self, *args, **kwargs):
 
         if 'apikey' not in kwargs:
             self.data = 'Missing api key'
             return
 
-        if kwargs['apikey'] != mylar.API_KEY:
+        if 'cmd' not in kwargs:
+            self.data = 'Missing parameter: cmd'
+            return
+
+        if not mylar.API_ENABLED:
+            if kwargs['apikey'] != mylar.DOWNLOAD_APIKEY:
+               self.data = 'API not enabled'
+               return
+
+        if kwargs['apikey'] != mylar.API_KEY and all([kwargs['apikey'] != mylar.DOWNLOAD_APIKEY, mylar.DOWNLOAD_APIKEY != None]):
             self.data = 'Incorrect API key'
             return
         else:
+            if kwargs['apikey'] == mylar.API_KEY:
+                self.apitype = 'normal'
+            elif kwargs['apikey'] == mylar.DOWNLOAD_APIKEY:
+                self.apitype = 'download'
+            logger.fdebug('Matched to key. Api set to : ' + self.apitype + ' mode.')
             self.apikey = kwargs.pop('apikey')
 
-        if 'cmd' not in kwargs:
-            self.data = 'Missing parameter: cmd'
+        if not([mylar.API_KEY, mylar.DOWNLOAD_APIKEY]):
+            self.data = 'API key not generated'
+            return
+
+        if self.apitype:
+            if self.apitype == 'normal' and len(mylar.API_KEY) != 32:
+                self.data = 'API key not generated correctly'
+                return
+            if self.apitype == 'download' and len(mylar.DOWNLOAD_APIKEY) != 32:
+                self.data = 'Download API key not generated correctly'
+                return
+        else:
+            self.data = 'API key not generated correctly'
             return
 
         if kwargs['cmd'] not in cmd_list:
@@ -85,7 +100,7 @@ class Api(object):
     def fetchData(self):
 
         if self.data == 'OK':
-            logger.info('Recieved API command: ' + self.cmd)
+            logger.fdebug('Recieved API command: ' + self.cmd)
             methodToCall = getattr(self, "_" + self.cmd)
             result = methodToCall(**self.kwargs)
             if 'callback' not in self.kwargs:
@@ -153,7 +168,13 @@ class Api(object):
         return
 
     def _getLogs(self, **kwargs):
-        pass
+        self.data = mylar.LOG_LIST
+        return
+
+    def _clearLogs(self, **kwargs):
+        mylar.LOG_LIST = []
+        self.data = 'Cleared log'
+        return
 
     def _delComic(self, **kwargs):
         if 'id' not in kwargs:
@@ -422,3 +443,18 @@ class Api(object):
         else:
             self.data = 'You need to download that issue first'
             return
+
+    def _downloadNZB(self, nzbname):
+        if not nzbname:
+            self.data = 'You need to provide a nzbname'
+            return
+
+        self.nzbname = nzbname
+        f = os.path.join(mylar.CACHE_DIR, nzbname)
+        if os.path.isfile(f):
+            self.file = f
+            self.filename = nzbname
+        else:
+            self.data = 'NZBname does not exist within the cache directory. Unable to retrieve.'
+            return
+

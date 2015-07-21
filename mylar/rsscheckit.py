@@ -64,13 +64,13 @@ class tehMain():
                     logger.info('[RSS] Initiating Torrent RSS Feed Check on 32P.')
                     if mylar.MODE_32P == 0:
                         logger.fdebug('[RSS] 32P mode set to Legacy mode. Monitoring New Releases feed only.')
-                        if any( [mylar.PASSKEY_32P is None, mylar.PASSKEY_32P == '', mylar.RSSFEED_32P is None, mylar.RSSFEED_32P == ''] ):
+                        if any([mylar.PASSKEY_32P is None, mylar.PASSKEY_32P == '', mylar.RSSFEED_32P is None, mylar.RSSFEED_32P == '']):
                             logger.error('[RSS] Unable to validate information from provided RSS Feed. Verify that the feed provided is a current one.')
                         else:
                             rsscheck.torrents(pickfeed='1', feedinfo=mylar.KEYS_32P)
                     else:
                         logger.fdebug('[RSS] 32P mode set to Auth mode. Monitoring all personal notification feeds & New Releases feed')
-                        if any( [mylar.USERNAME_32P is None, mylar.USERNAME_32P == '', mylar.PASSWORD_32P is None] ):
+                        if any([mylar.USERNAME_32P is None, mylar.USERNAME_32P == '', mylar.PASSWORD_32P is None]):
                             logger.error('[RSS] Unable to sign-on to 32P to validate settings. Please enter/check your username password in the configuration.')
                         else:
                             if mylar.KEYS_32P is None:
@@ -79,7 +79,9 @@ class tehMain():
                             else:
                                 feedinfo = mylar.FEEDINFO_32P
 
-                            if len(feedinfo) >0:
+                            if feedinfo is None or len(feedinfo) == 0:
+                                logger.error('[RSS] Unable to retrieve any information from 32P for RSS Feeds. Skipping for now.')
+                            else:
                                 rsscheck.torrents(pickfeed='1', feedinfo=feedinfo[0])
                                 x = 0
                                 #assign personal feeds for 32p > +8
@@ -87,8 +89,7 @@ class tehMain():
                                     x+=1
                                     pfeed_32p = str(7 + x)
                                     rsscheck.torrents(pickfeed=pfeed_32p, feedinfo=fi)
-                            else:
-                                logger.error('[RSS] Unable to retrieve any information from 32P for RSS Feeds. Skipping for now.')
+
             logger.info('[RSS] Initiating RSS Feed Check for NZB Providers.')
             rsscheck.nzbs(forcerss=self.forcerss)
             logger.info('[RSS] RSS Feed Check/Update Complete')

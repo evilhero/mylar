@@ -113,8 +113,10 @@ ENABLE_HTTPS = False
 HTTPS_CERT = None
 HTTPS_KEY = None
 HTTPS_FORCE_ON = False
+HOST_RETURN = None
 API_ENABLED = False
 API_KEY = None
+DOWNLOAD_APIKEY = None
 LAUNCH_BROWSER = False
 LOGVERBOSE = None
 GIT_PATH = None
@@ -122,6 +124,8 @@ INSTALL_TYPE = None
 CURRENT_VERSION = None
 LATEST_VERSION = None
 COMMITS_BEHIND = None
+GIT_USER = 'evilhero'
+GIT_BRANCH = None
 USER_AGENT = None
 SEARCH_DELAY = 1
 
@@ -139,6 +143,8 @@ DESTINATION_DIR = None   #if M_D_D_ is enabled, this will be the DEFAULT for wri
 MULTIPLE_DEST_DIRS = None  #Nothing will ever get written to these dirs - just for scanning, unless it's metatagging/renaming.
 CHMOD_DIR = None
 CHMOD_FILE = None
+CHOWNER = None
+CHGROUP = None
 USENET_RETENTION = None
 CREATE_FOLDERS = True
 
@@ -214,6 +220,7 @@ SAB_PASSWORD = None
 SAB_APIKEY = None
 SAB_CATEGORY = None
 SAB_PRIORITY = None
+SAB_TO_MYLAR = False
 SAB_DIRECTORY = None
 
 USE_NZBGET = False
@@ -342,6 +349,7 @@ USERNAME_32P = None
 PASSWORD_32P = None
 AUTHKEY_32P = None
 FEEDINFO_32P = None
+VERIFY_32P = 1
 SNATCHEDTORRENT_NOTIFY = 0
 
 def CheckSection(sec):
@@ -394,21 +402,21 @@ def initialize():
 
     with INIT_LOCK:
         global __INITIALIZED__, DBCHOICE, DBUSER, DBPASS, DBNAME, COMICVINE_API, DEFAULT_CVAPI, CVAPI_COUNT, CVAPI_TIME, CVAPI_MAX, FULL_PATH, PROG_DIR, VERBOSE, DAEMON, UPCOMING_SNATCHED, COMICSORT, DATA_DIR, CONFIG_FILE, CFG, CONFIG_VERSION, LOG_DIR, CACHE_DIR, MAX_LOGSIZE, LOGVERBOSE, OLDCONFIG_VERSION, OS_DETECT, \
-                queue, HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, ENABLE_HTTPS, HTTPS_CERT, HTTPS_KEY, HTTPS_FORCE_ON, API_ENABLED, API_KEY, LAUNCH_BROWSER, GIT_PATH, SAFESTART, AUTO_UPDATE, \
-                CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, USER_AGENT, DESTINATION_DIR, MULTIPLE_DEST_DIRS, CREATE_FOLDERS, \
+                queue, HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, ENABLE_HTTPS, HTTPS_CERT, HTTPS_KEY, HTTPS_FORCE_ON, HOST_RETURN, API_ENABLED, API_KEY, DOWNLOAD_APIKEY, LAUNCH_BROWSER, GIT_PATH, SAFESTART, AUTO_UPDATE, \
+                CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, GIT_USER, GIT_BRANCH, USER_AGENT, DESTINATION_DIR, MULTIPLE_DEST_DIRS, CREATE_FOLDERS, \
                 DOWNLOAD_DIR, USENET_RETENTION, SEARCH_INTERVAL, NZB_STARTUP_SEARCH, INTERFACE, DUPECONSTRAINT, AUTOWANT_ALL, AUTOWANT_UPCOMING, ZERO_LEVEL, ZERO_LEVEL_N, COMIC_COVER_LOCAL, HIGHCOUNT, \
-                LIBRARYSCAN, LIBRARYSCAN_INTERVAL, DOWNLOAD_SCAN_INTERVAL, NZB_DOWNLOADER, USE_SABNZBD, SAB_HOST, SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_PRIORITY, SAB_DIRECTORY, USE_BLACKHOLE, BLACKHOLE_DIR, ADD_COMICS, COMIC_DIR, IMP_MOVE, IMP_RENAME, IMP_METADATA, \
+                LIBRARYSCAN, LIBRARYSCAN_INTERVAL, DOWNLOAD_SCAN_INTERVAL, NZB_DOWNLOADER, USE_SABNZBD, SAB_HOST, SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_PRIORITY, SAB_TO_MYLAR, SAB_DIRECTORY, USE_BLACKHOLE, BLACKHOLE_DIR, ADD_COMICS, COMIC_DIR, IMP_MOVE, IMP_RENAME, IMP_METADATA, \
                 USE_NZBGET, NZBGET_HOST, NZBGET_PORT, NZBGET_USERNAME, NZBGET_PASSWORD, NZBGET_CATEGORY, NZBGET_PRIORITY, NZBGET_DIRECTORY, NZBSU, NZBSU_UID, NZBSU_APIKEY, DOGNZB, DOGNZB_APIKEY, \
                 NEWZNAB, NEWZNAB_NAME, NEWZNAB_HOST, NEWZNAB_APIKEY, NEWZNAB_UID, NEWZNAB_ENABLED, EXTRA_NEWZNABS, NEWZNAB_EXTRA, \
                 RAW, RAW_PROVIDER, RAW_USERNAME, RAW_PASSWORD, RAW_GROUPS, EXPERIMENTAL, ALTEXPERIMENTAL, \
                 ENABLE_META, CMTAGGER_PATH, CT_TAG_CR, CT_TAG_CBL, CT_CBZ_OVERWRITE, UNRAR_CMD, UPDATE_ENDED, INDIE_PUB, BIGGIE_PUB, IGNORE_HAVETOTAL, SNATCHED_HAVETOTAL, PROVIDER_ORDER, \
                 dbUpdateScheduler, searchScheduler, RSSScheduler, WeeklyScheduler, VersionScheduler, FolderMonitorScheduler, \
                 ENABLE_TORRENTS, MINSEEDS, TORRENT_LOCAL, LOCAL_WATCHDIR, TORRENT_SEEDBOX, SEEDBOX_HOST, SEEDBOX_PORT, SEEDBOX_USER, SEEDBOX_PASS, SEEDBOX_WATCHDIR, \
-                ENABLE_RSS, RSS_CHECKINTERVAL, RSS_LASTRUN, FAILED_DOWNLOAD_HANDLING, FAILED_AUTO, ENABLE_TORRENT_SEARCH, ENABLE_KAT, KAT_PROXY, ENABLE_32P, MODE_32P, KEYS_32P, RSSFEED_32P, USERNAME_32P, PASSWORD_32P, AUTHKEY_32P, PASSKEY_32P, FEEDINFO_32P, SNATCHEDTORRENT_NOTIFY, \
+                ENABLE_RSS, RSS_CHECKINTERVAL, RSS_LASTRUN, FAILED_DOWNLOAD_HANDLING, FAILED_AUTO, ENABLE_TORRENT_SEARCH, ENABLE_KAT, KAT_PROXY, ENABLE_32P, MODE_32P, KEYS_32P, RSSFEED_32P, USERNAME_32P, PASSWORD_32P, AUTHKEY_32P, PASSKEY_32P, FEEDINFO_32P, VERIFY_32P, SNATCHEDTORRENT_NOTIFY, \
                 PROWL_ENABLED, PROWL_PRIORITY, PROWL_KEYS, PROWL_ONSNATCH, NMA_ENABLED, NMA_APIKEY, NMA_PRIORITY, NMA_ONSNATCH, PUSHOVER_ENABLED, PUSHOVER_PRIORITY, PUSHOVER_APIKEY, PUSHOVER_USERKEY, PUSHOVER_ONSNATCH, BOXCAR_ENABLED, BOXCAR_ONSNATCH, BOXCAR_TOKEN, \
                 PUSHBULLET_ENABLED, PUSHBULLET_APIKEY, PUSHBULLET_DEVICEID, PUSHBULLET_ONSNATCH, LOCMOVE, NEWCOM_DIR, FFTONEWCOM_DIR, \
                 PREFERRED_QUALITY, MOVE_FILES, RENAME_FILES, LOWERCASE_FILENAMES, USE_MINSIZE, MINSIZE, USE_MAXSIZE, MAXSIZE, CORRECT_METADATA, FOLDER_FORMAT, FILE_FORMAT, REPLACE_CHAR, REPLACE_SPACES, ADD_TO_CSV, CVINFO, LOG_LEVEL, POST_PROCESSING, POST_PROCESSING_SCRIPT, SEARCH_DELAY, GRABBAG_DIR, READ2FILENAME, SEND2READ, TAB_ENABLE, TAB_HOST, TAB_USER, TAB_PASS, TAB_DIRECTORY, STORYARCDIR, COPY2ARCDIR, CVURL, CHECK_FOLDER, ENABLE_CHECK_FOLDER, \
-                COMIC_LOCATION, QUAL_ALTVERS, QUAL_SCANNER, QUAL_TYPE, QUAL_QUALITY, ENABLE_EXTRA_SCRIPTS, EXTRA_SCRIPTS, ENABLE_PRE_SCRIPTS, PRE_SCRIPTS, PULLNEW, ALT_PULL, COUNT_ISSUES, COUNT_HAVES, COUNT_COMICS, SYNO_FIX, CHMOD_FILE, CHMOD_DIR, ANNUALS_ON, CV_ONLY, CV_ONETIMER, WEEKFOLDER, UMASK
+                COMIC_LOCATION, QUAL_ALTVERS, QUAL_SCANNER, QUAL_TYPE, QUAL_QUALITY, ENABLE_EXTRA_SCRIPTS, EXTRA_SCRIPTS, ENABLE_PRE_SCRIPTS, PRE_SCRIPTS, PULLNEW, ALT_PULL, COUNT_ISSUES, COUNT_HAVES, COUNT_COMICS, SYNO_FIX, CHMOD_FILE, CHMOD_DIR, CHOWNER, CHGROUP, ANNUALS_ON, CV_ONLY, CV_ONETIMER, WEEKFOLDER, UMASK
 
         if __INITIALIZED__:
             return False
@@ -457,6 +465,7 @@ def initialize():
         HTTPS_CERT = check_setting_str(CFG, 'General', 'https_cert', '')
         HTTPS_KEY = check_setting_str(CFG, 'General', 'https_key', '')
         HTTPS_FORCE_ON = bool(check_setting_int(CFG, 'General', 'https_force_on', 0))
+        HOST_RETURN = check_setting_str(CFG, 'General', 'host_return', '')
         API_ENABLED = bool(check_setting_int(CFG, 'General', 'api_enabled', 0))
         API_KEY = check_setting_str(CFG, 'General', 'api_key', '')
         LAUNCH_BROWSER = bool(check_setting_int(CFG, 'General', 'launch_browser', 1))
@@ -477,12 +486,15 @@ def initialize():
         CHECK_GITHUB = bool(check_setting_int(CFG, 'General', 'check_github', 1))
         CHECK_GITHUB_ON_STARTUP = bool(check_setting_int(CFG, 'General', 'check_github_on_startup', 1))
         CHECK_GITHUB_INTERVAL = check_setting_int(CFG, 'General', 'check_github_interval', 360)
+        GIT_USER = check_setting_str(CFG, 'General', 'git_user', 'evilhero')
 
         DESTINATION_DIR = check_setting_str(CFG, 'General', 'destination_dir', '')
         MULTIPLE_DEST_DIRS = check_setting_str(CFG, 'General', 'multiple_dest_dirs', '')
         CREATE_FOLDERS = bool(check_setting_int(CFG, 'General', 'create_folders', 1))
         CHMOD_DIR = check_setting_str(CFG, 'General', 'chmod_dir', '0777')
         CHMOD_FILE = check_setting_str(CFG, 'General', 'chmod_file', '0660')
+        CHOWNER = check_setting_str(CFG, 'General', 'chowner', '')
+        CHGROUP = check_setting_str(CFG, 'General', 'chgroup', '')
         USENET_RETENTION = check_setting_int(CFG, 'General', 'usenet_retention', '1500')
         ALT_PULL = bool(check_setting_int(CFG, 'General', 'alt_pull', 0))
         SEARCH_INTERVAL = check_setting_int(CFG, 'General', 'search_interval', 360)
@@ -599,7 +611,7 @@ def initialize():
         CT_TAG_CBL = bool(check_setting_int(CFG, 'General', 'ct_tag_cbl', 1))
         CT_CBZ_OVERWRITE = bool(check_setting_int(CFG, 'General', 'ct_cbz_overwrite', 0))
         UNRAR_CMD = check_setting_str(CFG, 'General', 'unrar_cmd', '')
-        
+
         UPCOMING_SNATCHED = bool(check_setting_int(CFG, 'General', 'upcoming_snatched', 1))
         UPDATE_ENDED = bool(check_setting_int(CFG, 'General', 'update_ended', 0))
         INDIE_PUB = check_setting_str(CFG, 'General', 'indie_pub', '75')
@@ -648,10 +660,10 @@ def initialize():
         if MODE_32P == 0 and RSSFEED_32P is not None:
             #parse out the keys.
             KEYS_32P = helpers.parse_32pfeed(RSSFEED_32P)
-           
+
         USERNAME_32P = check_setting_str(CFG, 'Torrents', 'username_32p', '')
         PASSWORD_32P = check_setting_str(CFG, 'Torrents', 'password_32p', '')
-
+        VERIFY_32P = bool(check_setting_int(CFG, 'Torrents', 'verify_32p', 1))
         SNATCHEDTORRENT_NOTIFY = bool(check_setting_int(CFG, 'Torrents', 'snatchedtorrent_notify', 0))
 
         #this needs to have it's own category - for now General will do.
@@ -670,6 +682,7 @@ def initialize():
         SAB_PASSWORD = check_setting_str(CFG, 'SABnzbd', 'sab_password', '')
         SAB_APIKEY = check_setting_str(CFG, 'SABnzbd', 'sab_apikey', '')
         SAB_CATEGORY = check_setting_str(CFG, 'SABnzbd', 'sab_category', '')
+        SAB_TO_MYLAR = bool(check_setting_int(CFG, 'SABnzbd', 'sab_to_mylar', 0))
         SAB_DIRECTORY = check_setting_str(CFG, 'SABnzbd', 'sab_directory', '')
         SAB_PRIORITY = check_setting_str(CFG, 'SABnzbd', 'sab_priority', '')
         if SAB_PRIORITY.isdigit():
@@ -808,7 +821,7 @@ def initialize():
             #print('creating provider sequence order now...')
             TMPPR_NUM = 0
             PROV_ORDER = []
-            while TMPPR_NUM < PR_NUM :
+            while TMPPR_NUM < PR_NUM:
                 PROV_ORDER.append({"order_seq":  TMPPR_NUM,
                                    "provider":   str(PR[TMPPR_NUM])})
                 TMPPR_NUM +=1
@@ -831,7 +844,7 @@ def initialize():
                 TMPPR_NUM = 0
                 while (TMPPR_NUM < PR_NUM):
                     #print 'checking entry #' + str(TMPPR_NUM) + ': ' + str(PR[TMPPR_NUM])
-                    if not any(d.get("provider",None) == str(PR[TMPPR_NUM]) for d in PROV_ORDER):
+                    if not any(d.get("provider", None) == str(PR[TMPPR_NUM]) for d in PROV_ORDER):
                         new_order_seqnum = len(PROV_ORDER)
                         #print 'new provider should be : ' + str(new_order_seqnum) + ' -- ' + str(PR[TMPPR_NUM])
                         PROV_ORDER.append({"order_seq":  str(new_order_seqnum),
@@ -849,20 +862,20 @@ def initialize():
             flatt_providers = []
             for pro in PROV_ORDER:
                 try:
-                    provider_seq = re.sub('cbt','32p', pro['provider'])
+                    provider_seq = re.sub('cbt', '32p', pro['provider'])
                     flatt_providers.extend([pro['order_seq'], provider_seq])
                 except TypeError:
                     #if the value is None (no Name specified for Newznab entry), break out now
-                    continue                         
+                    continue
 
         PROVIDER_ORDER = list(itertools.izip(*[itertools.islice(flatt_providers, i, None, 2) for i in range(2)]))
-        config_write()
+#       config_write()
 
         # update folder formats in the config & bump up config version
         if CONFIG_VERSION == '0':
             from mylar.helpers import replace_all
-            file_values = { 'issue':  'Issue', 'title': 'Title', 'series' : 'Series', 'year' : 'Year' }
-            folder_values = { 'series' : 'Series', 'publisher':'Publisher', 'year' : 'Year', 'first' : 'First', 'lowerfirst' : 'first' }
+            file_values = {'issue':  'Issue', 'title': 'Title', 'series': 'Series', 'year': 'Year'}
+            folder_values = {'series': 'Series', 'publisher': 'Publisher', 'year': 'Year', 'first': 'First', 'lowerfirst': 'first'}
             FILE_FORMAT = replace_all(FILE_FORMAT, file_values)
             FOLDER_FORMAT = replace_all(FOLDER_FORMAT, folder_values)
 
@@ -872,7 +885,7 @@ def initialize():
 
             from mylar.helpers import replace_all
 
-            file_values = { 'Issue':        '$Issue',
+            file_values = {'Issue':        '$Issue',
                             'Title':        '$Title',
                             'Series':       '$Series',
                             'Year':         '$Year',
@@ -880,7 +893,7 @@ def initialize():
                             'series':       '$series',
                             'year':         '$year'
                             }
-            folder_values = {   'Series':       '$Series',
+            folder_values = {'Series':       '$Series',
                                 'Publisher':    '$Publisher',
                                 'Year':         '$Year',
                                 'First':        '$First',
@@ -896,7 +909,6 @@ def initialize():
 
         if 'http://' not in SAB_HOST[:7] and 'https://' not in SAB_HOST[:8]:
             SAB_HOST = 'http://' + SAB_HOST
-            #print ("SAB_HOST:" + SAB_HOST)
 
         if not LOG_DIR:
             LOG_DIR = os.path.join(DATA_DIR, 'logs')
@@ -918,9 +930,28 @@ def initialize():
             logprog = 'Rotational Log Handler (default)'
 
         logger.fdebug('Logger set to use : ' + logprog)
-        if LOGTYPE == 'log' and platform.system() == 'Windows':
+        if LOGTYPE == 'log' and OS_DETECT == 'Windows':
             logger.fdebug('ConcurrentLogHandler package not installed. Using builtin log handler for Rotational logs (default)')
             logger.fdebug('[Windows Users] If you are experiencing log file locking and want this auto-enabled, you need to install Python Extensions for Windows ( http://sourceforge.net/projects/pywin32/ )')
+
+        # Get the currently installed version - returns None, 'win32' or the git hash
+        # Also sets INSTALL_TYPE variable to 'win', 'git' or 'source'
+        CURRENT_VERSION, GIT_BRANCH = versioncheck.getVersion()
+        config_write()
+
+        if CURRENT_VERSION is not None:
+            hash = CURRENT_VERSION[:7]
+        else:
+            hash = "unknown"
+
+        if GIT_BRANCH == 'master':
+            vers = 'M'
+        elif GIT_BRANCH == 'development':
+           vers = 'D'
+        else:
+           vers = 'NONE'
+
+        USER_AGENT = 'Mylar/' +str(hash) +'(' +vers +') +http://www.github.com/evilhero/mylar/'
 
         # verbatim DB module.
         logger.info('[DB Module] Loading : ' + DBCHOICE + ' as the database module to use.')
@@ -928,7 +959,7 @@ def initialize():
         # Put the cache dir in the data dir for now
         if not CACHE_DIR:
             CACHE_DIR = os.path.join(str(DATA_DIR), 'cache')
-        #logger.info("cache set to : " + str(CACHE_DIR))
+
         if not os.path.exists(CACHE_DIR):
             try:
                os.makedirs(CACHE_DIR)
@@ -952,22 +983,7 @@ def initialize():
         except Exception, e:
             logger.error('Cannot connect to the database: %s' % e)
 
-        # Get the currently installed version - returns None, 'win32' or the git hash
-        # Also sets INSTALL_TYPE variable to 'win', 'git' or 'source'
-        CURRENT_VERSION = versioncheck.getVersion()
-        if CURRENT_VERSION is not None:
-            hash = CURRENT_VERSION[:7]
-        else:
-            hash = "unknown"
-
-        if version.MYLAR_VERSION == 'master':
-            vers = 'M'
-        else:
-           vers = 'D'
-
-        USER_AGENT = 'Mylar/'+str(hash)+'('+vers+') +http://www.github.com/evilhero/mylar/'
-
-        # Check for new versions
+        # Check for new versions (autoupdate)
         if CHECK_GITHUB_ON_STARTUP:
             try:
                 LATEST_VERSION = versioncheck.checkGithub()
@@ -975,10 +991,10 @@ def initialize():
                 LATEST_VERSION = CURRENT_VERSION
         else:
             LATEST_VERSION = CURRENT_VERSION
-
-#        if AUTO_UPDATE:
-#            if CURRENT_VERSION != LATEST_VERSION and INSTALL_TYPE != 'win' and COMMITS_BEHIND > 0:
-#                logger.info('Auto-updating has been enabled. Attempting to auto-update.')
+#
+        if AUTO_UPDATE:
+            if CURRENT_VERSION != LATEST_VERSION and INSTALL_TYPE != 'win' and COMMITS_BEHIND > 0:
+                logger.info('Auto-updating has been enabled. Attempting to auto-update.')
 #                SIGNAL = 'update'
 
         #check for syno_fix here
@@ -1154,6 +1170,7 @@ def config_write():
     new_config['General']['https_cert'] = HTTPS_CERT
     new_config['General']['https_key'] = HTTPS_KEY
     new_config['General']['https_force_on'] = int(HTTPS_FORCE_ON)
+    new_config['General']['host_return'] = HOST_RETURN
     new_config['General']['api_enabled'] = int(API_ENABLED)
     new_config['General']['api_key'] = API_KEY
     new_config['General']['launch_browser'] = int(LAUNCH_BROWSER)
@@ -1169,12 +1186,15 @@ def config_write():
     new_config['General']['check_github'] = int(CHECK_GITHUB)
     new_config['General']['check_github_on_startup'] = int(CHECK_GITHUB_ON_STARTUP)
     new_config['General']['check_github_interval'] = CHECK_GITHUB_INTERVAL
-
+    new_config['General']['git_user'] = GIT_USER
+    new_config['General']['git_branch'] = GIT_BRANCH
     new_config['General']['destination_dir'] = DESTINATION_DIR
     new_config['General']['multiple_dest_dirs'] = MULTIPLE_DEST_DIRS
     new_config['General']['create_folders'] = int(CREATE_FOLDERS)
     new_config['General']['chmod_dir'] = CHMOD_DIR
     new_config['General']['chmod_file'] = CHMOD_FILE
+    new_config['General']['chowner'] = CHOWNER
+    new_config['General']['chgroup'] = CHGROUP
     new_config['General']['usenet_retention'] = USENET_RETENTION
     new_config['General']['alt_pull'] = int(ALT_PULL)
     new_config['General']['search_interval'] = SEARCH_INTERVAL
@@ -1290,6 +1310,7 @@ def config_write():
     new_config['Torrents']['rssfeed_32p'] = RSSFEED_32P
     new_config['Torrents']['username_32p'] = USERNAME_32P
     new_config['Torrents']['password_32p'] = PASSWORD_32P
+    new_config['Torrents']['verify_32p'] = int(VERIFY_32P)
     new_config['Torrents']['snatchedtorrent_notify'] = int(SNATCHEDTORRENT_NOTIFY)
     new_config['SABnzbd'] = {}
     #new_config['SABnzbd']['use_sabnzbd'] = int(USE_SABNZBD)
@@ -1299,6 +1320,7 @@ def config_write():
     new_config['SABnzbd']['sab_apikey'] = SAB_APIKEY
     new_config['SABnzbd']['sab_category'] = SAB_CATEGORY
     new_config['SABnzbd']['sab_priority'] = SAB_PRIORITY
+    new_config['SABnzbd']['sab_to_mylar'] = int(SAB_TO_MYLAR)
     new_config['SABnzbd']['sab_directory'] = SAB_DIRECTORY
 
     new_config['NZBGet'] = {}
@@ -1418,7 +1440,7 @@ def start():
             #now the scheduler (check every 24 hours)
             #SCHED.add_interval_job(weeklypull.pullit, hours=24)
             WeeklyScheduler.thread.start()
-        
+
             #let's do a run at the Wanted issues here (on startup) if enabled.
             #if NZB_STARTUP_SEARCH:
             #    threading.Thread(target=search.searchforissue).start()
@@ -1459,7 +1481,7 @@ def dbcheck():
 #    c.execute('CREATE TABLE IF NOT EXISTS sablog (nzo_id TEXT, ComicName TEXT, ComicYEAR TEXT, ComicIssue TEXT, name TEXT, nzo_complete TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS importresults (impID TEXT, ComicName TEXT, ComicYear TEXT, Status TEXT, ImportDate TEXT, ComicFilename TEXT, ComicLocation TEXT, WatchMatch TEXT, DisplayName TEXT, SRID TEXT, ComicID TEXT, IssueID TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS readlist (IssueID TEXT, ComicName TEXT, Issue_Number TEXT, Status TEXT, DateAdded TEXT, Location TEXT, inCacheDir TEXT, SeriesYear TEXT, ComicID TEXT, StatusChange TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS readinglist(StoryArcID TEXT, ComicName TEXT, IssueNumber TEXT, SeriesYear TEXT, IssueYEAR TEXT, StoryArc TEXT, TotalIssues TEXT, Status TEXT, inCacheDir TEXT, Location TEXT, IssueArcID TEXT, ReadingOrder INT, IssueID TEXT, ComicID TEXT, StoreDate TEXT, IssueDate TEXT, Publisher TEXT, IssuePublisher TEXT, IssueName TEXT, CV_ArcID TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS readinglist(StoryArcID TEXT, ComicName TEXT, IssueNumber TEXT, SeriesYear TEXT, IssueYEAR TEXT, StoryArc TEXT, TotalIssues TEXT, Status TEXT, inCacheDir TEXT, Location TEXT, IssueArcID TEXT, ReadingOrder INT, IssueID TEXT, ComicID TEXT, StoreDate TEXT, IssueDate TEXT, Publisher TEXT, IssuePublisher TEXT, IssueName TEXT, CV_ArcID TEXT, Int_IssueNumber INT)')
     c.execute('CREATE TABLE IF NOT EXISTS annuals (IssueID TEXT, Issue_Number TEXT, IssueName TEXT, IssueDate TEXT, Status TEXT, ComicID TEXT, GCDComicID TEXT, Location TEXT, ComicSize TEXT, Int_IssueNumber INT, ComicName TEXT, ReleaseDate TEXT, ReleaseComicID TEXT, ReleaseComicName TEXT, IssueDate_Edit TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS rssdb (Title TEXT UNIQUE, Link TEXT, Pubdate TEXT, Site TEXT, Size TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS futureupcoming (ComicName TEXT, IssueNumber TEXT, ComicID TEXT, IssueID TEXT, IssueDate TEXT, Publisher TEXT, Status TEXT, DisplayComicName TEXT)')
@@ -1798,6 +1820,11 @@ def dbcheck():
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE readinglist ADD COLUMN CV_ArcID TEXT')
 
+    try:
+        c.execute('SELECT Int_IssueNumber from readinglist')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE readinglist ADD COLUMN Int_IssueNumber INT')
+
     ## -- searchresults Table --
     try:
         c.execute('SELECT SRID from searchresults')
@@ -1878,12 +1905,12 @@ def csv_load():
         if not os.path.exists(EXCEPTIONS_FILE):
             try:
                 csvfile = open(str(EXCEPTIONS_FILE), "rb")
-            except (OSError,IOError):
+            except (OSError, IOError):
                 if i == 1:
                     logger.info('No Custom Exceptions found - Using base exceptions only. Creating blank custom_exceptions for your personal use.')
                     try:
-                        shutil.copy(os.path.join(DATA_DIR,"custom_exceptions_sample.csv"), EXCEPTIONS_FILE)
-                    except (OSError,IOError):
+                        shutil.copy(os.path.join(DATA_DIR, "custom_exceptions_sample.csv"), EXCEPTIONS_FILE)
+                    except (OSError, IOError):
                         logger.error('Cannot create custom_exceptions.csv in ' + str(DATA_DIR) + '. Make sure _sample.csv is present and/or check permissions.')
                         return
                 else:
