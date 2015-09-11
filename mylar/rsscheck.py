@@ -751,19 +751,26 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site):
                        # 'User-Agent':      str(mylar.USER_AGENT)}
 
     elif site == 'KAT':
-        stfind = linkit.find('?')
-        if stfind == -1:
-            kat_referrer = helpers.torrent_create('KAT', linkit)
+        #stfind = linkit.find('?')
+        #if stfind == -1:
+        #    kat_referrer = helpers.torrent_create('KAT', linkit)
+        #else:
+        #    kat_referrer = linkit[:stfind]
+
+        url = helpers.torrent_create('KAT', linkit)
+
+        if url.startswith('https'):
+            kat_referrer = 'https://torcache.net/'
         else:
-            kat_referrer = linkit[:stfind]
+            kat_referrer = 'http://torcache.net/'
 
         #logger.fdebug('KAT Referer set to :' + kat_referrer)
 
         headers = {'Accept-encoding': 'gzip',
-                   'User-Agent':      str(mylar.USER_AGENT)}
-                   #'Referer': kat_referrer}
+                   'User-Agent':      str(mylar.USER_AGENT),
+                   'Referer':         kat_referrer}
 
-        url = helpers.torrent_create('KAT', linkit)
+        logger.fdebug('Grabbing torrent from url:' + str(url))
 
         payload = None
         verify = False
