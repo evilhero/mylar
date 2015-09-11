@@ -107,7 +107,13 @@ def getComic(comicid, type, issueid=None, arc=None, arcid=None, arclist=None, co
         if comicid is None:
             #if comicid is None, it's coming from the story arc search results.
             id = arcid
-            islist = arclist
+            #since the arclist holds the issueids, and the pertinent reading order - we need to strip out the reading order so this works.
+            aclist = ''
+            for ac in arclist.split('|'):
+                aclist += ac[:ac.find(',')] + '|'
+            if aclist.endswith('|'):
+                aclist = aclist[:-1]
+            islist = aclist
         else:
             id = comicid
             islist = None
@@ -315,11 +321,15 @@ def GetComicInfo(comicid, dom, safechk=None):
                     vfindit = re.findall('[^()]+', vfind)
                     vfind = vfindit[0]
                 vf = re.findall('[^<>]+', vfind)
-                ledigit = re.sub("[^0-9]", "", vf[0])
-                if ledigit != '':
-                    comic['ComicVersion'] = ledigit
-                    logger.fdebug("Volume information found! Adding to series record : volume " + comic['ComicVersion'])
-                    break
+                try:
+                    ledigit = re.sub("[^0-9]", "", vf[0])
+                    if ledigit != '':
+                        comic['ComicVersion'] = ledigit
+                        logger.fdebug("Volume information found! Adding to series record : volume " + comic['ComicVersion'])
+                        break
+                except:
+                    pass
+
                 i += 1
             else:
                 i += 1

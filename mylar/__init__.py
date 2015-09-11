@@ -104,6 +104,8 @@ DONATEBUTTON = True
 PULLNEW = None
 ALT_PULL = False
 
+LOCAL_IP = None
+EXT_IP = None
 HTTP_PORT = None
 HTTP_HOST = None
 HTTP_USERNAME = None
@@ -147,6 +149,7 @@ CHOWNER = None
 CHGROUP = None
 USENET_RETENTION = None
 CREATE_FOLDERS = True
+DELETE_REMOVE_DIR = False
 
 ADD_COMICS = False
 COMIC_DIR = None
@@ -253,11 +256,11 @@ NEWZNAB_ENABLED = False
 EXTRA_NEWZNABS = []
 NEWZNAB_EXTRA = None
 
-RAW = False
-RAW_PROVIDER = None
-RAW_USERNAME = None
-RAW_PASSWORD = None
-RAW_GROUPS = None
+ENABLE_TORZNAB = False
+TORZNAB_NAME = None
+TORZNAB_HOST = None
+TORZNAB_APIKEY = None
+TORZNAB_CATEGORY = None
 
 EXPERIMENTAL = False
 ALTEXPERIMENTAL = False
@@ -402,13 +405,14 @@ def initialize():
 
     with INIT_LOCK:
         global __INITIALIZED__, DBCHOICE, DBUSER, DBPASS, DBNAME, COMICVINE_API, DEFAULT_CVAPI, CVAPI_COUNT, CVAPI_TIME, CVAPI_MAX, FULL_PATH, PROG_DIR, VERBOSE, DAEMON, UPCOMING_SNATCHED, COMICSORT, DATA_DIR, CONFIG_FILE, CFG, CONFIG_VERSION, LOG_DIR, CACHE_DIR, MAX_LOGSIZE, LOGVERBOSE, OLDCONFIG_VERSION, OS_DETECT, \
-                queue, HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, ENABLE_HTTPS, HTTPS_CERT, HTTPS_KEY, HTTPS_FORCE_ON, HOST_RETURN, API_ENABLED, API_KEY, DOWNLOAD_APIKEY, LAUNCH_BROWSER, GIT_PATH, SAFESTART, AUTO_UPDATE, \
-                CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, GIT_USER, GIT_BRANCH, USER_AGENT, DESTINATION_DIR, MULTIPLE_DEST_DIRS, CREATE_FOLDERS, \
+                queue, LOCAL_IP, EXT_IP, HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, ENABLE_HTTPS, HTTPS_CERT, HTTPS_KEY, HTTPS_FORCE_ON, HOST_RETURN, API_ENABLED, API_KEY, DOWNLOAD_APIKEY, LAUNCH_BROWSER, GIT_PATH, SAFESTART, AUTO_UPDATE, \
+                CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, GIT_USER, GIT_BRANCH, USER_AGENT, DESTINATION_DIR, MULTIPLE_DEST_DIRS, CREATE_FOLDERS, DELETE_REMOVE_DIR, \
                 DOWNLOAD_DIR, USENET_RETENTION, SEARCH_INTERVAL, NZB_STARTUP_SEARCH, INTERFACE, DUPECONSTRAINT, AUTOWANT_ALL, AUTOWANT_UPCOMING, ZERO_LEVEL, ZERO_LEVEL_N, COMIC_COVER_LOCAL, HIGHCOUNT, \
                 LIBRARYSCAN, LIBRARYSCAN_INTERVAL, DOWNLOAD_SCAN_INTERVAL, NZB_DOWNLOADER, USE_SABNZBD, SAB_HOST, SAB_USERNAME, SAB_PASSWORD, SAB_APIKEY, SAB_CATEGORY, SAB_PRIORITY, SAB_TO_MYLAR, SAB_DIRECTORY, USE_BLACKHOLE, BLACKHOLE_DIR, ADD_COMICS, COMIC_DIR, IMP_MOVE, IMP_RENAME, IMP_METADATA, \
                 USE_NZBGET, NZBGET_HOST, NZBGET_PORT, NZBGET_USERNAME, NZBGET_PASSWORD, NZBGET_CATEGORY, NZBGET_PRIORITY, NZBGET_DIRECTORY, NZBSU, NZBSU_UID, NZBSU_APIKEY, DOGNZB, DOGNZB_APIKEY, \
                 NEWZNAB, NEWZNAB_NAME, NEWZNAB_HOST, NEWZNAB_APIKEY, NEWZNAB_UID, NEWZNAB_ENABLED, EXTRA_NEWZNABS, NEWZNAB_EXTRA, \
-                RAW, RAW_PROVIDER, RAW_USERNAME, RAW_PASSWORD, RAW_GROUPS, EXPERIMENTAL, ALTEXPERIMENTAL, \
+                ENABLE_TORZNAB, TORZNAB_NAME, TORZNAB_HOST, TORZNAB_APIKEY, TORZNAB_CATEGORY, \
+                EXPERIMENTAL, ALTEXPERIMENTAL, \
                 ENABLE_META, CMTAGGER_PATH, CT_TAG_CR, CT_TAG_CBL, CT_CBZ_OVERWRITE, UNRAR_CMD, UPDATE_ENDED, INDIE_PUB, BIGGIE_PUB, IGNORE_HAVETOTAL, SNATCHED_HAVETOTAL, PROVIDER_ORDER, \
                 dbUpdateScheduler, searchScheduler, RSSScheduler, WeeklyScheduler, VersionScheduler, FolderMonitorScheduler, \
                 ENABLE_TORRENTS, MINSEEDS, TORRENT_LOCAL, LOCAL_WATCHDIR, TORRENT_SEEDBOX, SEEDBOX_HOST, SEEDBOX_PORT, SEEDBOX_USER, SEEDBOX_PASS, SEEDBOX_WATCHDIR, \
@@ -427,9 +431,9 @@ def initialize():
         CheckSection('NZBGet')
         CheckSection('NZBsu')
         CheckSection('DOGnzb')
-        CheckSection('Raw')
         CheckSection('Experimental')
         CheckSection('Newznab')
+        CheckSection('Torznab')
         CheckSection('Torrents')
         # Set global variables based on config file or use defaults
         try:
@@ -491,6 +495,7 @@ def initialize():
         DESTINATION_DIR = check_setting_str(CFG, 'General', 'destination_dir', '')
         MULTIPLE_DEST_DIRS = check_setting_str(CFG, 'General', 'multiple_dest_dirs', '')
         CREATE_FOLDERS = bool(check_setting_int(CFG, 'General', 'create_folders', 1))
+        DELETE_REMOVE_DIR = bool(check_setting_int(CFG, 'General', 'delete_remove_dir', 0))
         CHMOD_DIR = check_setting_str(CFG, 'General', 'chmod_dir', '0777')
         CHMOD_FILE = check_setting_str(CFG, 'General', 'chmod_file', '0660')
         CHOWNER = check_setting_str(CFG, 'General', 'chowner', '')
@@ -731,16 +736,19 @@ def initialize():
             PR.append('dognzb')
             PR_NUM +=1
 
-        RAW = bool(check_setting_int(CFG, 'Raw', 'raw', 0))
-        RAW_PROVIDER = check_setting_str(CFG, 'Raw', 'raw_provider', '')
-        RAW_USERNAME = check_setting_str(CFG, 'Raw', 'raw_username', '')
-        RAW_PASSWORD  = check_setting_str(CFG, 'Raw', 'raw_password', '')
-        RAW_GROUPS = check_setting_str(CFG, 'Raw', 'raw_groups', '')
-
         EXPERIMENTAL = bool(check_setting_int(CFG, 'Experimental', 'experimental', 0))
         ALTEXPERIMENTAL = bool(check_setting_int(CFG, 'Experimental', 'altexperimental', 1))
         if EXPERIMENTAL:
             PR.append('Experimental')
+            PR_NUM +=1
+
+        ENABLE_TORZNAB = bool(check_setting_int(CFG, 'Torznab', 'enable_torznab', 0))
+        TORZNAB_NAME = check_setting_str(CFG, 'Torznab', 'torznab_name', '')
+        TORZNAB_HOST = check_setting_str(CFG, 'Torznab', 'torznab_host', '')
+        TORZNAB_APIKEY = check_setting_str(CFG, 'Torznab', 'torznab_apikey', '')
+        TORZNAB_CATEGORY = check_setting_str(CFG, 'Torznab', 'torznab_category', '')
+        if ENABLE_TORZNAB:
+            PR.append('Torznab')
             PR_NUM +=1
 
         #print 'PR_NUM::' + str(PR_NUM)
@@ -923,6 +931,19 @@ def initialize():
         # Start the logger, silence console logging if we need to
         logger.initLogger(verbose=VERBOSE) #logger.mylar_log.initLogger(verbose=VERBOSE)
 
+        #try to get the local IP using socket. Get this on every startup so it's at least current for existing session.
+        import socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('8.8.8.8', 80))
+            LOCAL_IP = s.getsockname()[0]
+            s.close()
+            logger.info('Successfully discovered local IP and locking it in as : ' + str(LOCAL_IP))
+        except:
+            logger.warn('Unable to determine local IP - this might cause problems when downloading (maybe use host_return in the config.ini)')
+            LOCAL_IP = HTTP_HOST
+
+
         # verbatim back the logger being used since it's now started.
         if LOGTYPE == 'clog':
             logprog = 'Concurrent Rotational Log Handler'
@@ -1023,11 +1044,6 @@ def initialize():
         #Ordering comics here
         logger.info('Remapping the sorting to allow for new additions.')
         COMICSORT = helpers.ComicSort(sequence='startup')
-
-        #start the db write only thread here.
-        #this is a thread that continually runs in the background as the ONLY thread that can write to the db.
-        #logger.info('Starting Write-Only thread.')
-        #db.WriteOnly()
 
         #initialize the scheduler threads here.
         dbUpdateScheduler = scheduler.Scheduler(action=dbupdater.dbUpdate(),
@@ -1191,6 +1207,7 @@ def config_write():
     new_config['General']['destination_dir'] = DESTINATION_DIR
     new_config['General']['multiple_dest_dirs'] = MULTIPLE_DEST_DIRS
     new_config['General']['create_folders'] = int(CREATE_FOLDERS)
+    new_config['General']['delete_remove_dir'] = int(DELETE_REMOVE_DIR)
     new_config['General']['chmod_dir'] = CHMOD_DIR
     new_config['General']['chmod_file'] = CHMOD_FILE
     new_config['General']['chowner'] = CHOWNER
@@ -1346,6 +1363,13 @@ def config_write():
     new_config['Experimental']['experimental'] = int(EXPERIMENTAL)
     new_config['Experimental']['altexperimental'] = int(ALTEXPERIMENTAL)
 
+    new_config['Torznab'] = {}
+    new_config['Torznab']['enable_torznab'] = int(ENABLE_TORZNAB)
+    new_config['Torznab']['torznab_name'] = TORZNAB_NAME
+    new_config['Torznab']['torznab_host'] = TORZNAB_HOST
+    new_config['Torznab']['torznab_apikey'] = TORZNAB_APIKEY
+    new_config['Torznab']['torznab_category'] = TORZNAB_CATEGORY
+
     new_config['Newznab'] = {}
     new_config['Newznab']['newznab'] = int(NEWZNAB)
 
@@ -1386,13 +1410,6 @@ def config_write():
     new_config['PUSHBULLET']['pushbullet_apikey'] = PUSHBULLET_APIKEY
     new_config['PUSHBULLET']['pushbullet_deviceid'] = PUSHBULLET_DEVICEID
     new_config['PUSHBULLET']['pushbullet_onsnatch'] = int(PUSHBULLET_ONSNATCH)
-
-    new_config['Raw'] = {}
-    new_config['Raw']['raw'] = int(RAW)
-    new_config['Raw']['raw_provider'] = RAW_PROVIDER
-    new_config['Raw']['raw_username'] = RAW_USERNAME
-    new_config['Raw']['raw_password'] = RAW_PASSWORD
-    new_config['Raw']['raw_groups'] = RAW_GROUPS
 
     new_config.write()
 

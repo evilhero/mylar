@@ -47,7 +47,7 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
             kat_url = mylar.KAT_PROXY + '/'
     else:
         #switched to https.
-        kat_url = 'https://kat.ph/'
+        kat_url = 'https://kat.cr/'
 
     if pickfeed == 'KAT':
         #we need to cycle through both categories (comics & other) - so we loop.
@@ -66,7 +66,8 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
     feeddata = []
     myDB = db.DBConnection()
     torthekat = []
-    katinfo = {}
+    torthe32p = []
+    torinfo = {}
 
     while (lp < loopit):
         if lp == 0 and loopit == 2:
@@ -109,9 +110,10 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
             logger.error('invalid pickfeed denoted...')
             return
 
-        #logger.info('feed URL: ' + str(feed))
+        #logger.info('[' + str(pickfeed) + '] feed URL: ' + str(feed))
 
-        feedme = feedparser.parse(feed)
+        if pickfeed != '4':
+            feedme = feedparser.parse(feed)
 
         if pickfeed == "3" or pickfeed == "6" or pickfeed == "2" or pickfeed == "5":
             picksite = 'KAT'
@@ -120,29 +122,45 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
 
         i = 0
 
-        for entry in feedme['entries']:
-            if pickfeed == "3" or pickfeed == "6":
-                tmpsz = feedme.entries[i].enclosures[0]
-                feeddata.append({
-                                'site':     picksite,
-                                'title':    feedme.entries[i].title,
-                                'link':     tmpsz['url'],
-                                'pubdate':  feedme.entries[i].updated,
-                                'size':     tmpsz['length']
-                                })
+        if pickfeed == '4':
+            for entry in searchresults['entries']:
+                justdigits = entry['file_size'] #size not available in follow-list rss feed
+                seeddigits = entry['seeders']  #number of seeders not available in follow-list rss feed
 
-            elif pickfeed == "2" or pickfeed == "5":
-                tmpsz = feedme.entries[i].enclosures[0]
-                torthekat.append({
-                               'site':     picksite,
-                               'title':    feedme.entries[i].title,
-                               'link':     tmpsz['url'],
-                               'pubdate':  feedme.entries[i].updated,
-                               'size':     tmpsz['length']
-                               })
-
-            elif pickfeed == "1" or pickfeed == "4" or int(pickfeed) > 7:
-                if pickfeed == "1" or int(pickfeed) > 7:
+                if int(seeddigits) >= int(mylar.MINSEEDS):
+                    torthe32p.append({
+                                    'site':     picksite,
+                                    'title':    entry['torrent_seriesname'].lstrip() + ' ' + entry['torrent_seriesvol'] + ' #' + entry['torrent_seriesiss'],
+                                    'volume':   entry['torrent_seriesvol'],      # not stored by mylar yet.
+                                    'issue':    entry['torrent_seriesiss'],    # not stored by mylar yet.
+                                    'link':     entry['torrent_id'],  #just the id for the torrent
+                                    'pubdate':  entry['pubdate'],
+                                    'size':     entry['file_size'],
+                                    'seeders':  entry['seeders'],
+                                    'files':    entry['num_files']
+                                    })
+                i += 1
+        else:
+            for entry in feedme['entries']:
+                if any([pickfeed == "3", pickfeed == "6"]):
+                    tmpsz = feedme.entries[i].enclosures[0]
+                    feeddata.append({
+                                    'site':     picksite,
+                                    'title':    feedme.entries[i].title,
+                                    'link':     tmpsz['url'],
+                                    'pubdate':  feedme.entries[i].updated,
+                                    'size':     tmpsz['length']
+                                    })
+                elif any([pickfeed == "2", pickfeed == "5"]):
+                    tmpsz = feedme.entries[i].enclosures[0]
+                    torthekat.append({
+                                    'site':     picksite,
+                                    'title':    feedme.entries[i].title,
+                                    'link':     tmpsz['url'],
+                                    'pubdate':  feedme.entries[i].updated,
+                                    'size':     tmpsz['length']
+                                    })
+                elif pickfeed == "1" or int(pickfeed) > 7:
                     tmpdesc = feedme.entries[i].description
                     st_pub = feedme.entries[i].title.find('(')
                     st_end = feedme.entries[i].title.find(')')
@@ -191,28 +209,24 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
                     #seeddigits = re.sub("[^0123456789\.]", "", tmpseed).strip()
                     seeddigits = 0
 
-                else:
-                    justdigits = None #size not available in follow-list rss feed
-                    seeddigits = 0  #number of seeders not available in follow-list rss feed
+                    if int(mylar.MINSEEDS) >= int(seeddigits):
+                        link = feedme.entries[i].link
+                        linkst = link.find('&id')
+                        linken = link.find('&', linkst +1)
+                        if linken == -1:
+                            linken = len(link)
+                        newlink = re.sub('&id=', '', link[linkst:linken]).strip()
+                        feeddata.append({
+                                       'site':     picksite,
+                                       'title':    series.lstrip() + ' ' + vol + ' #' + issue,
+                                       'volume':   vol,      # not stored by mylar yet.
+                                       'issue':    issue,    # not stored by mylar yet.
+                                       'link':     newlink,  #just the id for the torrent
+                                       'pubdate':  feedme.entries[i].updated,
+                                       'size':     justdigits
+                                       })
 
-                if int(mylar.MINSEEDS) >= int(seeddigits):
-                    link = feedme.entries[i].link
-                    linkst = link.find('&id')
-                    linken = link.find('&', linkst +1)
-                    if linken == -1:
-                        linken = len(link)
-                    newlink = re.sub('&id=', '', link[linkst:linken]).strip()
-                    feeddata.append({
-                                   'site':     picksite,
-                                   'title':    series.lstrip() + ' ' + vol + ' #' + issue,
-                                   'volume':   vol,      # not stored by mylar yet.
-                                   'issue':    issue,    # not stored by mylar yet.
-                                   'link':     newlink,  #just the id for the torrent
-                                   'pubdate':  feedme.entries[i].updated,
-                                   'size':     justdigits
-                                   })
-
-            i += 1
+                i += 1
 
         if feedtype is None:
             logger.info('[' + picksite + '] there were ' + str(i) + ' results..')
@@ -223,10 +237,15 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
         lp += 1
 
     if not seriesname:
+        #rss search results
         rssdbupdate(feeddata, totalcount, 'torrent')
     else:
-        katinfo['entries'] = torthekat
-        return katinfo
+        #backlog (parsing) search results
+        if pickfeed == '4':
+            torinfo['entries'] = torthe32p
+        else:
+            torinfo['entries'] = torthekat
+        return torinfo
     return
 
 
@@ -731,19 +750,30 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site):
         headers = None #{'Accept-encoding': 'gzip',
                        # 'User-Agent':      str(mylar.USER_AGENT)}
 
-    else:
+    elif site == 'KAT':
         stfind = linkit.find('?')
         if stfind == -1:
             kat_referrer = helpers.torrent_create('KAT', linkit)
         else:
             kat_referrer = linkit[:stfind]
 
-        logger.fdebug('KAT Referer set to :' + kat_referrer)
+        #logger.fdebug('KAT Referer set to :' + kat_referrer)
 
         headers = {'Accept-encoding': 'gzip',
-                   'Referer': kat_referrer}
+                   'User-Agent':      str(mylar.USER_AGENT)}
+                   #'Referer': kat_referrer}
 
         url = helpers.torrent_create('KAT', linkit)
+
+        payload = None
+        verify = False
+
+    else:
+        headers = {'Accept-encoding': 'gzip',
+                   'User-Agent':      str(mylar.USER_AGENT)}
+                   #'Referer': kat_referrer}
+
+        url = linkit #helpers.torrent_create('TOR', linkit)
 
         payload = None
         verify = False
@@ -785,6 +815,19 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site):
                 return "fail"
         else:
             return "fail"
+
+    if str(r.status_code) == '403':
+        #retry with the alternate torrent link.
+        url = helpers.torrent_create('KAT', linkit, True)
+        try:
+            r = requests.get(url, params=payload, verify=verify, stream=True, headers=headers)
+
+        except Exception, e:
+            return "fail"
+
+    if str(r.status_code) != '200':
+        logger.warn('Unable to download torrent from ' + site + ' [Status Code returned: ' + str(r.status_code) + ']')
+        return "fail"
 
     if site == 'KAT':
         if r.headers.get('Content-Encoding') == 'gzip':

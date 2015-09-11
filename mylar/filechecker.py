@@ -61,8 +61,8 @@ def listFiles(dir, watchcomic, Publisher, AlternateSearch=None, manual=None, sar
                '\@']
 
     issue_exceptions = ['AU',
-                      '.INH',
-                      '.NOW',
+                      'INH',
+                      'NOW',
                       'AI',
                       'A',
                       'B',
@@ -632,7 +632,7 @@ def listFiles(dir, watchcomic, Publisher, AlternateSearch=None, manual=None, sar
 
                 findtitlepos = subname.find('-')
                 if charpos != 0:
-                    logger.fdebug('[FILECHECKER] detected ' + str(len(charpos)) + ' special characters')
+                    logger.fdebug('[FILECHECKER] detected ' + str(len(charpos)) + ' special characters')                    
                     for i, j in enumerate(charpos):
                         logger.fdebug('i,j:' + str(i) + ',' + str(j))
                         logger.fdebug(str(len(subname)) + ' - subname: ' + subname)
@@ -700,7 +700,14 @@ def listFiles(dir, watchcomic, Publisher, AlternateSearch=None, manual=None, sar
                            justthedigits_1 = 'Annual ' + justthedigits_1
 
                 logger.fdebug('[FILECHECKER] after title removed from SUBNAME [' + justthedigits_1 + ']')
-
+                exceptionmatch = [x for x in issue_exceptions if x.lower() in justthedigits_1.lower()]
+                if exceptionmatch:
+                    for x in exceptionmatch:
+                        findst = justthedigits_1.find(x)
+                        if re.sub(' ','', justthedigits_1[findst-1]).isdigit() or re.sub(' ', '', justthedigits_1[findst:findst+1]).isdigit():
+                            logger.fdebug('[FILECHECKER] Remapping to accomodate ' + str(x))
+                            digitchk = 0
+                            break
                 titlechk = False
 
                 if digitchk:
@@ -777,14 +784,24 @@ def listFiles(dir, watchcomic, Publisher, AlternateSearch=None, manual=None, sar
                 justthedigits = justthedigits_1.split(' ', 1)[0]
                 digitsvalid = "false"
 
-                if not justthedigits.isdigit() and 'annual' not in justthedigits.lower():
-                    logger.fdebug('[FILECHECKER] Invalid character found in filename after item removal - cannot find issue # with this present. Temporarily removing it from the comparison to be able to proceed.')
-                    try:
-                        justthedigits = justthedigits_1.split(' ', 1)[1]
-                        if justthedigits.isdigit():
-                            digitsvalid = "true"
-                    except:
-                        pass
+                if not justthedigits.isdigit() and 'annual' not in justthedigits.lower() and digitchk is None:
+
+                    #check the length and compare number of words to remove some bad matches (ie. secret wars / secret wars journal)
+                    wordsplit_sub = subname.split()
+                    wordsplit_mod = modwatchcomic.split()
+                    logger.fdebug('[FILECHECKER] digitchk: ' + str(digitchk))
+                    logger.fdebug('[FILECHECKER] wordsplit_sub : ' + str(wordsplit_sub))
+                    logger.fdebug('[FILECHECKER] wordsplit_mod : ' + str(wordsplit_mod))
+                    if wordsplit_sub != wordsplit_mod:
+                        logger.fdebug('[FILECHECKER] Word lengths do not match. Ignoring comparions.')
+                        continue
+                    else:
+                        try:
+                            justthedigits = justthedigits_1.split(' ', 1)[1]
+                            if justthedigits.isdigit():
+                                digitsvalid = "true"
+                        except:
+                            pass
 
                 if digitsvalid == "false":
                     if 'annual' not in justthedigits.lower():
@@ -916,8 +933,8 @@ def listFiles(dir, watchcomic, Publisher, AlternateSearch=None, manual=None, sar
                     #set the issue/year threshold here.
                     #  2013 - (24issues/12) = 2011.
                     #minyear = int(comyear) - (int(issuetotal) / 12)
-
                     maxyear = manual['LatestDate'][:4]  # yyyy-mm-dd
+                    logger.fdebug('[FILECHECKER] Latest date: ' + str(maxyear))
 
                     #subnm defined at being of module.
                     len_sm = len(subnm)
@@ -1239,7 +1256,7 @@ def setperms(path, dir=False):
                             os.chown(os.path.join(root, momo), chowner, chgroup)
                             os.chmod(os.path.join(root, momo), permission)
 
-                logger.info('Successfully changed ownership and permissions [' + str(mylar.CHOWNER) + ':' + str(mylar.CHGROUP) + '] / [' + str(mylar.CHMOD_DIR) + ' / ' + str(mylar.CHMOD_FILE) + ']')
+                logger.fdebug('Successfully changed ownership and permissions [' + str(mylar.CHOWNER) + ':' + str(mylar.CHGROUP) + '] / [' + str(mylar.CHMOD_DIR) + ' / ' + str(mylar.CHMOD_FILE) + ']')
 
             else:
                 for root, dirs, files in os.walk(path):
@@ -1250,7 +1267,7 @@ def setperms(path, dir=False):
                         permission = int(mylar.CHMOD_FILE, 8)
                         os.chmod(os.path.join(root, momo), permission)
 
-                logger.info('Successfully changed permissions [' + str(mylar.CHMOD_DIR) + ' / ' + str(mylar.CHMOD_FILE) + ']')
+                logger.fdebug('Successfully changed permissions [' + str(mylar.CHMOD_DIR) + ' / ' + str(mylar.CHMOD_FILE) + ']')
 
         except OSError:
             logger.error('Could not change permissions : ' + path + '. Exiting...')
