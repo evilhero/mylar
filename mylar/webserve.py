@@ -173,7 +173,6 @@ class WebInterface(object):
                 if not any(d.get('annualComicID', None) == str(ann['ReleaseComicID']) for d in aName):
                     aName.append({"annualComicName":   ann['ReleaseComicName'],
                                  "annualComicID":   ann['ReleaseComicID']})
-                    #logger.info('added : ' + str(ann['ReleaseComicID']))
                 acnt+=1
             annualinfo = aName
             #annualinfo['count'] = acnt
@@ -194,6 +193,9 @@ class WebInterface(object):
         if len(name) == 0:
             raise cherrypy.HTTPRedirect("home")
         if type == 'comic' and mode == 'pullseries':
+            if issue == 0:
+                #if it's an issue 0, CV doesn't have any data populated yet - so bump it up one to at least get the current results.
+                issue = 1
             searchresults, explicit = mb.findComic(name, mode, issue=issue)
         elif type == 'comic' and mode == 'series':
             if name.startswith('4050-'):
@@ -967,7 +969,7 @@ class WebInterface(object):
         else:
             newaction = action
         for IssueID in args:
-            if IssueID is None or 'issue_table' in IssueID or 'history_table' in IssueID or 'manage_issues' in IssueID or 'issue_table_length' in IssueID:
+            if any([IssueID is None, 'issue_table' in IssueID, 'history_table' in IssueID, 'manage_issues' in IssueID, 'issue_table_length' in IssueID]):
                 continue
             else:
                 mi = myDB.selectone("SELECT * FROM issues WHERE IssueID=?", [IssueID]).fetchone()
@@ -1020,6 +1022,19 @@ class WebInterface(object):
         raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % mi['ComicID'])
 
     markissues.exposed = True
+
+    def markentries(self, action=None, **args):
+        myDB = db.DBConnection()
+        cnt = 0
+        for ID in args:
+            logger.info(ID)
+            if any([ID is None, 'manage_failed_length' in ID]):
+                continue
+            else:
+                myDB.action("DELETE FROM Failed WHERE ID=?", [ID])
+                cnt+=1
+        logger.info('[DB FAILED CLEANSING] Cleared ' + str(cnt) + ' entries from the Failed DB so they will now be downloaded if available/working.')
+    markentries.exposed = True
 
     def retryit(self, **kwargs):
         threading.Thread(target=self.retryissue, kwargs=kwargs).start()
@@ -1205,6 +1220,8 @@ class WebInterface(object):
             # this is for marking individual comics from a readlist to be downloaded.
             # Because there is no associated ComicID or IssueID, follow same pattern as in 'pullwant'
             # except we know the Year
+            if len(ComicYear) > 4:
+                ComicYear = ComicYear[:4]
             if SARC is None:
                 # it's just a readlist queue (no storyarc mode enabled)
                 SARC = True
@@ -1897,6 +1914,32 @@ class WebInterface(object):
         return serve_template(templatename="manageissues.html", title="Manage " + str(status) + " Issues", issues=results)
     manageIssues.exposed = True
 
+    def manageFailed(self):
+        results = []
+        myDB = db.DBConnection()
+        failedlist = myDB.select('SELECT * from Failed')
+        for f in failedlist:
+            if f['Provider'] == 'KAT': #if any([f['Provider'] == 'KAT', f['Provider'] == '32P']):
+                link = helpers.torrent_create(f['Provider'], f['ID'])
+            else:
+                link = f['ID']
+
+            if f['DateFailed'] is None:
+                datefailed = '0000-00-0000'
+            else:
+                datefailed = f['DateFailed']
+
+            results.append({"Series":        f['ComicName'],
+                            "Issue_Number":  f['Issue_Number'],
+                            "Provider":      f['Provider'],
+                            "Link":          link,
+                            "ID":            f['ID'],
+                            "FileName":      f['NZBName'],
+                            "DateFailed":    datefailed})
+
+        return serve_template(templatename="managefailed.html", title="Failed DB Management", failed=results)
+    manageFailed.exposed = True
+
     def manageNew(self):
         myDB = db.DBConnection()
         newcomics = myDB.select('SELECT * from newartists')
@@ -2034,14 +2077,21 @@ class WebInterface(object):
         alist = myDB.select("SELECT * from readinglist WHERE ComicName is not Null group by StoryArcID") #COLLATE NOCASE")
         for al in alist:
             totalcnt = myDB.select("SELECT * FROM readinglist WHERE StoryArcID=?", [al['StoryArcID']])
+            lowyear = 9999
             maxyear = 0
             for la in totalcnt:
-                if la['IssueYEAR'] != la['SeriesYear'] and la['IssueYEAR'] > la['SeriesYear']:
-                    maxyear = la['IssueYear']
+                if int(la['IssueDate'][:4]) > maxyear:
+                    maxyear = int(la['IssueDate'][:4])
+                if int(la['IssueDate'][:4]) < lowyear:
+                    lowyear = int(la['IssueDate'][:4])
+                
             if maxyear == 0:
                 spanyears = la['SeriesYear']
+            elif lowyear == maxyear:
+                spanyears = str(maxyear)
             else:
-                spanyears = la['SeriesYear'] + ' - ' + str(maxyear)
+                spanyears = str(lowyear) + ' - ' + str(maxyear) #la['SeriesYear'] + ' - ' + str(maxyear)
+
             havecnt = myDB.select("SELECT COUNT(*) as count FROM readinglist WHERE StoryArcID=? AND (Status='Downloaded' or Status='Archived')", [al['StoryArcID']])
             havearc = havecnt[0][0]
             totalarc = int(al['TotalIssues'])
@@ -2163,20 +2213,20 @@ class WebInterface(object):
         tracks = dom.getElementsByTagName('Book')
         i = 1
         node = dom.documentElement
-        print ("there are " + str(len(tracks)) + " issues in the story-arc: " + str(storyarc))
+        logger.fdebug("there are " + str(len(tracks)) + " issues in the story-arc: " + str(storyarc))
         #generate a random number for the ID, and tack on the total issue count to the end as a str :)
         storyarcid = str(random.randint(1000, 9999)) + str(len(tracks))
         i = 1
         for book_element in tracks:
             st_issueid = str(storyarcid) + "_" + str(random.randint(1000, 9999))
             comicname = book_element.getAttribute('Series')
-            print ("comic: " + comicname)
+            logger.fdebug("comic: " + comicname)
             comicnumber = book_element.getAttribute('Number')
-            print ("number: " + str(comicnumber))
+            logger.fdebug("number: " + str(comicnumber))
             comicvolume = book_element.getAttribute('Volume')
-            print ("volume: " + str(comicvolume))
+            logger.fdebug("volume: " + str(comicvolume))
             comicyear = book_element.getAttribute('Year')
-            print ("year: " + str(comicyear))
+            logger.fdebug("year: " + str(comicyear))
             CtrlVal = {"IssueArcID": st_issueid}
             NewVals = {"StoryArcID":  storyarcid,
                        "ComicName":   comicname,
@@ -2216,8 +2266,6 @@ class WebInterface(object):
                             "lowvalue":    '9999',
                             "yearRANGE":   [str(Arc_MS['SeriesYear'])]}) #Arc_MS['SeriesYear']})
 
-            print str(AMS)
-
             for MSCheck in AMS:
                 thischk = myDB.select('SELECT * FROM readinglist WHERE ComicName=? AND SeriesYear=?', [MSCheck['ComicName'], MSCheck['SeriesYear']])
                 for tchk in thischk:
@@ -2231,15 +2279,15 @@ class WebInterface(object):
                             if key == "lowvalue":
                                 MSCheck[key] = tchk['IssueNumber']
 
-                    print str(tchk['IssueYear'])
-                    print str(MSCheck['yearRANGE'])
+                    logger.fdebug(str(tchk['IssueYear']))
+                    logger.fdebug(MSCheck['yearRANGE'])
                     if str(tchk['IssueYear']) not in str(MSCheck['yearRANGE']):
                         for key in MSCheck.keys():
                             if key == "yearRANGE":
                                 MSCheck[key].append(str(tchk['IssueYear']))
 
                 #write out here
-                print MSCheck
+                logger.febug(str(MSCheck))
 
         #now we load in the list without the multiple entries (ie. series that appear only once in the cbl and don't have an IssueID)
         Arc_Issues = myDB.select("SELECT * FROM readinglist WHERE StoryArcID=? AND IssueID is NULL GROUP BY ComicName HAVING (COUNT(ComicName) = 1)", [storyarcid])
@@ -2258,8 +2306,8 @@ class WebInterface(object):
                             "lowvalue":    AI['IssueNumber'],
                             "yearRANGE":   AI['IssueYear']})
 
-        print 'AMS:' + str(AMS)
-        print ('I need to now try to populate ' + str(len(AMS)) + ' series.')
+        logger.fdebug('AMS:' + str(AMS))
+        logger.fdebug('I need to now try to populate ' + str(len(AMS)) + ' series.')
 
         Arc_Data = []
 
@@ -2865,8 +2913,11 @@ class WebInterface(object):
         mylar.IMP_METADATA = imp_metadata
         mylar.config_write()
         #thread the scan.
-        if scan == '1': scan = True
-        else: scan = False
+        if scan == '1': 
+            scan = True
+        else: 
+            scan = False
+            return
 
         thread_ = threading.Thread(target=librarysync.scanLibrary, name="LibraryScan", args=[scan, queue])
         thread_.start()
@@ -3253,6 +3304,9 @@ class WebInterface(object):
                     "nzbsu_api": mylar.NZBSU_APIKEY,
                     "use_dognzb": helpers.checked(mylar.DOGNZB),
                     "dognzb_api": mylar.DOGNZB_APIKEY,
+                    "use_omgwtfnzbs": helpers.checked(mylar.OMGWTFNZBS),
+                    "omgwtfnzbs_username": mylar.OMGWTFNZBS_USERNAME,
+                    "omgwtfnzbs_api": mylar.OMGWTFNZBS_APIKEY,
                     "use_experimental": helpers.checked(mylar.EXPERIMENTAL),
                     "enable_torznab": helpers.checked(mylar.ENABLE_TORZNAB),
                     "torznab_name": mylar.TORZNAB_NAME,
@@ -3555,7 +3609,7 @@ class WebInterface(object):
     def configUpdate(self, comicvine_api=None, http_host='0.0.0.0', http_username=None, http_port=8090, http_password=None, enable_https=0, https_cert=None, https_key=None, api_enabled=0, api_key=None, launch_browser=0, auto_update=0, logverbose=0, annuals_on=0, max_logsize=None, download_scan_interval=None, nzb_search_interval=None, nzb_startup_search=0, libraryscan_interval=None,
         nzb_downloader=0, sab_host=None, sab_username=None, sab_apikey=None, sab_password=None, sab_category=None, sab_priority=None, sab_directory=None, sab_to_mylar=0, log_dir=None, log_level=0, blackhole_dir=None,
         nzbget_host=None, nzbget_port=None, nzbget_username=None, nzbget_password=None, nzbget_category=None, nzbget_priority=None, nzbget_directory=None,
-        usenet_retention=None, nzbsu=0, nzbsu_uid=None, nzbsu_apikey=None, dognzb=0, dognzb_apikey=None, newznab=0, newznab_host=None, newznab_name=None, newznab_apikey=None, newznab_uid=None, newznab_enabled=0,
+        usenet_retention=None, nzbsu=0, nzbsu_uid=None, nzbsu_apikey=None, dognzb=0, dognzb_apikey=None, omgwtfnzbs=0, omgwtfnzbs_username=None, omgwtfnzbs_apikey=None, newznab=0, newznab_host=None, newznab_name=None, newznab_apikey=None, newznab_uid=None, newznab_enabled=0,
         enable_torznab=0, torznab_name=None, torznab_host=None, torznab_apikey=None, torznab_category=None, experimental=0, check_folder=None, enable_check_folder=0,
         enable_meta=0, cmtagger_path=None, ct_tag_cr=0, ct_tag_cbl=0, ct_cbz_overwrite=0, unrar_cmd=None, enable_rss=0, rss_checkinterval=None, failed_download_handling=0, failed_auto=0, enable_torrent_search=0, enable_kat=0, enable_32p=0, mode_32p=0, rssfeed_32p=None, passkey_32p=None, username_32p=None, password_32p=None, snatchedtorrent_notify=0,
         enable_torrents=0, minseeds=0, torrent_local=0, local_watchdir=None, torrent_seedbox=0, seedbox_watchdir=None, seedbox_user=None, seedbox_pass=None, seedbox_host=None, seedbox_port=None,
@@ -3611,6 +3665,9 @@ class WebInterface(object):
         mylar.NZBSU_APIKEY = nzbsu_apikey
         mylar.DOGNZB = dognzb
         mylar.DOGNZB_APIKEY = dognzb_apikey
+        mylar.OMGWTFNZBS = omgwtfnzbs
+        mylar.OMGWTFNZBS_USERNAME = omgwtfnzbs_username
+        mylar.OMGWTFNZBS_APIKEY = omgwtfnzbs_apikey
         mylar.ENABLE_TORZNAB = enable_torznab
         mylar.TORZNAB_NAME = torznab_name
         mylar.TORZNAB_HOST = torznab_host
@@ -4075,10 +4132,10 @@ class WebInterface(object):
     testboxcar.exposed = True
 
     def testpushover(self):
-        pushover = notifiers.pushover()
+        pushover = notifiers.PUSHOVER()
         result = pushover.test_notify()
-        if result:
-            return "Successfully sent Pushover test -  check to make sure it worked"
+        if result == True:
+            return "Successfully sent PushOver test -  check to make sure it worked"
         else:
             return "Error sending test message to Pushover"
     testpushover.exposed = True

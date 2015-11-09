@@ -105,6 +105,10 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueD
     if mylar.DOGNZB == 1:
         nzbprovider.append('dognzb')
         nzbp+=1
+    if mylar.OMGWTFNZBS == 1:
+        nzbprovider.append('omgwtfnzbs')
+        nzbp+=1
+
     # --------
     #  Xperimental
     if mylar.EXPERIMENTAL == 1:
@@ -287,6 +291,8 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
         apikey = mylar.NZBSU_APIKEY
     elif nzbprov == 'dognzb':
         apikey = mylar.DOGNZB_APIKEY
+    elif nzbprov == 'omgwtfnzbs':
+        apikey = mylar.OMGWTFNZBS_APIKEY
     elif nzbprov == 'experimental':
         apikey = 'none'
     elif nzbprov == 'newznab':
@@ -495,6 +501,8 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                         findurl = "https://api.dognzb.cr/api?t=search&q=" + str(comsearch) + "&o=xml&cat=7030"
                     elif nzbprov == 'nzb.su':
                         findurl = "https://api.nzb.su/api?t=search&q=" + str(comsearch) + "&o=xml&cat=7030"
+                    elif nzbprov == 'omgwtfnzbs':
+                        findurl = "https://api.omgwtfnzbs.org/xml/?search=" + str(comsearch) + "&user=" + mylar.OMGWTFNZBS_USERNAME + "&o=xml&catid=9"
                     elif nzbprov == 'newznab':
                         #let's make sure the host has a '/' at the end, if not add it.
                         if host_newznab[len(host_newznab) -1:len(host_newznab)] != '/':
@@ -511,7 +519,10 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                         apikey = mylar.TORZNAB_APIKEY
                     if nzbprov != 'nzbx':
                         # helper function to replace apikey here so we avoid logging it ;)
-                        findurl = findurl + "&apikey=" + str(apikey)
+                        if nzbprov == 'omgwtfnzbs':
+                            findurl = findurl + "&api=" + str(apikey)
+                        else:
+                            findurl = findurl + "&apikey=" + str(apikey)
                         logsearch = helpers.apiremove(str(findurl), 'nzb')
                         logger.fdebug("search-url: " + str(logsearch))
 
@@ -591,6 +602,29 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
             else:
                 for entry in bb['entries']:
                     logger.fdebug("checking search result: " + entry['title'])
+                    #some nzbsites feel that comics don't deserve a nice regex to strip the crap from the header, the end result is that we're
+                    #dealing with the actual raw header which causes incorrect matches below.
+                    #this is a temporary cut from the experimental search option (findcomicfeed) as it does this part well usually.
+                    except_list=['releases', 'gold line', 'distribution', '0-day', '0 day']
+                    splitTitle = entry['title'].split("\"")
+                    _digits = re.compile('\d')
+
+                    ComicTitle = entry['title']
+                    for subs in splitTitle:
+                        logger.fdebug('sub:' + subs)
+                        regExCount = 0
+                        if len(subs) >= len(ComicName.split()) and not any(d in subs.lower() for d in except_list) and bool(_digits.search(subs)) is True:
+                            if subs.lower().startswith('for'):
+                                if ComicName.lower().startswith('for'):
+                                    pass
+                                else:
+                                    #this is the crap we ignore. Continue (commented else, as it spams the logs)
+                                    #logger.fdebug('this starts with FOR : ' + str(subs) + '. This is not present in the series - ignoring.')
+                                    continue
+                            logger.fdebug('Detected crap within header. Ignoring this portion of the result in order to see if it\'s a valid match.')
+                            ComicTitle = subs
+                            break
+
                     if nzbprov != "dognzb":
                         #rss for experimental doesn't have the size constraints embedded. So we do it here.
                         if RSS == "yes":
@@ -664,6 +698,8 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
 
                     if UseFuzzy == "1":
                         logger.fdebug('Year has been fuzzied for this series, ignoring store date comparison entirely.')
+                        postdate_int = None
+                        issuedate_int = None
                     else:
 
                         #use store date instead of publication date for comparisons since publication date is usually +2 months
@@ -713,13 +749,14 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
 
 # -- end size constaints.
 
-                    if '(digital first)' in entry['title'].lower():
-                        dig_moving = re.sub('\(digital first\)', '', entry['title'].lower()).strip()
+                    if '(digital first)' in ComicTitle.lower(): #entry['title'].lower():
+                        dig_moving = re.sub('\(digital first\)', '', ComicTitle.lower()).strip() #entry['title'].lower()).strip()
                         dig_moving = re.sub('[\s+]', ' ', dig_moving)
                         dig_mov_end = dig_moving + ' (Digital First)'
                         thisentry = dig_mov_end
                     else:
-                        thisentry = entry['title']
+                        thisentry = ComicTitle #entry['title']
+
                     logger.fdebug("Entry: " + thisentry)
                     cleantitle = thisentry
 
@@ -1041,44 +1078,47 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                     else:
                         #if the issue is alphanumeric (ie. 15AU, 12A) it'll error.
                         tmpiss = splitit[(len(splitit) -1)]
-                        i = 0
-                        alphas = None
-                        a_issno = None
-                        while (i < len(tmpiss)):
-                            if tmpiss[i].isalpha():
-                            #take first occurance of alpha in string and carry it through
-                                alphas = tmpiss[i:].rstrip()
-                                a_issno = tmpiss[:i +1].rstrip()
-                                break
-                            i+=1
-                        logger.fdebug("alphas: " + str(alphas))
-                        logger.fdebug("a_issno: " + str(a_issno))
-                        if alphas is None:
-                            # if the nzb name doesn't follow the series-issue-year format even closely..ignore nzb
-                            logger.fdebug("invalid naming format of nzb detected - cannot properly determine issue")
-                            continue
-                        else:
-                            if a_issno == '' and alphas is not None:
-                                #print 'issno & alphas blank'
-                                #print 'splitit: ' + splitit[(len(splitit)-2)]
-                                #print 'splitit: ' + splitit[(len(splitit)-1)]
-                                #if there' a space between the issue & alpha, join them.
-                                findstart = thisentry.find(splitit[(len(splitit) -1)])
-                                #print 'thisentry : ' + thisentry
-                                #print 'decimal location : ' + str(findstart)
-                                if thisentry[findstart -1] == '.':
-                                    comic_iss = splitit[(len(splitit) -2)] + '.' + splitit[(len(splitit) -1)]
-                                else:
-                                    comic_iss = splitit[(len(splitit) -2)] + splitit[(len(splitit) -1)]
-                                logger.fdebug('comic_iss is : ' + str(comic_iss))
-                                splitst = len(splitit) - 2
+                        if not tmpiss.isdigit():
+                            findstart = thisentry.find(splitit[(len(splitit) -1)])
+                            #tmpiss = splitit[(len(splitit) -2)] + splitit[(len(splitit) -1)]
+                            if thisentry[findstart -1] == '.':
+                                comic_iss = splitit[(len(splitit) -2)] + '.' + splitit[(len(splitit) -1)]
                             else:
-                                comic_iss = tmpiss
-                                splitst = len(splitit) - 1
+                                comic_iss = splitit[(len(splitit) -2)] + splitit[(len(splitit) -1)]
+                            logger.fdebug('comic_iss is : ' + str(comic_iss))
+                            splitst = len(splitit) - 2
+                            logger.fdebug('issue number seperated. Rejoining to complete comparison properly to : ' + tmpiss)
+                        else:
+                            i = 0
+                            alphas = None
+                            a_issno = None
+                            while (i < len(tmpiss)):
+                                if tmpiss[i].isalpha():
+                                #take first occurance of alpha in string and carry it through
+                                    alphas = tmpiss[i:].rstrip()
+                                    a_issno = tmpiss[:i +1].rstrip()
+                                    break
+                                i+=1
+                            logger.fdebug("alphas: " + str(alphas))
+                            logger.fdebug("a_issno: " + str(a_issno))
+                            if alphas is None:
+                                # if the nzb name doesn't follow the series-issue-year format even closely..ignore nzb
+                                logger.fdebug("invalid naming format of nzb detected - cannot properly determine issue")
+                                continue
+                            else:
+                                if a_issno == '' and alphas is not None:
+                                    #if there' a space between the issue & alpha, join them.
+                                    findstart = thisentry.find(splitit[(len(splitit) -1)])
+                                    if thisentry[findstart -1] == '.':
+                                        comic_iss = splitit[(len(splitit) -2)] + '.' + splitit[(len(splitit) -1)]
+                                    else:
+                                        comic_iss = splitit[(len(splitit) -2)] + splitit[(len(splitit) -1)]
+                                    logger.fdebug('comic_iss is : ' + str(comic_iss))
+                                    splitst = len(splitit) - 2
+                                else:
+                                    comic_iss = tmpiss
+                                    splitst = len(splitit) - 1
                     logger.fdebug("adjusting from: " + str(comic_iss_b4) + " to: " + str(comic_iss))
-                    #bmm = re.findall('v\d', comic_iss)
-                    #if len(bmm) > 0: splitst = len(splitit) - 2
-                    #else: splitst = len(splitit) - 1
 
                     # make sure that things like - in watchcomic are accounted for when comparing to nzb.
                     findcomic = re.sub('[\/]', ' ', findcomic)
@@ -1174,11 +1214,11 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                         #if the found volume is a vol.0, up it to vol.1 (since there is no V0)
                         if F_ComicVersion == '0':
                             #need to convert dates to just be yyyy-mm-dd and do comparison, time operator in the below calc as well which probably throws off some accuracy.
-                            if postdate_int >= issuedate_int and nzbprov == '32P':
-                                logger.fdebug('32P torrent discovery. Store date (' + str(stdate) + ') is before posting date (' + str(pubdate) + '), forcing volume label to be the same as series label (0-Day Enforcement): v' + str(F_ComicVersion) + ' --> v' + str(S_ComicVersion))
-                                F_ComicVersion = D_ComicVersion
-                            else:
-                                F_ComicVersion = '1'
+                            F_ComicVersion = '1'
+                            if postdate_int is not None:
+                                if postdate_int >= issuedate_int and nzbprov == '32P':
+                                    logger.fdebug('32P torrent discovery. Store date (' + str(stdate) + ') is before posting date (' + str(pubdate) + '), forcing volume label to be the same as series label (0-Day Enforcement): v' + str(F_ComicVersion) + ' --> v' + str(S_ComicVersion))
+                                    F_ComicVersion = D_ComicVersion
 
                         logger.fdebug("FCVersion: " + str(F_ComicVersion))
                         logger.fdebug("DCVersion: " + str(D_ComicVersion))
@@ -1215,7 +1255,7 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                     if (splitst) != len(watchcomic_split):
 
                         if issue_firstword:
-                            vals = IssueTitleCheck(issuetitle, watchcomic_split, splitit, splitst, issue_firstword, hyphensplit, orignzb=entry['title'])
+                            vals = IssueTitleCheck(issuetitle, watchcomic_split, splitit, splitst, issue_firstword, hyphensplit, orignzb=ComicTitle) #entry['title'])
 
                             if vals is not None:
                                 if vals[0]['status'] == 'continue':
@@ -1359,7 +1399,7 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                                               "modcomicname":  modcomicname})
 
                             #generate nzbname
-                            nzbname = nzbname_create(nzbprov, info=comicinfo, title=entry['title'])
+                            nzbname = nzbname_create(nzbprov, info=comicinfo, title=ComicTitle) #entry['title'])
 
                             #generate the send-to and actually send the nzb / torrent.
                             searchresult = searcher(nzbprov, nzbname, comicinfo, entry['link'], IssueID, ComicID, tmpprov, newznab=newznab_host)
@@ -1670,6 +1710,11 @@ def nzbname_create(provider, title=None, info=None):
         nzbname = re.sub('\s+', ' ', nzbname)  #make sure we remove the extra spaces.
         logger.fdebug('[SEARCHER] nzbname (\s): ' + nzbname)
         nzbname = re.sub(' ', '.', nzbname)
+        #remove the [1/9] parts or whatever kinda crap (usually in experimental results)
+        pattern = re.compile(r'\W\d{1,3}\/\d{1,3}\W')
+        match = pattern.search(nzbname)
+        if match:
+            nzbname = re.sub(match.group(), '', nzbname).strip()
         logger.fdebug('[SEARCHER] end nzbname: ' + nzbname)
 
     logger.fdebug("nzbname used for post-processing:" + nzbname)
@@ -1756,6 +1801,14 @@ def searcher(nzbprov, nzbname, comicinfo, link, IssueID, ComicID, tmpprov, direc
             #dognzb - need to add back in the dog apikey
             down_url = urljoin(link, str(mylar.DOGNZB_APIKEY))
             verify = False
+
+        elif nzbprov == 'omgwtfnzbs':
+            #omgwtfnzbs.
+            down_url = 'https://api.omgwtfnzbs.org/sn.php?'
+            payload = {'id': str(nzbid),
+                       'user': str(mylar.OMGWTFNZBS_USERNAME),
+                       'api': str(mylar.OMGWTFNZBS_APIKEY)}
+            verify = True 
 
         else:
             #experimental - direct link.
@@ -2293,7 +2346,7 @@ def generate_id(nzbprov, link):
         #id is located after the /download/ portion
         url_parts = urlparse.urlparse(link)
         path_parts = url_parts[2].rpartition('/')
-        nzbtempid = path_parts[0].rpartition('/')
+        nzbtempid = path_parts[2].rpartition('/')
         nzblen = len(nzbtempid)
         nzbid = nzbtempid[nzblen -1]
     elif nzbprov == '32P':
@@ -2314,6 +2367,10 @@ def generate_id(nzbprov, link):
         url_parts = urlparse.urlparse(link)
         path_parts = url_parts[2].rpartition('/')
         nzbid = path_parts[0].rsplit('/', 1)[1]
+    elif nzbprov == 'omgwtfnzbs':
+        url_parts = urlparse.urlparse(link)
+        path_parts = url_parts[4].split('&')
+        nzbid = path_parts[0].rsplit('=',1)[1]
     elif nzbprov == 'newznab':
         #if in format of http://newznab/getnzb/<id>.nzb&i=1&r=apikey
         tmpid = urlparse.urlparse(link)[4]  #param 4 is the query string from the url.

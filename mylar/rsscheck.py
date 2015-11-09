@@ -282,6 +282,10 @@ def nzbs(provider=None, forcerss=False):
         num_items = "&num=100" if forcerss else ""  # default is 25
         _parse_feed('dognzb', 'https://dognzb.cr/rss.cfm?r=' + mylar.DOGNZB_APIKEY + '&t=7030' + num_items)
 
+    if mylar.OMGWTFNZBS == 1:
+        num_items = "&num=100" if forcerss else ""  # default is 25
+        _parse_feed('omgwtfnzbs', 'http://api.omgwtfnzbs.org/rss?t=7030&dl=1&i=' + (mylar.OMGWTFNZBS_USERNAME or '1') + '&r=' + mylar.OMGWTFNZBS_APIKEY + num_items)
+
     for newznab_host in newznab_hosts:
         site = newznab_host[0].rstrip()
         (newznabuid, _, newznabcat) = (newznab_host[3] or '').partition('#')
