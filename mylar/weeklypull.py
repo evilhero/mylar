@@ -130,12 +130,12 @@ def pullit(forcecheck=None):
     newrl = mylar.CACHE_DIR + "/newreleases.txt"
 
     if mylar.ALT_PULL:
-        logger.info('[PULL-LIST] The Alt-Pull method is currently broken. Defaulting back to the normal method of grabbing the pull-list.') 
-        #logger.info('[PULL-LIST] Populating & Loading pull-list data directly from webpage')
-        #newpull.newpull()
-    #else:
-    logger.info('[PULL-LIST] Populating & Loading pull-list data from file')
-    f = urllib.urlretrieve(PULLURL, newrl)
+        #logger.info('[PULL-LIST] The Alt-Pull method is currently broken. Defaulting back to the normal method of grabbing the pull-list.') 
+        logger.info('[PULL-LIST] Populating & Loading pull-list data directly from webpage')
+        newpull.newpull()
+    else:
+        logger.info('[PULL-LIST] Populating & Loading pull-list data from file')
+        f = urllib.urlretrieve(PULLURL, newrl)
 
     #newtxtfile header info ("SHIPDATE\tPUBLISHER\tISSUE\tCOMIC\tEXTRA\tSTATUS\n")
     #STATUS denotes default status to be applied to pulllist in Mylar (default = Skipped)
@@ -363,13 +363,13 @@ def pullit(forcecheck=None):
                         dupefound = "no"
 
                 #-- remove html tags when alt_pull is enabled
-                #if mylar.ALT_PULL:
-                #    if '&amp;' in comicnm:
-                #        comicnm = re.sub('&amp;', '&', comicnm).strip()
-                #    if '&amp;' in pub:
-                #        pub = re.sub('&amp;', '&', pub).strip()
-                #    if '&amp;' in comicrm:
-                #        comicrm = re.sub('&amp;', '&', comicrm).strip()
+                if mylar.ALT_PULL:
+                    if '&amp;' in comicnm:
+                        comicnm = re.sub('&amp;', '&', comicnm).strip()
+                    if '&amp;' in pub:
+                        pub = re.sub('&amp;', '&', pub).strip()
+                    if '&amp;' in comicrm:
+                        comicrm = re.sub('&amp;', '&', comicrm).strip()
 
                 #--start duplicate comic / issue chk
                 # pullist has shortforms of a series' title sometimes and causes problems
@@ -660,6 +660,21 @@ def pullitcheck(comic1off_name=None, comic1off_id=None, forcecheck=None, futurep
                                 logger.fdebug("comicnm : " + str(comicnm) + " / mod :" + str(modcomicnm))
 
                                 if comicnm == watchcomic.upper() or modcomicnm == modwatchcomic.upper():
+                                    if mylar.ANNUALS_ON:
+                                        if 'annual' in watchcomic.lower() and 'annual' not in comicnm.lower():
+                                            logger.fdebug('Annual detected in issue, but annuals are not enabled and no series match in wachlist.')
+                                            break
+                                        else:
+                                            #(annual in comicnm & in watchcomic) or (annual in comicnm & not in watchcomic)(with annuals on) = match.
+                                            pass
+                                    else:
+                                        #annuals off
+                                        if ('annual' in comicnm.lower() and 'annual' not in watchcomic.lower()) or ('annual' in watchcomic.lower() and 'annual' not in comicnm.lower()):
+                                            logger.fdebug('Annual detected in issue, but annuals are not enabled and no series match in wachlist.')
+                                            break
+                                        else:
+                                            #annual in comicnm & in watchcomic (with annuals off) = match.
+                                            pass
                                     logger.fdebug("matched on:" + comicnm + "..." + watchcomic.upper())
                                     watchcomic = unlines[cnt]
                                     pass
@@ -1050,44 +1065,53 @@ def future_check():
             logger.fdebug('Publisher of series to be added: ' + str(ser['Publisher']))
             for sr in searchresults:
                 logger.fdebug('Comparing ' + sr['name'] + ' - to - ' + ser['ComicName'])
-                tmpsername = re.sub('[\'\*\^\%\$\#\@\!\-\/\,\.\:\(\)]', '', ser['ComicName']).strip()
-                tmpsrname = re.sub('[\'\*\^\%\$\#\@\!\-\/\,\.\:\(\)]', '', sr['name']).strip()
+                tmpsername = re.sub('[\'\*\^\%\$\#\@\!\/\,\.\:\(\)]', '', ser['ComicName']).strip()
+                tmpsrname = re.sub('[\'\*\^\%\$\#\@\!\/\,\.\:\(\)]', '', sr['name']).strip()
+                tmpsername = re.sub('\-', ' ', tmpsername)
+                if tmpsername.lower().startswith('the '):
+                    tmpsername = re.sub('the ', ' ', tmpsername.lower()).strip()
+                else:
+                    tmpsername = re.sub(' the ', ' ', tmpsername.lower()).strip()
+                tmpsrname = re.sub('\-', ' ', tmpsrname)
+                if tmpsrname.lower().startswith('the '):
+                    tmpsrname = re.sub('the ', ' ', tmpsrname.lower()).strip()
+                else:
+                    tmpsrname = re.sub(' the ', ' ', tmpsrname.lower()).strip()
+                logger.fdebug('Comparing ' + tmpsrname + ' - to - ' + tmpsername)
                 if tmpsername.lower() == tmpsrname.lower():
-                    logger.info('Name matched successful: ' + sr['name'])
+                    logger.fdebug('Name matched successful: ' + sr['name'])
                     if str(sr['comicyear']) == str(theissdate):
-                        logger.info('Matched to : ' + str(theissdate))
+                        logger.fdebug('Matched to : ' + str(theissdate))
                         matches.append(sr)
             if len(matches) == 1:
                 logger.info('Narrowed down to one series as a direct match: ' + matches[0]['name'] + '[' + str(matches[0]['comicid']) + ']')
                 cid = matches[0]['comicid']
                 matched = True
             else:
-                for pos_match in matches:
-                    length_match = len(pos_match['name']) / len(ser['ComicName'])
-                    logger.fdebug('length match differential set for an allowance of 20%')
-                    logger.fdebug('actual differential in length between result and series title: ' + str((length_match * 100)-100) + '%')
-                    split_match = pos_match['name'].split()
-                    split_series = ser['ComicName'].split()
-                    word_match = 0
-                    i = 0
-                    for ss in split_series:
-                        try:
-                            matchword = split_match[i].lower()
-                        except:
-                            break
-                        if split_match.lower().index(ss) == split_series.lower().index(ss):
-                            #will return word position in string.
-                            logger.fdebug('word match to position found in both strings at position : ' + str(split_match.lower().index(ss)))
-                            word_match+=1
-                        elif any(['the', 'and', '&'] == matchword.lower()):
-                            logger.fdebug('common word detected of : ' + matchword)
-                            word_match+=.5
-                        i+=1                                
-                    logger.info('word match score of : ' + str(word_match) + ' / ' + str(len(split_series)))
-
-#        elif len(searchresults) == 1:
-#            matched = True
-#            cid = searchresults[0]['comicid']
+                logger.info('Unable to determine a successful match at this time (this is still a WIP so it will eventually work). Not going to attempt auto-adding at this time.')
+#                for pos_match in matches:
+#                    length_match = len(pos_match['name']) / len(ser['ComicName'])
+#                    logger.fdebug('length match differential set for an allowance of 20%')
+#                    logger.fdebug('actual differential in length between result and series title: ' + str((length_match * 100)-100) + '%')
+#                    split_match = pos_match['name'].lower().split()
+#                    split_series = ser['ComicName'].lower().split()
+#                    word_match = 0
+#                    i = 0
+#                    for ss in split_series:
+#                        logger.fdebug('ss value: ' + str(ss))
+#                        try:
+#                            matchword = split_match[i].lower()
+#                        except:
+#                            break
+#                        if split_match.index(ss) == split_series.index(ss):
+#                            #will return word position in string.
+#                            logger.fdebug('word match to position found in both strings at position : ' + str(split_match.index(ss)))
+#                            word_match+=1
+#                        elif any(['the', 'and', '&'] == matchword.lower()):
+#                            logger.fdebug('common word detected of : ' + matchword)
+#                            word_match+=.5
+#                        i+=1                                
+#                    logger.info('word match score of : ' + str(word_match) + ' / ' + str(len(split_series)))
 
         if matched:
             #we should probably load all additional issues for the series on the futureupcoming list that are marked as Wanted and then

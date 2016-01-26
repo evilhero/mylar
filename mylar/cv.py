@@ -23,7 +23,6 @@ import urllib2
 import lib.feedparser
 import mylar
 import platform
-from mylar.helpers import cvapi_check
 from bs4 import BeautifulSoup as Soup
 import httplib
 
@@ -75,16 +74,15 @@ def pulldetails(comicid, type, issueid=None, offset=1, arclist=None, comicidlist
     elif type == 'comicyears':
         PULLURL = mylar.CVURL + 'volumes/?api_key=' + str(comicapi) + '&format=xml&filter=id:' + str(comicidlist) + '&field_list=name,id,start_year,publisher&offset=' + str(offset)
 
-    #logger.info('PULLURL: ' + PULLURL)
-    #CV API Check here.
-    if mylar.CVAPI_COUNT == 0 or mylar.CVAPI_COUNT >= mylar.CVAPI_MAX:
-        chkit = cvapi_check()
-        if chkit == False:
-            return "apireached"
+    #logger.info('CV.PULLURL: ' + PULLURL)
+    #new CV API restriction - one api request / second.
+    if mylar.CVAPI_RATE is None or mylar.CVAPI_RATE < 2:
+        time.sleep(2)
+    else:
+        time.sleep(mylar.CVAPI_RATE)
+
     #download the file:
     file = urllib2.urlopen(PULLURL)
-    #increment CV API counter.
-    mylar.CVAPI_COUNT += 1
     #convert to string:
     data = file.read()
     #close file because we dont need it anymore:
@@ -120,21 +118,17 @@ def getComic(comicid, type, issueid=None, arc=None, arcid=None, arclist=None, co
         searched = pulldetails(id, 'issue', None, 0, islist)
         if searched is None:
             return False
-        elif searched == 'apireached': 
-            return 'apireached'
         totalResults = searched.getElementsByTagName('number_of_total_results')[0].firstChild.wholeText
         logger.fdebug("there are " + str(totalResults) + " search results...")
         if not totalResults:
             return False
         countResults = 0
         while (countResults < int(totalResults)):
-            logger.fdebug("querying " + str(countResults))
+            logger.fdebug("querying range from " + str(countResults) + " to " + str(countResults + 100))
             if countResults > 0:
                 #new api - have to change to page # instead of offset count
                 offsetcount = countResults
                 searched = pulldetails(id, 'issue', None, offsetcount, islist)
-                if searched == 'apireached':
-                    return 'apireached'
             issuechoice, tmpdate = GetIssuesInfo(id, searched, arcid)
             if tmpdate < firstdate:
                 firstdate = tmpdate
@@ -144,31 +138,22 @@ def getComic(comicid, type, issueid=None, arc=None, arcid=None, arclist=None, co
 
         issue['issuechoice'] = ndic
         issue['firstdate'] = firstdate
-
         return issue
 
     elif type == 'comic':
         dom = pulldetails(comicid, 'comic', None, 1)
-        if dom == 'apireached':
-            return 'apireached'
         return GetComicInfo(comicid, dom)
     elif type == 'firstissue':
         dom = pulldetails(comicid, 'firstissue', issueid, 1)
-        if dom == 'apireached':
-            return 'apireached'
         return GetFirstIssue(issueid, dom)
     elif type == 'storyarc':
         dom = pulldetails(arc, 'storyarc', None, 1)
-        if dom == 'apireached':
-            return 'apireached'
         return GetComicInfo(issueid, dom)
     elif type == 'comicyears':
         #used by the story arc searcher when adding a given arc to poll each ComicID in order to populate the Series Year.
         #this grabs each issue based on issueid, and then subsets the comicid for each to be used later.
         #set the offset to 0, since we're doing a filter.
         dom = pulldetails(arcid, 'comicyears', offset=0, comicidlist=comicidlist)
-        if dom == 'apireached':
-            return 'apireached'
         return GetSeriesYears(dom)
 
 def GetComicInfo(comicid, dom, safechk=None):
