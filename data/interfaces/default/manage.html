@@ -44,19 +44,13 @@
                                             (this.value==this.defaultValue) this.value='';" name="path" size="70" />
                                         %endif
                                         </div>
-<!--                                        <div class="row checkbox">
-                                           <input type="checkbox" name="libraryscan" id="libraryscan" value="1" ${checked(mylar.LIBRARYSCAN)}><label>Automatically Scan Library</label>
-                                        </div>
--->
                                         <div class="row checkbox">
                                            <input type="checkbox" name="autoadd" id="autoadd" value="1" ${checked(mylar.ADD_COMICS)}><label>Auto-add new series</label>
                                         </div>
-<!--
                                         <div class="row checkbox">
                                              <input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="imp_metadata" id="imp_metadata" value="1" ${checked(mylar.IMP_METADATA)}><label>Use existing Metadata</label>
                                              <small>Use existing Metadata to better locate series for import</small>
                                         </div>
--->
                                         <div class="row checkbox">
                                            <input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="imp_move" onclick="initConfigCheckbox($this));" id="imp_move" value="1" ${checked(mylar.IMP_MOVE)}><label>Move files into corresponding Series directory</label>
                                            <small>Leaving this unchecked will not move anything, but will mark the issues as Archived</small>
@@ -118,7 +112,7 @@
                           <legend>Force Options</legend>
                            <a href="#" onclick="doAjaxCall('forceSearch',$(this))" data-success="Checking for wanted issues successful" data-error="Error checking wanted issues"><span class="ui-icon ui-icon-search"></span>Force Check for Wanted Issues</a>
                            <a href="#" onclick="doAjaxCall('forceUpdate',$(this))" data-success="Update active comics successful" data-error="Error forcing update Comics"><span class="ui-icon ui-icon-heart"></span>Force Update Active Comics</a>
-                           <a href="#" onclick="doAjaxCall('checkGithub',$(this))" data-success="Checking for update successful" data-error="Error checking for update"><span class="ui-icon ui-icon-refresh"></span>Check for mylar Updates</a>
+                           <a href="#" onclick="doAjaxCall('checkGithub',$(this))" data-success="Checking for update successful" data-error="Error checking for update"><span class="ui-icon ui-icon-refresh"></span>Check for Mylar Updates</a>
                         </div>
                     </fieldset>
                   </td>

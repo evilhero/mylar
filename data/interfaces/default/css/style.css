@@ -286,8 +286,7 @@ input,
 select,
 form .checkbox input,
 .configtable td#middle,
-#series_table td#have,
-#album_table td#have {
+#series_table td#have {
   vertical-align: middle;
 }
 input[type="radio"] {
@@ -1228,7 +1227,8 @@ div#artistheader h2 a {
   min-width: 275px;
   text-align: left;
 }
-#series_table th#year {
+#series_table th#year,
+#series_table th#have_percent {
   max-width: 25px;
   text-align: left;
 }
@@ -1256,7 +1256,8 @@ div#artistheader h2 a {
   text-align: left;
   vertical-align: middle;
 }
-#series_table td#year {
+#series_table td#year,
+#series_table td#have_percent {
   max-width: 25px;
   text-align: left;
   vertical-align: middle;
@@ -1304,20 +1305,16 @@ div#artistheader h2 a {
   background-color: #FFF;
 }
 #log_table th#timestamp {
-  min-width: 150px;
+  min-width: 125px;
   text-align: left;
 }
 #log_table th#level {
-  min-width: 60px;
+  max-width: 60px;
   text-align: left;
 }
 #log_table th#message {
-  min-width: 500px;
+  min-width: 600px;
   text-align: left;
-}
-#log_table td {
-  font-size: 12px;
-  padding: 2px 10px;
 }
 #searchresults_table th#name {
   min-width: 525px;

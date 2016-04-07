@@ -176,7 +176,7 @@ def replace_all(text, dic):
 def cleanName(string):
 
     pass1 = latinToAscii(string).lower()
-    out_string = re.sub('[\/\@\#\$\%\^\*\+\"\[\]\{\}\<\>\=\_]', '', pass1).encode('utf-8')
+    out_string = re.sub('[\/\@\#\$\%\^\*\+\"\[\]\{\}\<\>\=\_]', ' ', pass1).encode('utf-8')
 
     return out_string
 
@@ -745,8 +745,10 @@ def updateComicLocation():
     if mylar.NEWCOM_DIR is not None:
         logger.info('Performing a one-time mass update to Comic Location')
         #create the root dir if it doesn't exist
-        mylar.filechecker.validateAndCreateDirectory(mylar.NEWCOM_DIR, create=True)
-
+        checkdirectory = mylar.filechecker.validateAndCreateDirectory(mylar.NEWCOM_DIR, create=True)
+        if not checkdirectory:
+            logger.warn('Error trying to validate/create directory. Aborting this process at this time.')
+            return
         dirlist = myDB.select("SELECT * FROM comics")
         comloc = []
 
@@ -782,11 +784,15 @@ def updateComicLocation():
                           '$Annual':        'Annual'
                           }
 
+                #set the paths here with the seperator removed allowing for cross-platform altering.
+                ccdir = re.sub(r'[\\|/]', '*', mylar.NEWCOM_DIR)
+                ddir = re.sub(r'[\\|/]', '*', mylar.DESTINATION_DIR)
+                dlc = re.sub(r'[\\|/]', '*', dl['ComicLocation'])
 
                 if mylar.FFTONEWCOM_DIR:
                     #if this is enabled (1) it will apply the Folder_Format to all the new dirs
                     if mylar.FOLDER_FORMAT == '':
-                        comlocation = re.sub(mylar.DESTINATION_DIR, mylar.NEWCOM_DIR, dl['ComicLocation']).strip()
+                        comlocation = re.sub(ddir, ccdir, dlc).strip()
                     else:
                         first = replace_all(folderformat, values)
                         if mylar.REPLACE_SPACES:
@@ -798,9 +804,12 @@ def updateComicLocation():
                     #DESTINATION_DIR = /mnt/mediavg/Comics
                     #NEWCOM_DIR = /mnt/mediavg/Comics/Comics-1
                     #dl['ComicLocation'] = /mnt/mediavg/Comics/Batman-(2011)
-                    comlocation = re.sub(mylar.DESTINATION_DIR, mylar.NEWCOM_DIR, dl['ComicLocation']).strip()
+                    comlocation = re.sub(ddir, ccdir, dlc).strip()
 
-                comloc.append({"comlocation":  comlocation,
+                #regenerate the new path location so that it's os.dependent now.
+                com_done = re.sub('\*', os.sep, comlocation).strip()
+
+                comloc.append({"comlocation":  com_done,
                                "origlocation": dl['ComicLocation'],
                                "comicid":      dl['ComicID']})
 
@@ -1299,13 +1308,13 @@ def IssueDetails(filelocation, IssueID=None):
                #print str(data)
                issuetag = 'xml'
             #looks for the first page and assumes it's the cover. (Alternate covers handled later on)
-            elif any(['000.' in infile, '00.' in infile]) and infile.endswith(pic_extensions):
+            elif any(['000.' in infile, '00.' in infile]) and infile.endswith(pic_extensions) and cover == "notfound":
                logger.fdebug('Extracting primary image ' + infile + ' as coverfile for display.')
                local_file = open(os.path.join(mylar.CACHE_DIR, 'temp.jpg'), "wb")
                local_file.write(inzipfile.read(infile))
                local_file.close
                cover = "found"
-            elif any(['00a' in infile, '00b' in infile, '00c' in infile, '00d' in infile, '00e' in infile]) and infile.endswith(pic_extensions):
+            elif any(['00a' in infile, '00b' in infile, '00c' in infile, '00d' in infile, '00e' in infile]) and infile.endswith(pic_extensions) and cover == "notfound":
                logger.fdebug('Found Alternate cover - ' + infile + ' . Extracting.')
                altlist = ('00a', '00b', '00c', '00d', '00e')
                for alt in altlist:
@@ -1316,7 +1325,7 @@ def IssueDetails(filelocation, IssueID=None):
                        cover = "found"
                        break
 
-            elif ('001.jpg' in infile or '001.png' in infile or '001.webp' in infile) and cover == "notfound":
+            elif any(['001.jpg' in infile, '001.png' in infile, '001.webp' in infile, '01.jpg' in infile, '01.png' in infile, '01.webp' in infile]) and cover == "notfound":
                logger.fdebug('Extracting primary image ' + infile + ' as coverfile for display.')
                local_file = open(os.path.join(mylar.CACHE_DIR, 'temp.jpg'), "wb")
                local_file.write(inzipfile.read(infile))
@@ -1355,6 +1364,10 @@ def IssueDetails(filelocation, IssueID=None):
                 series_title = result.getElementsByTagName('Series')[0].firstChild.wholeText
             except:
                 series_title = "None"
+            try:
+                series_volume = result.getElementsByTagName('Volume')[0].firstChild.wholeText
+            except:
+                series_volume = "None"
             try:
                 issue_number = result.getElementsByTagName('Number')[0].firstChild.wholeText
             except:
@@ -1427,17 +1440,25 @@ def IssueDetails(filelocation, IssueID=None):
                 pagecount = 0
             logger.fdebug("number of pages I counted: " + str(pagecount))
             i = 0
-            while (i < int(pagecount)):
-                pageinfo = result.getElementsByTagName('Page')[i].attributes
-                attrib = pageinfo.getNamedItem('Image')
-                logger.fdebug('Frontcover validated as being image #: ' + str(attrib.value))
-                att = pageinfo.getNamedItem('Type')
-                logger.fdebug('pageinfo: ' + str(pageinfo))
-                if att.value == 'FrontCover':
-                    logger.fdebug('FrontCover detected. Extracting.')
-                    break
-                i+=1
-    else:
+
+            try:
+                pageinfo = result.getElementsByTagName('Page')[0].attributes
+                if pageinfo: pageinfo_test == True
+            except:
+                pageinfo_test = False
+
+            if pageinfo_test:
+                while (i < int(pagecount)):
+                    pageinfo = result.getElementsByTagName('Page')[i].attributes
+                    attrib = pageinfo.getNamedItem('Image')
+                    logger.fdebug('Frontcover validated as being image #: ' + str(attrib.value))
+                    att = pageinfo.getNamedItem('Type')
+                    logger.fdebug('pageinfo: ' + str(pageinfo))
+                    if att.value == 'FrontCover':
+                        logger.fdebug('FrontCover detected. Extracting.')
+                        break
+                    i+=1
+    elif issuetag == 'comment':
         stripline = 'Archive:  ' + dstlocation
         data = re.sub(stripline, '', data.encode("utf-8")).strip()
         if data is None or data == '':
@@ -1466,6 +1487,10 @@ def IssueDetails(filelocation, IssueID=None):
         cover_artist = "None"
         penciller = "None"
         inker = "None"
+        try:
+            series_volume = dt['volume']
+        except:
+            series_volume = None
         for cl in dt['credits']:
             if cl['role'] == 'Editor':
                 if editor == "None": editor = cl['person']
@@ -1505,8 +1530,13 @@ def IssueDetails(filelocation, IssueID=None):
         except:
             pagecount = "None"
 
+    else:
+        logger.warn('Unable to locate any metadata within cbz file. Tag this file and try again if necessary.')
+        return
+
     issuedetails.append({"title":        issue_title,
                          "series":       series_title,
+                         "volume":       series_volume,
                          "issue_number": issue_number,
                          "summary":      summary,
                          "notes":        notes,
@@ -1598,17 +1628,21 @@ def duplicate_filecheck(filename, ComicID=None, IssueID=None, StoryArcID=None):
             logger.info('[DUPECHECK] Unable to find corresponding Issue within the DB. Do you still have the series on your watchlist?')
             return
 
+    series = myDB.selectone("SELECT * FROM comics WHERE ComicID=?", [dupchk['ComicID']]).fetchone()
+
     #if it's a retry and the file was already snatched, the status is Snatched and won't hit the dupecheck.
     #rtnval will be one of 3: 
     #'write' - write new file
     #'dupe_file' - do not write new file as existing file is better quality
     #'dupe_src' - write new file, as existing file is a lesser quality (dupe)
+    rtnval = []
     if dupchk['Status'] == 'Downloaded' or dupchk['Status'] == 'Archived':
         try:
             dupsize = dupchk['ComicSize']
         except:
             logger.info('[DUPECHECK] Duplication detection returned no hits as this is a new Snatch. This is not a duplicate.')
-            rtnval = "write"            
+            rtnval.append({'action':  "write"})
+
         logger.info('[DUPECHECK] Existing Status already set to ' + dupchk['Status'])
         cid = []
         if dupsize is None:
@@ -1624,11 +1658,13 @@ def duplicate_filecheck(filename, ComicID=None, IssueID=None, StoryArcID=None):
                     return duplicate_filecheck(filename, ComicID, IssueID, StoryArcID)
                 else:
                     #not sure if this one is correct - should never actually get to this point.
-                    rtnval = "dupe_file"
+                    rtnval.append({'action':  "dupe_file",
+                                   'to_dupe': os.path.join(series['ComicLocation'], dupchk['Location'])})
             else:
-                rtnval = "dupe_file"
+                rtnval.append({'action':  "dupe_file",
+                               'to_dupe': os.path.join(series['ComicLocation'], dupchk['Location'])})
         else:
-            logger.info('[DUPECHECK] Existing file :' + dupchk['Location'] + ' has a filesize of : ' + str(dupsize) + ' bytes.')
+            logger.info('[DUPECHECK] Existing file within db :' + dupchk['Location'] + ' has a filesize of : ' + str(dupsize) + ' bytes.')
 
             #keywords to force keep / delete
             #this will be eventually user-controlled via the GUI once the options are enabled.
@@ -1637,7 +1673,8 @@ def duplicate_filecheck(filename, ComicID=None, IssueID=None, StoryArcID=None):
                 logger.info('[DUPECHECK] Existing filesize is 0 as I cannot locate the original entry.')
                 if dupchk['Status'] == 'Archived':
                     logger.info('[DUPECHECK] Assuming issue is Archived.')
-                    rtnval = "dupe_file"
+                    rtnval.append({'action':  "dupe_file",
+                                   'to_dupe': filename})
                     return rtnval
                 else:
                     logger.info('[DUPECHECK] Assuming 0-byte file - this one is gonna get hammered.')
@@ -1649,33 +1686,39 @@ def duplicate_filecheck(filename, ComicID=None, IssueID=None, StoryArcID=None):
                     if dupchk['Location'].endswith('.cbz'):
                         #keep dupechk['Location']
                         logger.info('[DUPECHECK-CBR PRIORITY] [#' + dupchk['Issue_Number'] + '] Retaining currently scanned in file : ' + dupchk['Location'])
-                        rtnval = "dupe_file"
+                        rtnval.append({'action':  "dupe_file",
+                                       'to_dupe': filename})
                     else:
                         #keep filename
                         logger.info('[DUPECHECK-CBR PRIORITY] [#' + dupchk['Issue_Number'] + '] Retaining newly scanned in file : ' + filename)
-                        rtnval = "dupe_src"
+                        rtnval.append({'action':  "dupe_src",
+                                       'to_dupe': os.path.join(series['ComicLocation'], dupchk['Location'])})
 
                 elif 'cbz' in mylar.DUPECONSTRAINT:
                     if dupchk['Location'].endswith('.cbr'):
                         #keep dupchk['Location']
                         logger.info('[DUPECHECK-CBZ PRIORITY] [#' + dupchk['Issue_Number'] + '] Retaining currently scanned in filename : ' + dupchk['Location'])
-                        rtnval = "dupe_file"
+                        rtnval.append({'action':  "dupe_file",
+                                       'to_dupe': filename})
                     else:
                         #keep filename
                         logger.info('[DUPECHECK-CBZ PRIORITY] [#' + dupchk['Issue_Number'] + '] Retaining newly scanned in filename : ' + filename)
-                        rtnval = "dupe_src"
+                        rtnval.append({'action':  "dupe_src",
+                                       'to_dupe': os.path.join(series['ComicLocation'], dupchk['Location'])})
 
             if mylar.DUPECONSTRAINT == 'filesize':
                 if filesz <= int(dupsize) and int(dupsize) != 0:
                     logger.info('[DUPECHECK-FILESIZE PRIORITY] [#' + dupchk['Issue_Number'] + '] Retaining currently scanned in filename : ' + dupchk['Location'])
-                    rtnval = "dupe_file"
+                    rtnval.append({'action':  "dupe_file",
+                                   'to_dupe': filename}) 
                 else:
                     logger.info('[DUPECHECK-FILESIZE PRIORITY] [#' + dupchk['Issue_Number'] + '] Retaining newly scanned in filename : ' + filename)
-                    rtnval = "dupe_src"
+                    rtnval.append({'action':  "dupe_src",
+                                   'to_dupe': os.path.join(series['ComicLocation'], dupchk['Location'])})
 
     else:
         logger.info('[DUPECHECK] Duplication detection returned no hits. This is not a duplicate of anything that I have scanned in as of yet.')
-        rtnval = "write"
+        rtnval.append({'action':  "write"})
     return rtnval
 
 def create_https_certificates(ssl_cert, ssl_key):
@@ -1761,6 +1804,65 @@ def parse_32pfeed(rssfeedline):
                     "passkey": mylar.PASSKEY_32P}
 
     return KEYS_32P
+
+def humanize_time(self, amount, units = 'seconds'):
+
+    def process_time(amount, units):
+
+        INTERVALS = [   1, 60,
+                        60*60,
+                        60*60*24,
+                        60*60*24*7,
+                        60*60*24*7*4,
+                        60*60*24*7*4*12,
+                        60*60*24*7*4*12*100,
+                        60*60*24*7*4*12*100*10]
+        NAMES = [('second', 'seconds'),
+                 ('minute', 'minutes'),
+                 ('hour', 'hours'),
+                 ('day', 'days'),
+                 ('week', 'weeks'),
+                 ('month', 'months'),
+                 ('year', 'years'),
+                 ('century', 'centuries'),
+                 ('millennium', 'millennia')]
+
+        result = []
+
+        unit = map(lambda a: a[1], NAMES).index(units)
+        # Convert to seconds
+        amount = amount * INTERVALS[unit]
+
+        for i in range(len(NAMES)-1, -1, -1):
+            a = amount // INTERVALS[i]
+            if a > 0:
+                result.append( (a, NAMES[i][1 % a]) )
+                amount -= a * INTERVALS[i]
+
+        return result
+
+    rd = process_time(int(amount), units)
+    cont = 0
+    for u in rd:
+        if u[0] > 0:
+            cont += 1
+
+    buf = ''
+    i = 0
+    for u in rd:
+        if u[0] > 0:
+            buf += "%d %s" % (u[0], u[1])
+            cont -= 1
+
+        if i < (len(rd)-1):
+            if cont > 1:
+                buf += ", "
+            else:
+                buf += " and "
+
+        i += 1
+
+    return buf
 
 #def file_ops(path,dst):
 #    # path = source path + filename

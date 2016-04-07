@@ -21,6 +21,7 @@ import threading
 import platform
 import urllib, urllib2
 from xml.dom.minidom import parseString, Element
+import lib.requests as requests
 
 import mylar
 from mylar import logger, db, cv
@@ -46,9 +47,6 @@ if platform.python_version() == '2.7.6':
 def pullsearch(comicapi, comicquery, offset, explicit, type):
     u_comicquery = urllib.quote(comicquery.encode('utf-8').strip())
     u_comicquery = u_comicquery.replace(" ", "%20")
-    if '-' in u_comicquery:
-        #cause titles like A-Force will return 16,000+ results otherwise
-        u_comicquery = '%22' + u_comicquery + '%22'
 
     if explicit == 'all' or explicit == 'loose':
         PULLURL = mylar.CVURL + 'search?api_key=' + str(comicapi) + '&resources=' + str(type) + '&query=' + u_comicquery + '&field_list=id,name,start_year,first_issue,site_detail_url,count_of_issues,image,publisher,deck,description&format=xml&page=' + str(offset)
@@ -69,18 +67,16 @@ def pullsearch(comicapi, comicquery, offset, explicit, type):
         time.sleep(mylar.CVAPI_RATE)
 
     #download the file:
+    payload = None
+    verify = False
+
     try:
-        file = urllib2.urlopen(PULLURL)
-    except urllib2.HTTPError, err:
-        logger.error('err : ' + str(err))
-        logger.error("There was a major problem retrieving data from ComicVine - on their end. You'll have to try again later most likely.")
+        r = requests.get(PULLURL, params=payload, verify=verify, headers=mylar.CV_HEADERS)
+    except Exception, e:
+        logger.warn('Error fetching data from ComicVine: %s' % (e))
         return
-    #convert to string:
-    data = file.read()
-    #close file because we dont need it anymore:
-    file.close()
-    #parse the xml you downloaded
-    dom = parseString(data)
+
+    dom = parseString(r.content) #(data)
     return dom
 
 def findComic(name, mode, issue, limityear=None, explicit=None, type=None):
@@ -91,8 +87,8 @@ def findComic(name, mode, issue, limityear=None, explicit=None, type=None):
     comiclist = []
     arcinfolist = []
     
-    chars = set('!?*')
-    if any((c in chars) for c in name):
+    chars = set('!?*&-')
+    if any((c in chars) for c in name) or 'annual' in name:
         name = '"' +name +'"'
 
     #print ("limityear: " + str(limityear))
@@ -107,6 +103,10 @@ def findComic(name, mode, issue, limityear=None, explicit=None, type=None):
         explicit = 'all'
 
     #OR
+    if ' and ' in comicquery.lower():
+        logger.fdebug('Enforcing exact naming match due to operator in title (and)')
+        explicit = 'all'
+
     if explicit == 'loose':
         logger.fdebug('Changing to loose mode - this will match ANY of the search words')
         comicquery = name.replace(" ", " OR ")
@@ -115,7 +115,7 @@ def findComic(name, mode, issue, limityear=None, explicit=None, type=None):
         comicquery=name.replace(" ", " AND ")
     else:
         logger.fdebug('Default search mode - this will match on ALL search words')
-        comicquery = name.replace(" ", " AND ")
+        #comicquery = name.replace(" ", " AND ")
         explicit = 'all'
 
 
@@ -364,16 +364,24 @@ def storyarcinfo(xmlid):
     else:
         time.sleep(mylar.CVAPI_RATE)
 
-    try:
-        file = urllib2.urlopen(ARCPULL_URL)
-    except urllib2.HTTPError, err:
-        logger.error('err : ' + str(err))
-        logger.error('There was a major problem retrieving data from ComicVine - on their end.')
-        return
+    #download the file:
+    payload = None
+    verify = False
 
-    arcdata = file.read()
-    file.close()
-    arcdom = parseString(arcdata)
+    try:
+        r = requests.get(ARCPULL_URL, params=payload, verify=verify, headers=mylar.CV_HEADERS)
+    except Exception, e:
+        logger.warn('Error fetching data from ComicVine: %s' % (e))
+        return
+#    try:
+#        file = urllib2.urlopen(ARCPULL_URL)
+#    except urllib2.HTTPError, err:
+#        logger.error('err : ' + str(err))
+#        logger.error('There was a major problem retrieving data from ComicVine - on their end.')
+#        return
+#    arcdata = file.read()
+#    file.close()
+    arcdom = parseString(r.content) #(arcdata)
 
     try:
         logger.fdebug('story_arc ascension')

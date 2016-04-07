@@ -32,6 +32,9 @@ try:
 except ImportError:
     import lib.argparse as argparse
 
+if ( sys.platform == 'win32' and sys.executable.split( '\\' )[-1] == 'pythonw.exe'):
+    sys.stdout = open(os.devnull, "w")
+    sys.stderr = open(os.devnull, "w")
 
 def handler_sigterm(signum, frame):
     mylar.SIGNAL = 'shutdown'
@@ -79,9 +82,13 @@ def main():
     args = parser.parse_args()
 
     if args.verbose:
-        mylar.VERBOSE = 2
-    elif args.quiet:
-        mylar.VERBOSE = 0
+        mylar.VERBOSE = True
+    if args.quiet:
+        mylar.QUIET = True
+
+    # Do an intial setup of the logger.
+    logger.initLogger(console=not mylar.QUIET, log_dir=False,
+        verbose=mylar.VERBOSE)
 
     #if args.update:
     #    print('Attempting to update Mylar so things can work again...')
@@ -95,7 +102,6 @@ def main():
             print "Daemonize not supported under Windows, starting normally"
         else:
             mylar.DAEMON = True
-            mylar.VERBOSE = 0
 
     if args.pidfile:
         mylar.PIDFILE = str(args.pidfile)

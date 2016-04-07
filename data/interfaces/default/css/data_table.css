@@ -171,13 +171,60 @@ table.display_no_select tr.heading2 td {
 
 table.display_no_select td {
 	padding: 8px 10px;
-	font-size: 16px;
+	font-size: 12px;
 }
 table
 table.display_no_select td.center {
 	text-align: center;
 }
 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * DataTables display for log screen
+ */
+table.display_log {
+        margin: 20px auto;
+        clear: both;
+        border:1px solid #EEE;
+        width: 100%;
+
+        /* Note Firefox 3.5 and before have a bug with border-collapse
+         * ( https://bugzilla.mozilla.org/show%5Fbug.cgi?id=155955 )
+         * border-spacing: 0; is one possible option. Conditional-css.com is
+         * useful for this kind of thing
+         *
+         * Further note IE 6/7 has problems when calculating widths with border width.
+         * It subtracts one px relative to the other browsers from the first column, and
+         * adds one to the end...
+         *
+         * If you want that effect I'd suggest setting a border-top/left on th/td's and
+         * then filling in the gaps with other borders.
+         */
+}
+
+table.display_log thead th {
+        padding: 3px 18px 3px 10px;
+        background-color: white;
+        font-weight: bold;
+}
+
+table.display_log tfoot th {
+        padding: 3px 18px 3px 10px;
+        border-top: 1px solid black;
+        font-weight: bold;
+}
+
+table.display_log tr.heading2 td {
+        border-bottom: 1px solid #aaa;
+}
+
+table.display_log td {
+        padding: 4px 10px;
+        font-size: 12px;
+}
+table
+table.display_log td.center {
+        text-align: center;
+}
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * DataTables sorting
@@ -304,6 +351,92 @@ table.display tr:last-child td {
 table.display tr td#add .ui-icon { display: inline-block; }
 
 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * DataTables row classes
+ */
+table.display_no_select tr.odd.gradeA {
+        background-color: #ddffdd;
+}
+
+table.display_no_select tr.even.gradeA {
+        background-color: #ddffdd;
+}
+
+table.display_no_select tr.odd.gradeC {
+        background-color: #ebf5ff;
+}
+
+table.display_no_select tr.even.gradeC {
+        background-color: #ebf5ff;
+}
+
+table.display_no_select tr.even.gradeH{
+        background-color: #FFF5CC;
+}
+
+table.display_no_select tr.odd.gradeH {
+        background-color: #FFF5CC;
+}
+
+table.display_no_select tr.even.gradeL {
+        background-color: #ebf5ff;
+}
+
+table.display_no_select tr.odd.gradeL {
+        background-color: #ebf5ff;
+}
+
+table.display_no_select tr.odd.gradeX {
+        background-color: #ffdddd;
+}
+
+table.display_no_select tr.even.gradeX {
+        background-color: #ffdddd;
+}
+
+table.display_no_select tr.odd.gradeU {
+        background-color: #ddd;
+}
+
+table.display_no_select tr.even.gradeU {
+        background-color: #eee;
+}
+
+table.display_no_select tr.odd.gradeP {
+        background-color: #68FC68;
+}
+
+table.display_no_select tr.even.gradeP {
+        background-color: #68FC68;
+}
+
+table.display_no_select tr.odd.gradeD {
+        background-color: #C7EFC7;
+}
+
+table.display_no_select tr.odd.gradeZ {
+        background-color: #FAFAFA;
+}
+
+table.display_no_select tr.even.gradeZ {
+        background-color: white;
+}
+table.display_no_select tr.gradeL #status {
+        background: url("../images/loader_black.gif") no-repeat scroll 15px center transparent;
+        font-size: 11px;
+        text-indent: -3000px;
+}
+table.display_no_select tr.gradeA td,
+table.display_no_select tr.gradeC td,
+table.display_no_select tr.gradeX td,
+table.display_no_select tr.gradeU td,
+table.display_no_select tr.gradeP td,
+table.display_no_select tr.gradeD td,
+table.display_no_select tr.gradeZ td {border-bottom: 1px solid #FFF;}
+table.display_no_select tr:last-child td {
+        border-bottom: 1px solid #eee;
+}
+table.display_no_select tr td#add .ui-icon { display: inline-block; }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * Misc
