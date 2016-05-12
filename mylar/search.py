@@ -535,7 +535,12 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                             torznab_fix = mylar.TORZNAB_HOST
                         findurl = str(torznab_fix) + "?t=search&q=" + str(comsearch) + "&o=xml&cat=" + str(mylar.TORZNAB_CATEGORY)
                         apikey = mylar.TORZNAB_APIKEY
-                    if nzbprov != 'nzbx':
+                    else:
+                        logger.warn('You have a blank newznab entry within your configuration. Remove it, save the config and restart mylar to fix things. Skipping this blank provider until fixed.')
+                        findurl = None
+                        bb = "noresults"
+
+                    if findurl:
                         # helper function to replace apikey here so we avoid logging it ;)
                         findurl = findurl + "&apikey=" + str(apikey)
                         logsearch = helpers.apiremove(str(findurl), 'nzb')
@@ -600,7 +605,7 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                                 break
                             data = False
 
-                        logger.info('status code: ' + str(r.status_code))
+                        #logger.fdebug('status code: ' + str(r.status_code))
 
                         if str(r.status_code) != '200':
                             logger.warn('Unable to retrieve search results from ' + tmpprov + ' [Status Code returned: ' + str(r.status_code) + ']')
@@ -660,7 +665,7 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                                     #this is the crap we ignore. Continue (commented else, as it spams the logs)
                                     #logger.fdebug('this starts with FOR : ' + str(subs) + '. This is not present in the series - ignoring.')
                                     continue
-                            logger.fdebug('Detected crap within header. Ignoring this portion of the result in order to see if it\'s a valid match.')
+                                logger.fdebug('Detected crap within header. Ignoring this portion of the result in order to see if it\'s a valid match.')
                             ComicTitle = subs
                             break
 
@@ -846,10 +851,11 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
 
                     ctchk = cleantitle.split()
                     ctchk_indexes = []
+                    origvol = None
                     volfound = False
                     vol_nono = []
                     new_cleantitle = []
-
+                     
                     fndcomicversion = None
                     for ct in ctchk:
                         if any([ct.lower().startswith('v') and ct[1:].isdigit(), ct.lower()[:3] == 'vol', volfound == True]):
@@ -860,7 +866,6 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                                     #recreate the cleantitle, with the volume label completely removed (but stored for comparison later)
                                     ct = 'v' + str(ct)
                                     ctchk_indexes.extend(range(0, len(ctchk)))
-                                    logger.info(ctchk_indexes)
                                     for i in ctchk_indexes:
                                         if i not in vol_nono:
                                             new_cleantitle.append(ctchk[i])
@@ -870,6 +875,7 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                             tmpsplit = ct
                             if tmpsplit.lower().startswith('vol'):
                                 logger.fdebug('volume detected - stripping and re-analzying for volume label.')
+                                origvol = tmpsplit
                                 if '.' in tmpsplit:
                                     tmpsplit = re.sub('.', '', tmpsplit).strip()
                                 tmpsplit = re.sub('vol', '', tmpsplit.lower()).strip()
@@ -879,6 +885,7 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                                     #vol_label = ct  #store the wording of how the Vol is defined so we can skip it later on.
                                     vol_nono.append(ctchk.index(ct))
                                     volfound = True
+                                    origvol = None
                                     continue
 
                             if len(tmpsplit[1:]) == 4 and tmpsplit[1:].isdigit():  #v2013
@@ -912,6 +919,11 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                                 continue
 
                         if fndcomicversion:
+                            if origvol:
+                                cleantitle = re.sub(origvol, '', cleantitle).strip()
+                            else:
+                                cleantitle = re.sub(fndcomicversion, '', cleantitle).strip()
+                            logger.fdebug('Newly finished reformed cleantitle (with NO volume label): ' + cleantitle)
                             versionfound = "yes"                            
                             break
 
@@ -1848,8 +1860,6 @@ def searcher(nzbprov, nzbname, comicinfo, link, IssueID, ComicID, tmpprov, direc
                            'id': str(nzbid),
                            'apikey': str(apikey)}
 
-            logger.fdebug('payload:' + str(payload))
-
         elif nzbprov == 'dognzb':
             #dognzb - need to add back in the dog apikey
             down_url = urljoin(link, str(mylar.DOGNZB_APIKEY))
@@ -1865,7 +1875,6 @@ def searcher(nzbprov, nzbname, comicinfo, link, IssueID, ComicID, tmpprov, direc
             logger.info('Download URL: ' + str(down_url) + ' [VerifySSL:' + str(verify) + ']')
         else:
             logger.info('Download URL: ' + down_url + '?' + urllib.urlencode(payload) + ' [VerifySSL:' + str(verify) + ']')
-
 
         if down_url.startswith('https'):
             try:
@@ -2006,7 +2015,6 @@ def searcher(nzbprov, nzbname, comicinfo, link, IssueID, ComicID, tmpprov, direc
 
     #torrents (32P & KAT)
     elif nzbprov == '32P' or nzbprov == 'KAT' or nzbprov == 'Torznab':
-        logger.fdebug("sending .torrent to watchdir.")
         logger.fdebug("ComicName:" + ComicName)
         logger.fdebug("link:" + link)
         logger.fdebug("Torrent Provider:" + nzbprov)
@@ -2031,10 +2039,17 @@ def searcher(nzbprov, nzbname, comicinfo, link, IssueID, ComicID, tmpprov, direc
             else:
                 logger.error('Unable to send torrent - check logs and settings (this would be marked as a BAD torrent if Failed Handling was enabled)')
                 return "torrent-fail"
-        if mylar.TORRENT_LOCAL:
-            sent_to = "your local Watch folder"
-        else:
-            sent_to = "your seedbox Watch folder"
+        if mylar.USE_WATCHDIR:
+            if mylar.TORRENT_LOCAL:
+                sent_to = "your local Watch folder"
+            else:
+                sent_to = "your seedbox Watch folder"
+        elif mylar.USE_UTORRENT:
+            sent_to = "your uTorrent client"
+        elif mylar.USE_RTORRENT:
+            sent_to = "your rTorrent client"
+        elif mylar.USE_TRANSMISSION:
+            sent_to = "your Transmission client"
     #end torrents
 
     else:
@@ -2078,7 +2093,7 @@ def searcher(nzbprov, nzbname, comicinfo, link, IssueID, ComicID, tmpprov, direc
             # changed to just work with direct links now...
             tmpapi = mylar.SAB_HOST + "/api?apikey=" + mylar.SAB_APIKEY
 
-            logger.fdebug("send-to-SAB host &api initiation string : " + str(helpers.apiremove(tmpapi, '&')))
+            logger.fdebug("send-to-SAB host &api initiation string : " + str(helpers.apiremove(tmpapi, 'nzb')))
 
             SABtype = "&mode=addurl&name="
             #generate the api key to download here and then kill it immediately after.
@@ -2176,8 +2191,6 @@ def searcher(nzbprov, nzbname, comicinfo, link, IssueID, ComicID, tmpprov, direc
                 logger.fdebug("...attaching rename script: " + str(helpers.apiremove(tmpapi, '&')))
             #final build of send-to-SAB
             logger.fdebug("Completed send-to-SAB link: " + str(helpers.apiremove(tmpapi, '&')))
-
-            logger.fdebug('sab-to-send:' + str(tmpapi))
 
             try:
                 from lib.requests.packages.urllib3 import disable_warnings
@@ -2397,7 +2410,6 @@ def IssueTitleCheck(issuetitle, watchcomic_split, splitit, splitst, issue_firstw
         return
 
 def generate_id(nzbprov, link):
-    logger.fdebug('[' + nzbprov + '] link: ' + str(link))
     if nzbprov == 'experimental':
         #id is located after the /download/ portion
         url_parts = urlparse.urlparse(link)

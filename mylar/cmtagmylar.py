@@ -32,53 +32,7 @@ def run(dirName, nzbName=None, issueid=None, comversion=None, manual=None, filen
 
     # Force mylar to use cmtagger_path = mylar.PROG_DIR to force the use of the included lib.
 
-    if platform.system() == "Windows":
-        if mylar.UNRAR_CMD == 'None' or mylar.UNRAR_CMD == '' or mylar.UNRAR_CMD is None:
-            unrar_cmd = "C:\Program Files\WinRAR\UnRAR.exe"
-        else:
-            unrar_cmd = mylar.UNRAR_CMD.strip()
-
-      # test for UnRAR
-        if not os.path.isfile(unrar_cmd):
-            unrar_cmd = "C:\Program Files (x86)\WinRAR\UnRAR.exe"
-            if not os.path.isfile(unrar_cmd):
-                logger.fdebug(module + ' Unable to locate UnRAR.exe - make sure it is installed.')
-                logger.fdebug(module + ' Aborting meta-tagging.')
-                return "fail"
-
-        logger.fdebug(module + ' UNRAR path set to : ' + unrar_cmd)
-
-    elif platform.system() == "Darwin":
-        #Mac OS X
-        sys_type = 'mac'
-        if mylar.UNRAR_CMD == 'None' or mylar.UNRAR_CMD == '' or mylar.UNRAR_CMD is None:
-            unrar_cmd = "/usr/local/bin/unrar"
-        else:
-            unrar_cmd = mylar.UNRAR_CMD.strip()
-
-        logger.fdebug(module + ' UNRAR path set to : ' + unrar_cmd)
-
-    else:
-        #for the 'nix
-        sys_type = 'linux'
-        if mylar.UNRAR_CMD == 'None' or mylar.UNRAR_CMD == '' or mylar.UNRAR_CMD is None:
-            if 'freebsd' in platform.linux_distribution()[0].lower():
-                unrar_cmd = "/usr/local/bin/unrar"
-            else:
-                unrar_cmd = "/usr/bin/unrar"
-        else:
-            unrar_cmd = mylar.UNRAR_CMD.strip()
-
-        logger.fdebug(module + ' UNRAR path set to : ' + unrar_cmd)
-
-
-    if not os.path.exists(unrar_cmd):
-        logger.fdebug(module + ' WARNING:  cannot find the unrar command.')
-        logger.fdebug(module + ' File conversion and extension fixing not available')
-        logger.fdebug(module + ' You probably need to edit this script, or install the missing tool, or both!')
-        return "fail"
-
-    logger.fdebug(module + ' Filename is : ' + str(filename))
+    logger.fdebug(module + ' Filename is : ' + filename)
 
     filepath = filename
 
@@ -107,14 +61,12 @@ def run(dirName, nzbName=None, issueid=None, comversion=None, manual=None, filen
     downloadpath = os.path.abspath(dirName)
     sabnzbdscriptpath = os.path.dirname(sys.argv[0])
     comicpath = new_folder
-    unrar_folder = os.path.join(comicpath, "unrard")
 
     logger.fdebug(module + ' Paths / Locations:')
     logger.fdebug(module + ' scriptname : ' + scriptname)
     logger.fdebug(module + ' downloadpath : ' + downloadpath)
     logger.fdebug(module + ' sabnzbdscriptpath : ' + sabnzbdscriptpath)
     logger.fdebug(module + ' comicpath : ' + comicpath)
-    logger.fdebug(module + ' unrar_folder : ' + unrar_folder)
     logger.fdebug(module + ' Running the ComicTagger Add-on for Mylar')
 
 
@@ -139,7 +91,7 @@ def run(dirName, nzbName=None, issueid=None, comversion=None, manual=None, filen
         logger.warn(module + '[WARNING] Make sure that you are using the comictagger included with Mylar.')
         return "fail"
 
-    ctend = ctversion.find('\]')
+    ctend = ctversion.find('\n')
     ctcheck = re.sub("[^0-9]", "", ctversion[:ctend])
     ctcheck = re.sub('\.', '', ctcheck).strip()
     if int(ctcheck) >= int('1115'):  # (v1.1.15)
@@ -213,25 +165,42 @@ def run(dirName, nzbName=None, issueid=None, comversion=None, manual=None, filen
             logger.info(module + ' ' + tagdisp + ' meta-tagging processing started.')
 
         currentScriptName = [sys.executable, comictagger_cmd]
-        logger.fdebug(module + ' Enabling ComicTagger script: ' + str(currentScriptName) + ' with options: ' + str(f_tagoptions))
-            # generate a safe command line string to execute the script and provide all the parameters
         script_cmd = currentScriptName + f_tagoptions
 
-            # use subprocess to run the command and capture output
-        logger.fdebug(module + ' Executing command: ' +str(script_cmd))
+        if initial_ctrun:
+            logger.fdebug(module + ' Enabling ComicTagger script: ' + str(currentScriptName) + ' with options: ' + str(f_tagoptions))
+            script_cmdlog = script_cmd
+
+        else:
+            logger.fdebug(module + ' Enabling ComicTagger script: ' + str(currentScriptName) + ' with options: ' + re.sub(f_tagoptions[f_tagoptions.index(mylar.COMICVINE_API)], 'REDACTED', str(f_tagoptions)))
+            # generate a safe command line string to execute the script and provide all the parameters
+            script_cmdlog = re.sub(f_tagoptions[f_tagoptions.index(mylar.COMICVINE_API)], 'REDACTED', str(script_cmd))
+        
+        logger.fdebug(module + ' Executing command: ' +str(script_cmdlog))
         logger.fdebug(module + ' Absolute path to script: ' +script_cmd[0])
         try:
+            # use subprocess to run the command and capture output
             p = subprocess.Popen(script_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             out, err = p.communicate()
-            logger.info(out)
-            logger.info(err)
+            #logger.info(out)
+            #logger.info(err)
             if initial_ctrun and 'exported successfully' in out:
                 logger.fdebug(module + '[COMIC-TAGGER] : ' +str(out))
                 #Archive exported successfully to: X-Men v4 008 (2014) (Digital) (Nahga-Empire).cbz (Original deleted)
                 tmpfilename = re.sub('Archive exported successfully to: ', '', out.rstrip())
                 if mylar.FILE_OPTS == 'move':
                     tmpfilename = re.sub('\(Original deleted\)', '', tmpfilename).strip()
-                filepath = os.path.join(comicpath, tmpfilename)
+                tmpf = tmpfilename.decode('utf-8')
+                filepath = os.path.join(comicpath, tmpf)
+                if not os.path.isfile(filepath):
+                    logger.fdebug(module + 'Trying utf-8 conversion.')
+                    tmpf = tmpfilename.encode('utf-8')
+                    filepath = os.path.join(comicpath, tmpf)
+                    if not os.path.isfile(filepath):
+                        logger.fdebug(module + 'Trying latin-1 conversion.')
+                        tmpf = tmpfilename.encode('Latin-1')
+                        filepath = os.path.join(comicpath, tmpf)
+
                 logger.fdebug(module + '[COMIC-TAGGER][CBR-TO-CBZ] New filename: ' + filepath)
                 initial_ctrun = False
             elif initial_ctrun and 'Archive is not a RAR' in out:
@@ -252,8 +221,7 @@ def run(dirName, nzbName=None, issueid=None, comversion=None, manual=None, filen
                 logger.info(module + '[COMIC-TAGGER] Successfully wrote ' + tagdisp + ' [' + filepath + ']')
                 i+=1
         except OSError, e:
-            #Cannot find The Walking Dead 150 (2016) (Digital) (Zone-Empire).cbr
-            logger.warn(module + '[COMIC-TAGGER] Unable to run comictagger with the options provided: ' + str(script_cmd))
+            logger.warn(module + '[COMIC-TAGGER] Unable to run comictagger with the options provided: ' + re.sub(f_tagoptions[f_tagoptions.index(mylar.COMICVINE_API)], 'REDACTED', str(script_cmd)))
             return "fail"
 
         if mylar.CBR2CBZ_ONLY and initial_ctrun == False:

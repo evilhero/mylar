@@ -338,9 +338,9 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
             comversion = 'None'
         #if comversion is None, remove it so it doesn't populate with 'None'
         if comversion == 'None':
-            chunk_f_f = re.sub('\$VolumeN', '', mylar.FILE_FORMAT)
+            chunk_f_f = re.sub('\$VolumeN', '', mylar.FOLDER_FORMAT)
             chunk_f = re.compile(r'\s+')
-            mylar.FILE_FORMAT = chunk_f.sub(' ', chunk_f_f)
+            mylar.FOLDER_FORMAT = chunk_f.sub(' ', chunk_f_f)
 
         #do work to generate folder path
 
@@ -353,12 +353,6 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
                   '$VolumeN':       comversion,
                   '$Annual':        'Annual'
                   }
-
-
-
-        #print mylar.FOLDER_FORMAT
-        #print 'working dir:'
-        #print helpers.replace_all(mylar.FOLDER_FORMAT, values)
 
         if mylar.FOLDER_FORMAT == '':
             comlocation = os.path.join(mylar.DESTINATION_DIR, comicdir, " (" + SeriesYear + ")")
@@ -447,14 +441,16 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
         statinfo = os.stat(coverfile)
         coversize = statinfo.st_size
 
-    if int(coversize) < 35000 or str(r.status_code) != '200':
+    if int(coversize) < 30000 or str(r.status_code) != '200':
         if str(r.status_code) != '200':
             logger.info('Trying to grab an alternate cover due to problems trying to retrieve the main cover image.')
         else:
             logger.info('Image size invalid [' + str(coversize) + ' bytes] - trying to get alternate cover image.')
         logger.fdebug('invalid image link is here: ' + comic['ComicImage'])
-        os.remove(coverfile)
 
+        if os.path.exists(coverfile):
+            os.remove(coverfile)
+                       
         logger.info('Attempting to retrieve alternate comic image for the series.')
         try:
             r = requests.get(comic['ComicImageALT'], params=None, stream=True, headers=mylar.CV_HEADERS)
@@ -510,24 +506,31 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     #cdes_removed = Cdesc[:cdes_find]
     #logger.fdebug('description: ' + cdes_removed)
 
-    controlValueDict = {"ComicID":      comicid}
-    newValueDict = {"ComicName":        comic['ComicName'],
-                    "ComicSortName":    sortname,
+    #dynamic-name generation here.
+    as_d = filechecker.FileChecker(watchcomic=comic['ComicName'])
+    as_dinfo = as_d.dynamic_replace(comic['ComicName'])
+    tmpseriesname = as_dinfo['mod_seriesname']
+    dynamic_seriesname = re.sub('[\|\s]','', tmpseriesname.lower()).strip()
+
+    controlValueDict = {"ComicID":        comicid}
+    newValueDict = {"ComicName":          comic['ComicName'],
+                    "ComicSortName":      sortname,
                     "ComicName_Filesafe": comicname_filesafe,
-                    "ComicYear":        SeriesYear,
-                    "ComicImage":       ComicImage,
-                    "ComicImageURL":    comic.get("ComicImage", ""),
-                    "ComicImageALTURL": comic.get("ComicImageALT", ""),
-                    "Total":            comicIssues,
-                    "ComicVersion":     comicVol,
-                    "ComicLocation":    comlocation,
-                    "ComicPublisher":   comic['ComicPublisher'],
-#                    "Description":      Cdesc, #.dencode('utf-8', 'replace'),
-                    "DetailURL":        comic['ComicURL'],
-#                    "ComicPublished":   gcdinfo['resultPublished'],
-                    "ComicPublished":   "Unknown",
-                    "DateAdded":        helpers.today(),
-                    "Status":           "Loading"}
+                    "DynamicComicName":   dynamic_seriesname,
+                    "ComicYear":          SeriesYear,
+                    "ComicImage":         ComicImage,
+                    "ComicImageURL":      comic.get("ComicImage", ""),
+                    "ComicImageALTURL":   comic.get("ComicImageALT", ""),
+                    "Total":              comicIssues,
+                    "ComicVersion":       comicVol,
+                    "ComicLocation":      comlocation,
+                    "ComicPublisher":     comic['ComicPublisher'],
+#                    "Description":       Cdesc, #.dencode('utf-8', 'replace'),
+                    "DetailURL":          comic['ComicURL'],
+#                    "ComicPublished":    gcdinfo['resultPublished'],
+                    "ComicPublished":     "Unknown",
+                    "DateAdded":          helpers.today(),
+                    "Status":             "Loading"}
 
     myDB.upsert("comics", newValueDict, controlValueDict)
 
@@ -584,17 +587,17 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     else:
         if mylar.IMP_MOVE:
             logger.info('Mass import - Move files')
-            moveit.movefiles(comicid, comlocation, ogcname)
+            moveit.movefiles(comicid, comlocation, imported)
         else:
             logger.info('Mass import - Moving not Enabled. Setting Archived Status for import.')
-            moveit.archivefiles(comicid, comlocation, ogcname)
+            moveit.archivefiles(comicid, comlocation, imported)
 
     #check for existing files...
-    statbefore = myDB.selectone("SELECT * FROM issues WHERE ComicID=? AND Issue_Number=?", [comicid, str(latestiss)]).fetchone()
-    logger.fdebug('issue: ' + str(latestiss) + ' status before chk :' + str(statbefore['Status']))
+    statbefore = myDB.selectone("SELECT * FROM issues WHERE ComicID=? AND Int_IssueNumber=?", [comicid, helpers.issuedigits(latestiss)]).fetchone()
+    logger.fdebug('issue: ' + latestiss + ' status before chk :' + str(statbefore['Status']))
     updater.forceRescan(comicid)
-    statafter = myDB.selectone("SELECT * FROM issues WHERE ComicID=? AND Issue_Number=?", [comicid, str(latestiss)]).fetchone()
-    logger.fdebug('issue: ' + str(latestiss) + ' status after chk :' + str(statafter['Status']))
+    statafter = myDB.selectone("SELECT * FROM issues WHERE ComicID=? AND Int_IssueNumber=?", [comicid, helpers.issuedigits(latestiss)]).fetchone()
+    logger.fdebug('issue: ' + latestiss + ' status after chk :' + str(statafter['Status']))
 
     logger.fdebug('pullupd: ' + str(pullupd))
     logger.fdebug('lastpubdate: ' + str(lastpubdate))
@@ -604,10 +607,10 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     # do this for only Present comics....
         if mylar.AUTOWANT_UPCOMING and lastpubdate == 'Present' and series_status == 'Active': #and 'Present' in gcdinfo['resultPublished']:
             logger.fdebug('latestissue: #' + str(latestiss))
-            chkstats = myDB.selectone("SELECT * FROM issues WHERE ComicID=? AND Issue_Number=?", [comicid, str(latestiss)]).fetchone()
+            chkstats = myDB.selectone("SELECT * FROM issues WHERE ComicID=? AND Int_IssueNumber=?", [comicid, helpers.issuedigits(latestiss)]).fetchone()
             if chkstats is None:
                 if mylar.ANNUALS_ON:
-                    chkstats = myDB.selectone("SELECT * FROM annuals WHERE ComicID=? AND Issue_Number=?", [comicid, latestiss]).fetchone()
+                    chkstats = myDB.selectone("SELECT * FROM annuals WHERE ComicID=? AND Int_IssueNumber=?", [comicid, helpers.issuedigits(latestiss)]).fetchone()
 
             if chkstats:
                 logger.fdebug('latestissue status: ' + chkstats['Status'])
@@ -660,9 +663,9 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
             logger.info('[FROM THE FUTURE CHECKLIST] Attempting to grab wanted issues for : ' + comic['ComicName'])
             for result in chkresults:
                 for chkit in chkwant:
-                    logger.fdebug('checking ' + str(chkit['IssueNumber']) + ' against ' + str(result['Issue_Number']))
+                    logger.fdebug('checking ' + chkit['IssueNumber'] + ' against ' + result['Issue_Number'])
                     if chkit['IssueNumber'] == result['Issue_Number']:
-                        logger.fdebug('Searching for : ' + str(result['Issue_Number']))
+                        logger.fdebug('Searching for : ' + result['Issue_Number'])
                         logger.fdebug('Status of : ' + str(result['Status']))
                         search.searchforissue(result['IssueID'])
         else: logger.info('No issues marked as wanted for ' + comic['ComicName'])
@@ -673,22 +676,28 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
         logger.info('Returning to Future-Check module to complete the add & remove entry.')
         return
 
-    if imported == 'yes':
-        logger.info('Successfully imported : ' + comic['ComicName'])
-        #now that it's moved / renamed ... we remove it from importResults or mark as completed.
-
-        results = myDB.select("SELECT * from importresults WHERE ComicName=?", [ogcname])
-        if results is not None:
-            for result in results:
-                controlValue = {"ComicName":   ogcname}
-                newValue = {"Status":           "Imported",
-                            "SRID":             result['SRID'],
-                            "ComicID":          comicid}
-                myDB.upsert("importresults", newValue, controlValue)
-
     if calledfrom == 'addbyid':
         logger.info('Sucessfully added ' + comic['ComicName'] + ' (' + str(SeriesYear) + ') by directly using the ComicVine ID')
         return
+
+    if imported:
+        logger.info('Successfully imported : ' + comic['ComicName'])
+#        if imported['Volume'] is None or imported['Volume'] == 'None':
+#            results = myDB.select("SELECT * FROM importresults WHERE (WatchMatch is Null OR WatchMatch LIKE 'C%') AND DynamicName=? AND Volume IS NULL",[imported['DynamicName']])
+#        else:
+#            if not imported['Volume'].lower().startswith('v'):
+#                volume = 'v' + str(imported['Volume'])
+#            results = myDB.select("SELECT * FROM importresults WHERE (WatchMatch is Null OR WatchMatch LIKE 'C%') AND DynamicName=? AND Volume=?",[imported['DynamicName'],imported['Volume']])
+#
+#        if results is not None:
+#            for result in results:
+#                controlValue = {"DynamicName":  imported['DynamicName'],
+#                                "Volume":       imported['Volume']}
+#                newValue = {"Status":           "Imported",
+#                            "SRID":             result['SRID'],
+#                            "ComicID":          comicid}
+#                myDB.upsert("importresults", newValue, controlValue)
+
 
 def GCDimport(gcomicid, pullupd=None, imported=None, ogcname=None):
     # this is for importing via GCD only and not using CV.
@@ -1332,8 +1341,13 @@ def updateissuedata(comicid, comicname=None, issued=None, comicIssues=None, call
                             logger.fdebug('this does not have an issue # that I can parse properly.')
                             return
                         else:
-                            logger.error(str(issnum) + ' this has an alpha-numeric in the issue # which I cannot account for.')
-                            return
+                            if issnum == '9-5':
+                                issnum = u'9\xbd'
+                                logger.fdebug('issue: 9-5 is an invalid entry. Correcting to : ' + issnum)
+                                int_issnum = (9 * 1000) + (.5 * 1000)
+                            else:
+                                logger.error(issnum + ' this has an alpha-numeric in the issue # which I cannot account for.')
+                                return
             #get the latest issue / date using the date.
             #logger.fdebug('issue : ' + str(issnum))
             #logger.fdebug('latest date: ' + str(latestdate))
@@ -1345,7 +1359,7 @@ def updateissuedata(comicid, comicname=None, issued=None, comicIssues=None, call
                     #logger.fdebug('assigning latest issue to : ' + str(issnum))
                     latestiss = issnum
                 latestdate = str(firstval['Issue_Date'])
-            if firstval['Issue_Date'] < firstdate:
+            if firstval['Issue_Date'] < firstdate and firstval['Issue_Date'] != '0000-00-00':
                 firstiss = issnum
                 firstdate = str(firstval['Issue_Date'])
 
