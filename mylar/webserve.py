@@ -1198,17 +1198,17 @@ class WebInterface(object):
 
                 for newznab_info in mylar.EXTRA_NEWZNABS:
                     if tmpprov.lower() in newznab_info[0].lower():
-                        if (newznab_info[4] == '1' or newznab_info[4] == 1):
+                        if (newznab_info[5] == '1' or newznab_info[5] == 1):
                             if newznab_info[1].endswith('/'):
                                 newznab_host = newznab_info[1]
                             else:
                                 newznab_host = newznab_info[1] + '/'
-                            newznab_api = newznab_info[2]
-                            newznab_uid = newznab_info[3]
+                            newznab_api = newznab_info[3]
+                            newznab_uid = newznab_info[4]
                             link = str(newznab_host) + 'getnzb/' + str(id) + '.nzb&i=' + str(newznab_uid) + '&r=' + str(newznab_api)
                             logger.info('newznab detected as : ' + str(newznab_info[0]) + ' @ ' + str(newznab_host))
                             logger.info('link : ' + str(link))
-                            newznabinfo = (newznab_info[0], newznab_info[1], newznab_info[2], newznab_info[3])
+                            newznabinfo = (newznab_info[0], newznab_info[1], newznab_info[2], newznab_info[3], newznab_info[4])
                             break
                         else:
                             logger.error(str(newznab_info[0]) + ' is not enabled - unable to process retry request until provider is re-enabled.')
@@ -1976,7 +1976,6 @@ class WebInterface(object):
         myDB = db.DBConnection()
         myDB.action('DELETE from importresults')
         logger.info("Flushing all Import Results and clearing the tables")
-        raise cherrypy.HTTPRedirect("importResults")
     flushImports.exposed = True
 
     def markImports(self, action=None, **args):
@@ -2019,7 +2018,7 @@ class WebInterface(object):
                     DynamicName = v
                     if volume is None or volume == 'None':
                         logger.info('Removing ' + ComicName + ' from the Import list')
-                        myDB.action('DELETE from importresults WHERE DynamicName=? AND Volume is NULL', [DynamicName])
+                        myDB.action('DELETE from importresults WHERE DynamicName=? AND (Volume is NULL OR Volume="None")', [DynamicName])
                     else:
                         logger.info('Removing ' + ComicName + ' [' + str(volume) + '] from the Import list')
                         myDB.action('DELETE from importresults WHERE DynamicName=? AND Volume=?', [DynamicName, volume])
@@ -2047,6 +2046,7 @@ class WebInterface(object):
                 controlValueDict = {'ComicID': ComicID}
                 newValueDict = {'Status': 'Paused'}
                 myDB.upsert("comics", newValueDict, controlValueDict)
+                logger.info('Pausing Series ID: ' + str(ComicID))
             elif action == 'resume':
                 controlValueDict = {'ComicID': ComicID}
                 newValueDict = {'Status': 'Active'}
@@ -2056,7 +2056,6 @@ class WebInterface(object):
         if len(comicsToAdd) > 0:
             logger.fdebug("Refreshing comics: %s" % comicsToAdd)
             threading.Thread(target=updater.dbUpdate, args=[comicsToAdd]).start()
-        raise cherrypy.HTTPRedirect("home")
     markComics.exposed = True
 
     def forceUpdate(self):
@@ -2073,7 +2072,7 @@ class WebInterface(object):
 
     def forceRescan(self, ComicID):
         threading.Thread(target=updater.forceRescan, args=[ComicID]).start()
-        raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % ComicID)
+        #raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % ComicID)
     forceRescan.exposed = True
 
     def checkGithub(self):
@@ -2086,7 +2085,6 @@ class WebInterface(object):
         myDB = db.DBConnection()
         history = myDB.select('''SELECT * from snatched order by DateAdded DESC''')
         return serve_template(templatename="history.html", title="History", history=history)
-        return page
     history.exposed = True
 
     def reOrder(request):
@@ -2515,7 +2513,7 @@ class WebInterface(object):
                             logger.fdebug('int_issue = ' + str(issue_int))
                             isschk = myDB.selectone("SELECT * FROM issues WHERE Int_IssueNumber=? AND ComicID=? AND STATUS !='Snatched'", [issue_int, comic['ComicID']]).fetchone()
                         if isschk is None:
-                            logger.fdebug("we matched on name, but issue " + str(arc['IssueNumber']) + " doesn't exist for " + comic['ComicName'])
+                            logger.fdebug("we matched on name, but issue " + arc['IssueNumber'] + " doesn't exist for " + comic['ComicName'])
                         else:
                             #this gets ugly - if the name matches and the issue, it could still be wrong series
                             #use series year to break it down further.
@@ -2544,7 +2542,7 @@ class WebInterface(object):
                                 matcheroso = "yes"
                                 break
                 if matcheroso == "no":
-                    logger.fdebug("Unable to find a match for " + arc['ComicName'] + " :#" + str(arc['IssueNumber']))
+                    logger.fdebug("Unable to find a match for " + arc['ComicName'] + " :#" + arc['IssueNumber'])
                     wantedlist.append({
                          "ComicName":      arc['ComicName'],
                          "IssueNumber":    arc['IssueNumber'],
@@ -2587,10 +2585,10 @@ class WebInterface(object):
                 if issue is None: pass
                 else:
 
-                    logger.fdebug("issue: " + str(issue['Issue_Number']) + "..." + str(m_arc['match_issue']))
+                    logger.fdebug("issue: " + issue['Issue_Number'] + "..." + m_arc['match_issue'])
 #                   if helpers.decimal_issue(issuechk['Issue_Number']) == helpers.decimal_issue(m_arc['match_issue']):
                     if issue['Issue_Number'] == m_arc['match_issue']:
-                        logger.fdebug("we matched on " + str(issue['Issue_Number']) + " for " + str(m_arc['match_name']))
+                        logger.fdebug("we matched on " + issue['Issue_Number'] + " for " + m_arc['match_name'])
                         if issue['Status'] == 'Downloaded' or issue['Status'] == 'Archived' or issue['Status'] == 'Snatched':
                             ctrlVal = {"IssueArcID":  m_arc['match_issuearcid']}
                             newVal = {"Status":   issue['Status'],
@@ -2605,7 +2603,7 @@ class WebInterface(object):
                                 myDB.upsert("readlist", shownewVal, showctrlVal)
 
                             myDB.upsert("readinglist",newVal,ctrlVal)
-                            logger.fdebug("Already have " + issue['ComicName'] + " :# " + str(issue['Issue_Number']))
+                            logger.fdebug("Already have " + issue['ComicName'] + " :# " + issue['Issue_Number'])
                             if issue['Status'] == 'Downloaded':
                                 issloc = os.path.join(m_arc['match_filedirectory'], issue['Location'])
                                 logger.fdebug('source location set to  : ' + issloc)
@@ -2633,12 +2631,12 @@ class WebInterface(object):
                                         logger.fdebug('Source file does not exist: ' + issloc)
 
                         else:
-                            logger.fdebug("We don't have " + issue['ComicName'] + " :# " + str(issue['Issue_Number']))
+                            logger.fdebug("We don't have " + issue['ComicName'] + " :# " + issue['Issue_Number'])
                             ctrlVal = {"IssueArcID":  m_arc['match_issuearcid']}
                             newVal = {"Status":  "Wanted",
                                       "IssueID": issue['IssueID']}
                             myDB.upsert("readinglist", newVal, ctrlVal)
-                            logger.info("Marked " + issue['ComicName'] + " :# " + str(issue['Issue_Number']) + " as Wanted.")
+                            logger.info("Marked " + issue['ComicName'] + " :# " + issue['Issue_Number'] + " as Wanted.")
 
             return
 
@@ -2846,6 +2844,8 @@ class WebInterface(object):
         else:
             logger.info(u"Clearing history where status is %s" % type)
             myDB.action('DELETE from snatched WHERE Status=?', [type])
+            if type == 'Processed':
+                myDB.action("DELETE from snatched WHERE Status='Post-Processed'")
         raise cherrypy.HTTPRedirect("history")
     clearhistory.exposed = True
 
@@ -3102,7 +3102,7 @@ class WebInterface(object):
             logname = ComicName + '[' + str(volume) + ']'
         logger.info("Removing import data for Comic: " + logname)
         if volume is None or volume == 'None':
-            myDB.action('DELETE from importresults WHERE DynamicName=? AND Volume is NULL AND Status=?', [DynamicName, Status])
+            myDB.action('DELETE from importresults WHERE DynamicName=? AND Status=? AND (Volume is NULL OR Volume="None")', [DynamicName, Status])
         else:
             myDB.action('DELETE from importresults WHERE DynamicName=? AND Volume=? AND Status=?', [DynamicName, volume, Status])
         raise cherrypy.HTTPRedirect("importResults")
@@ -3151,7 +3151,7 @@ class WebInterface(object):
             #we need to remove these items from the comiclist now, so they don't get processed again
             if len(RemoveIDS) > 0:
                 for RID in RemoveIDS:
-                    newlist = {k:comiclist[k] for k in comiclist if k['ComicID'] != RID}
+                    newlist = [k for k in comiclist if k['ComicID'] != RID]
                     comiclist = newlist
                     logger.info('newlist: ' + str(newlist))
 
@@ -3290,10 +3290,15 @@ class WebInterface(object):
                 logger.fdebug('displaycomic : ' + displaycomic)
                 logger.fdebug('comicname : ' + ComicName)
                 searchterm = '"' + displaycomic + '"'
-                if yearRANGE is None:
-                    sresults, explicit = mb.findComic(searchterm, mode, issue=numissues, explicit='all') #ogcname, mode, issue=numissues, explicit='all') #ComicName, mode, issue=numissues)
-                else:
-                    sresults, explicit = mb.findComic(searchterm, mode, issue=numissues, limityear=yearRANGE, explicit='all') #ogcname, mode, issue=numissues, limityear=yearRANGE, explicit='all') #ComicName, mode, issue=numissues, limityear=yearRANGE)
+                try:
+                    if yearRANGE is None:
+                        sresults, explicit = mb.findComic(searchterm, mode, issue=numissues, explicit='all') #ogcname, mode, issue=numissues, explicit='all') #ComicName, mode, issue=numissues)
+                    else:
+                        sresults, explicit = mb.findComic(searchterm, mode, issue=numissues, limityear=yearRANGE, explicit='all') #ogcname, mode, issue=numissues, limityear=yearRANGE, explicit='all') #ComicName, mode, issue=numissues, limityear=yearRANGE)
+                except TypeError:
+                    logger.warn('Comicvine API limit has been reached, and/or the comicvine website is not responding. Aborting process at this time, try again in an ~ hr when the api limit is reset.')
+                    break
+
                 type='comic'
 
                 #we now need to cycle through the results until we get a hit on both dynamicname AND year (~count of issues possibly).
@@ -3465,9 +3470,11 @@ class WebInterface(object):
                                 'srid':          SRID}
 
                     self.addbyid(sr['comicid'], calledby=True, imported=imported, ogcname=ogcname)  #imported=yes)
+                else:
+                    logger.info('[IMPORT] There is more than one result that might be valid - normally this is due to the filename(s) not having enough information for me to use (ie. no volume label/year). Manual intervention is required.')
 
         mylar.IMPORTLOCK = False
-        logger.info('Importing finished.')
+        logger.info('[IMPORT] Importing complete.')
 
     preSearchit.exposed = True
 

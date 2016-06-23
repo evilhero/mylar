@@ -91,7 +91,7 @@ class FileChecker(object):
 
 
         self.failed_files = []
-        self.dynamic_handlers = ['/','-',':','\'',',','&','?','!']
+        self.dynamic_handlers = ['/','-',':','\'',',','&','?','!','+']
         self.dynamic_replacements = ['and','the']
         self.rippers = ['-empire','-empire-hd','minutemen-','-dcp']
 
@@ -202,8 +202,14 @@ class FileChecker(object):
                 logger.fdebug('[SUB-PATH] Checking Folder Name for more information.')
                 #sub = re.sub(origpath, '', path).strip()})
                 logger.fdebug('[SUB-PATH] Original Path : ' + str(path))
-                logger.fdebug('[SUB-PATH] Sub-direcotry : ' + str(subpath))
-                tmppath = re.sub(path, '', subpath).strip()
+                logger.fdebug('[SUB-PATH] Sub-directory : ' + str(subpath))
+                if 'windows' in mylar.OS_DETECT.lower():
+                    if path in subpath:
+                        ab = len(path)
+                        tmppath = subpath[ab:]
+                else:
+                    tmppath = re.sub(path, '', subpath).strip()
+
                 path_list = os.path.normpath(tmppath)
                 if '/' == path_list[0] or '\\' == path_list[0]:
                     #need to remove any leading slashes so the os join can properly join the components
@@ -213,7 +219,7 @@ class FileChecker(object):
 
 
             #parse out the extension for type
-            comic_ext = ('.cbr','.cbz')
+            comic_ext = ('.cbr','.cbz','.cb7','.pdf')
             if os.path.splitext(filename)[1].endswith(comic_ext):
                 filetype = os.path.splitext(filename)[1]
             else:
@@ -310,8 +316,9 @@ class FileChecker(object):
             file_length = 0
             validcountchk = False
             sep_volume = False
-   
+            current_pos = -1   
             for sf in split_file:
+                current_pos +=1
                 #the series title will always be first and be AT LEAST one word.
                 if split_file.index(sf) >= 1 and not volumeprior:
                     dtcheck = re.sub('[\(\)\,]', '', sf).strip()
@@ -514,16 +521,16 @@ class FileChecker(object):
 
                 else:
                     #check here for numeric or negative number
-                    if sf.isdigit() and split_file.index(sf) == 0:
+                    if sf.isdigit() and split_file.index(sf, current_pos) == 0:
                         continue
                     if sf.isdigit():
                         possible_issuenumbers.append({'number':       sf,
-                                                      'position':     split_file.index(sf, lastissue_position), #modfilename.find(sf)})
+                                                      'position':     split_file.index(sf, current_pos), #modfilename.find(sf)})
                                                       'mod_position': self.char_file_position(modfilename, sf, lastmod_position),
                                                       'validcountchk': validcountchk})
 
                         #used to see if the issue is an alpha-numeric (ie. 18.NOW, 50-X, etc)
-                        lastissue_position = split_file.index(sf, lastissue_position)
+                        lastissue_position = split_file.index(sf, current_pos)
                         lastissue_label = sf
                         lastissue_mod_position = file_length
                         #logger.fdebug('possible issue found: ' + str(sf)
@@ -916,7 +923,7 @@ class FileChecker(object):
 
     def traverse_directories(self, dir):
         filelist = []
-        comic_ext = ('.cbr','.cbz')
+        comic_ext = ('.cbr','.cbz','.cb7','.pdf')
 
         dir = dir.encode(mylar.SYS_ENCODING)
 
@@ -963,13 +970,19 @@ class FileChecker(object):
                     mod_find.extend([m.start() for m in re.finditer('\\' + wdhm, mod_watchcomic)])
                     if len(mod_find) > 0:
                         for mf in mod_find:
-                            mod_watchcomic = mod_watchcomic[:mf] + '|' + mod_watchcomic[mf+1:]
+                            spacer = ''
+                            for i in range(0, len(wdhm)):
+                                spacer+='|'
+                            mod_watchcomic = mod_watchcomic[:mf] + spacer + mod_watchcomic[mf+1:]
 
                 for wdrm in watchdynamic_replacements_match:
                     wdrm_find.extend([m.start() for m in re.finditer(wdrm.lower(), mod_watchcomic.lower())])
                     if len(wdrm_find) > 0:
                         for wd in wdrm_find:
-                           mod_watchcomic = mod_watchcomic[:wd] + '|' + mod_watchcomic[wd+len(wdrm):]
+                            spacer = ''
+                            for i in range(0, len(wdrm)):
+                                spacer+='|'
+                            mod_watchcomic = mod_watchcomic[:wd] + spacer + mod_watchcomic[wd+len(wdrm):]
 
         seriesdynamic_handlers_match = [x for x in self.dynamic_handlers if x.lower() in series_name.lower()]
         #logger.fdebug('series dynamic handlers recognized : ' + str(seriesdynamic_handlers_match))
@@ -984,13 +997,23 @@ class FileChecker(object):
                 ser_find.extend([m.start() for m in re.finditer('\\' + sdhm, mod_seriesname)])
                 if len(ser_find) > 0:
                     for sf in ser_find:
-                        mod_seriesname = mod_seriesname[:sf] + '|' + mod_seriesname[sf+1:]
+                        spacer = ''
+                        for i in range(0, len(sdhm)):
+                            spacer+='|'
+                        mod_seriesname = mod_seriesname[:sf] + spacer + mod_seriesname[sf+1:]
 
             for sdrm in seriesdynamic_replacements_match:
                 sdrm_find.extend([m.start() for m in re.finditer(sdrm.lower(), mod_seriesname.lower())])
                 if len(sdrm_find) > 0:
                     for sd in sdrm_find:
-                        mod_seriesname = mod_seriesname[:sd] + '|' + mod_seriesname[sd+len(sdrm):]
+                        spacer = ''
+                        for i in range(0, len(sdrm)):
+                            spacer+='|'
+                        mod_seriesname = mod_seriesname[:sd] + spacer + mod_seriesname[sd+len(sdrm):]
+
+        if mod_watchcomic:
+            mod_watchcomic = re.sub('\|+', '|', mod_watchcomic)
+        mod_seriesname = re.sub('\|+', '|', mod_seriesname)
 
         return {'mod_watchcomic': mod_watchcomic,
                 'mod_seriesname': mod_seriesname}
@@ -1054,7 +1077,7 @@ class FileChecker(object):
     #    Jan 1990
     #    January1990'''
 
-        fmts = ('%Y','%b %d, %Y','%b %d, %Y','%B %d, %Y','%B %d %Y','%m/%d/%Y','%m/%d/%y','%b %Y','%B%Y','%b %d,%Y','%m-%Y','%B %Y','%Y-%m-%d','%Y-%m')
+        fmts = ('%Y','%b %d, %Y','%B %d, %Y','%B %d %Y','%m/%d/%Y','%m/%d/%y','%b %Y','%B%Y','%b %d,%Y','%m-%Y','%B %Y','%Y-%m-%d','%Y-%m','%Y%m')
 
         parsed=[]
         for e in txt.splitlines():
