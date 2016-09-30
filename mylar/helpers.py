@@ -161,7 +161,9 @@ def human2bytes(s):
     symbols = ('B', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y')
     letter = s[-1:].strip().upper()
     num = s[:-1]
-    assert num.isdigit() and letter in symbols
+    #assert num.isdigit() and letter in symbols
+    #use below assert statement to handle sizes with decimal places
+    assert float(num) and letter in symbols
     num = float(num)
     prefix = {symbols[0]: 1}
     for i, s in enumerate(symbols[1:]):
@@ -577,11 +579,13 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                     logger.fdebug('Annual detected within series title of ' + series + '. Not auto-correcting issue #')
 
             seriesfilename = seriesfilename.encode('ascii', 'ignore').strip()
-            filebad = [':', ',', '/', '?', '!', '\''] #in u_comicname or '/' in u_comicname or ',' in u_comicname or '?' in u_comicname:
+            filebad = [':', ',', '/', '?', '!', '\'', '\"', '\*'] #in u_comicname or '/' in u_comicname or ',' in u_comicname or '?' in u_comicname:
             for dbd in filebad:
                 if dbd in seriesfilename:
-                    if dbd == '/': repthechar = '-'
-                    else: repthechar = ''
+                    if any([dbd == '/', dbd == '*']): 
+                        repthechar = '-'
+                    else:
+                        repthechar = ''
                     seriesfilename = seriesfilename.replace(dbd, repthechar)
                     logger.fdebug('Altering series name due to filenaming restrictions: ' + seriesfilename)
 
@@ -817,7 +821,7 @@ def updateComicLocation():
                     comlocation = re.sub(ddir, ccdir, dlc).strip()
 
                 #regenerate the new path location so that it's os.dependent now.
-                com_done = re.sub('%&', os.sep, comlocation).strip()
+                com_done = re.sub('%&', os.sep.encode('unicode-escape'), comlocation).strip()
 
                 comloc.append({"comlocation":  com_done,
                                "origlocation": dl['ComicLocation'],
@@ -876,7 +880,13 @@ def issuedigits(issnum):
     try:
         tst = issnum.isdigit()
     except:
-        return 9999999999
+        try:
+            isstest = str(issnum)
+            tst = isstest.isdigit()
+        except:
+            return 9999999999
+        else:
+            issnum = str(issnum)
 
     if issnum.isdigit():
         int_issnum = int(issnum) * 1000
@@ -939,9 +949,9 @@ def issuedigits(issnum):
         x = [vals[key] for key in vals if key in issnum]
 
         if x:
-            logger.info('Unicode Issue present - adjusting.')
+            logger.fdebug('Unicode Issue present - adjusting.')
             int_issnum = x[0] * 1000
-            logger.info('int_issnum: ' + str(int_issnum))
+            logger.fdebug('int_issnum: ' + str(int_issnum))
         else:
             if any(['.' in issnum, ',' in issnum]):
                 #logger.fdebug('decimal detected.')
@@ -972,10 +982,14 @@ def issuedigits(issnum):
             else:
                 try:
                     x = float(issnum)
+                    logger.info(x)
                     #validity check
                     if x < 0:
                         #logger.info("I've encountered a negative issue #: " + str(issnum) + ". Trying to accomodate.")
                         int_issnum = (int(x) *1000) - 1
+                    elif bool(x):
+                        logger.fdebug('Infinity issue found.')
+                        int_issnum = 9999999999 * 1000
                     else: raise ValueError
                 except ValueError, e:
                     #this will account for any alpha in a issue#, so long as it doesn't have decimals.
@@ -1092,7 +1106,7 @@ def renamefile_readingorder(readorder):
     import logger
     logger.fdebug('readingorder#: ' + str(readorder))
     if int(readorder) < 10: readord = "00" + str(readorder)
-    elif int(readorder) > 10 and int(readorder) < 99: readord = "0" + str(readorder)
+    elif int(readorder) >= 10 and int(readorder) < 99: readord = "0" + str(readorder)
     else: readord = str(readorder)
 
     return readord
@@ -1222,7 +1236,7 @@ def LoadAlternateSearchNames(seriesname_alt, comicid):
         Alternate_Names['AlternateName'] = AS_Alt
         Alternate_Names['ComicID'] = comicid
         Alternate_Names['Count'] = alt_count
-        #logger.info('AlternateNames returned:' + str(Alternate_Names))
+        logger.info('AlternateNames returned:' + str(Alternate_Names))
 
         return Alternate_Names
 
@@ -1337,8 +1351,8 @@ def filesafe(comic):
     import unicodedata
     u_comic = unicodedata.normalize('NFKD', comic).encode('ASCII', 'ignore').strip()
 
-    comicname_filesafe = re.sub('[\:\'\,\?\!\\\]', '', u_comic)
-    comicname_filesafe = re.sub('[\/]', '-', comicname_filesafe)
+    comicname_filesafe = re.sub('[\:\'\"\,\?\!\\\]', '', u_comic)
+    comicname_filesafe = re.sub('[\/\*]', '-', comicname_filesafe)
 
     return comicname_filesafe
 
@@ -1871,7 +1885,7 @@ def create_https_certificates(ssl_cert, ssl_key):
     from mylar import logger
 
     from OpenSSL import crypto
-    from lib.certgen import createKeyPair, createCertRequest, createCertificate, \
+    from certgen import createKeyPair, createCertRequest, createCertificate, \
         TYPE_RSA, serial
 
     # Create the CA Certificate
@@ -1896,20 +1910,17 @@ def create_https_certificates(ssl_cert, ssl_key):
     return True
 
 def torrent_create(site, linkid, alt=None):
-    if site == '32P' or site == 'TOR':
+    if any([site == '32P', site == 'TOR']):
         pass
-    elif site == 'KAT':
-        if 'http' in linkid:
-            if alt is None:
-                #if it's being passed here with the http alread in, then it's an old rssdb entry and we can take it as is.
-                url = linkid
-            else:
-                url = re.sub('http://torcache.net/','http://torrage.com/', linkid).strip()
+    elif site == 'TPSE':
+        if alt is None:
+            url = 'http://torrentproject.se/torrent/' + str(linkid) + '.torrent'
         else:
-            if alt is None:
-                url = 'http://torcache.net/torrent/' + str(linkid) + '.torrent'
-            else:
-                url = 'http://torrage.com/' + str(linkid) + '.torrent'
+            url = 'http://torrentproject.se/torrent/' + str(linkid) + '.torrent'
+    elif site == 'DEM':
+        url = 'https://www.demonoid.pw/files/download/' + str(linkid) + '/'
+    elif site == 'WWT':
+        url = 'https://worldwidetorrents.eu/download.php'
 
     return url
 
@@ -2020,6 +2031,69 @@ def issue_status(IssueID):
         return True
     else:
         return False
+
+def crc(filename):
+    import hashlib
+    #memory in lieu of speed (line by line)
+    #prev = 0
+    #for eachLine in open(filename,"rb"):
+    #    prev = zlib.crc32(eachLine, prev)
+    #return "%X"%(prev & 0xFFFFFFFF)
+
+    #speed in lieu of memory (file into memory entirely)
+    #return "%X" % (zlib.crc32(open(filename, "rb").read()) & 0xFFFFFFFF)
+
+    return hashlib.md5(filename).hexdigest()
+
+def issue_find_ids(ComicName, ComicID, pack, IssueNumber):
+    import db, logger
+
+    myDB = db.DBConnection()
+
+    issuelist = myDB.select("SELECT * FROM issues WHERE ComicID=?", [ComicID])
+
+    if 'Annual' not in pack:
+        pack_issues = range(int(pack[:pack.find('-')]),int(pack[pack.find('-')+1:])+1)
+        annualize = False
+    else:
+        #remove the annuals wording
+        tmp_annuals = pack[pack.find('Annual'):]
+        tmp_ann = re.sub('[annual/annuals/+]', '', tmp_annuals.lower()).strip()
+        tmp_pack = re.sub('[annual/annuals/+]', '', pack.lower()).strip() 
+        pack_issues = range(int(tmp_pack[:tmp_pack.find('-')]),int(tmp_pack[tmp_pack.find('-')+1:])+1)
+        annualize = True
+
+    issues = {}
+    issueinfo = []
+
+    Int_IssueNumber = issuedigits(IssueNumber)
+    valid = False
+
+    for iss in pack_issues:
+       int_iss = issuedigits(iss)
+       for xb in issuelist:
+           if xb['Status'] != 'Downloaded':
+               if xb['Int_IssueNumber'] == int_iss:
+                   issueinfo.append({'issueid':      xb['IssueID'],
+                                     'int_iss':      int_iss,
+                                     'issuenumber':  xb['Issue_Number']})
+                   break
+
+    for x in issueinfo:
+       if Int_IssueNumber == x['int_iss']:
+           valid = True
+           break
+
+    issues['issues'] = issueinfo
+
+    if len(issues['issues']) == len(pack_issues):
+        logger.info('Complete issue count of ' + str(len(pack_issues)) + ' issues are available within this pack for ' + ComicName)
+    else:
+        logger.info('Issue counts are not complete (not a COMPLETE pack) for ' + ComicName)
+
+    issues['issue_range'] = pack_issues
+    issues['valid'] = valid
+    return issues
 
 
 #def file_ops(path,dst):

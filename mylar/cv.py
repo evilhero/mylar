@@ -25,7 +25,7 @@ import mylar
 import platform
 from bs4 import BeautifulSoup as Soup
 import httplib
-import lib.requests as requests
+import requests
 
 def patch_http_response_read(func):
     def inner(*args):
@@ -75,6 +75,8 @@ def pulldetails(comicid, type, issueid=None, offset=1, arclist=None, comicidlist
         PULLURL = mylar.CVURL + 'volumes/?api_key=' + str(comicapi) + '&format=xml&filter=id:' + str(comicidlist) + '&field_list=name,id,start_year,publisher&offset=' + str(offset)
     elif type == 'import':
         PULLURL = mylar.CVURL + 'issues/?api_key=' + str(comicapi) + '&format=xml&filter=id:' + (comicidlist) + '&field_list=cover_date,id,issue_number,name,date_last_updated,store_date,volume' + '&offset=' + str(offset)
+    elif type == 'update_dates':
+        PULLURL = mylar.CVURL + 'issues/?api_key=' + str(comicapi) + '&format=xml&filter=id:' + (comicidlist)+ '&field_list=date_last_updated, id, issue_number, store_date, cover_date, name, volume ' + '&offset=' + str(offset)
 
     #logger.info('CV.PULLURL: ' + PULLURL)
     #new CV API restriction - one api request / second.
@@ -167,11 +169,6 @@ def getComic(comicid, type, issueid=None, arc=None, arcid=None, arclist=None, co
         #within the tagging (with CT). This compiles all of the IssueID's during a scan (in 100's), and returns the corresponding CV data
         #related to the given IssueID's - namely ComicID, Name, Volume (more at some point, but those are the important ones).
         offset = 1
-        if len(comicidlist) <= 100:
-            endcnt = len(comicidlist)
-        else:
-            endcnt = 100
-
         id_count = 0
         import_list = []
         logger.fdebug('comicidlist:' + str(comicidlist))
@@ -180,6 +177,11 @@ def getComic(comicid, type, issueid=None, arc=None, arcid=None, arclist=None, co
             #break it up by 100 per api hit
             #do the first 100 regardless
             in_cnt = 0
+            if id_count + 100 <= len(comicidlist):
+                endcnt = id_count + 100
+            else:
+                endcnt = len(comicidlist)
+
             for i in range(id_count, endcnt):
                 if in_cnt == 0:
                     tmpidlist = str(comicidlist[i])
@@ -196,11 +198,13 @@ def getComic(comicid, type, issueid=None, arc=None, arcid=None, arclist=None, co
                 tGIL = GetImportList(searched)
                 import_list += tGIL
 
-            endcnt +=100
             id_count +=100
 
         return import_list
 
+    elif type == 'update_dates':
+        dom = pulldetails(None, 'update_dates', offset=1, comicidlist=comicidlist)
+        return UpdateDates(dom)
 
 def GetComicInfo(comicid, dom, safechk=None):
     if safechk is None:
@@ -238,6 +242,7 @@ def GetComicInfo(comicid, dom, safechk=None):
     try:
         names = len(dom.getElementsByTagName('name'))
         n = 0
+        comic['ComicPublisher'] = 'Unknown'   #set this to a default value here so that it will carry through properly
         while (n < names):
             if dom.getElementsByTagName('name')[n].parentNode.nodeName == 'results':
                 try:
@@ -301,6 +306,23 @@ def GetComicInfo(comicid, dom, safechk=None):
     #logger.info('comic_desc:' + comic_desc)
     #logger.info('comic_deck:' + comic_deck)
     #logger.info('desdeck: ' + str(desdeck))
+
+    #figure out if it's a print / digital edition.
+    comic['Type'] = 'None'
+    if comic_deck != 'None':
+        if any(['print' in comic_deck.lower(), 'digital' in comic_deck.lower()]):
+            if 'print' in comic_deck.lower():
+                comic['Type'] = 'Print'
+            elif 'digital' in comic_deck.lower():
+                comic['Type'] = 'Digital'    
+    if comic_desc != 'None' and comic['Type'] == 'None':
+        if 'print' in comic_desc[:60].lower() and 'print edition can be found' not in comic_desc.lower():
+            comic['Type'] = 'Print'
+        elif 'digital' in comic_desc[:60].lower() and 'digital edition can be found' not in comic_desc.lower():
+            comic['Type'] = 'Digital'
+        else:
+            comic['Type'] = 'Print'
+
     while (desdeck > 0):
         if desdeck == 1:
             if comic_desc == 'None':
@@ -556,6 +578,68 @@ def GetSeriesYears(dom):
                            "Publisher": tempseries['Publisher']})
 
     return serieslist
+
+def UpdateDates(dom):
+    issues = dom.getElementsByTagName('issue')
+    tempissue = {}
+    issuelist = []
+    for dm in issues:
+        tempissue['ComicID'] = 'None'
+        tempissue['IssueID'] = 'None'
+        try:
+            totids = len(dm.getElementsByTagName('id'))
+            idc = 0
+            while (idc < totids):
+                if dm.getElementsByTagName('id')[idc].parentNode.nodeName == 'volume':
+                    tempissue['ComicID'] = dm.getElementsByTagName('id')[idc].firstChild.wholeText
+                if dm.getElementsByTagName('id')[idc].parentNode.nodeName == 'issue':
+                    tempissue['IssueID'] = dm.getElementsByTagName('id')[idc].firstChild.wholeText
+                idc+=1
+        except:
+            logger.warn('There was a problem retrieving a comicid/issueid for the given issue. This will have to manually corrected most likely.')
+
+        tempissue['SeriesTitle'] = 'None'
+        tempissue['IssueTitle'] = 'None'
+        try:
+            totnames = len(dm.getElementsByTagName('name'))
+            namesc = 0
+            while (namesc < totnames):
+                if dm.getElementsByTagName('name')[namesc].parentNode.nodeName == 'issue':
+                    tempissue['IssueTitle'] = dm.getElementsByTagName('name')[namesc].firstChild.wholeText
+                elif dm.getElementsByTagName('name')[namesc].parentNode.nodeName == 'volume':
+                    tempissue['SeriesTitle'] = dm.getElementsByTagName('name')[namesc].firstChild.wholeText
+                namesc+=1
+        except:
+            logger.warn('There was a problem retrieving the Series Title / Issue Title for a series within the arc. This will have to manually corrected.')
+
+        try:
+            tempissue['CoverDate'] = dm.getElementsByTagName('cover_date')[0].firstChild.wholeText
+        except:
+            tempissue['CoverDate'] = '0000-00-00'
+        try:
+            tempissue['StoreDate'] = dm.getElementsByTagName('store_date')[0].firstChild.wholeText
+        except:
+            tempissue['StoreDate'] = '0000-00-00'
+        try:
+            tempissue['IssueNumber'] = dm.getElementsByTagName('issue_number')[0].firstChild.wholeText
+        except:
+            logger.fdebug('No Issue Number available - Trade Paperbacks, Graphic Novels and Compendiums are not supported as of yet.')
+            tempissue['IssueNumber'] = 'None'
+        try:
+            tempissue['date_last_updated'] = dm.getElementsByTagName('date_last_updated')[0].firstChild.wholeText
+        except:
+            tempissue['date_last_updated'] = '0000-00-00'
+    
+        issuelist.append({'ComicID':            tempissue['ComicID'],
+                          'IssueID':            tempissue['IssueID'],
+                          'SeriesTitle':        tempissue['SeriesTitle'],
+                          'IssueTitle':         tempissue['IssueTitle'],
+                          'CoverDate':          tempissue['CoverDate'],
+                          'StoreDate':          tempissue['StoreDate'],
+                          'IssueNumber':        tempissue['IssueNumber'],
+                          'Date_Last_Updated':  tempissue['date_last_updated']})
+
+    return issuelist
 
 def GetImportList(results):
     importlist = results.getElementsByTagName('issue')

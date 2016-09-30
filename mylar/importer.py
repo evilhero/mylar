@@ -28,7 +28,7 @@ import shutil
 import imghdr
 import sqlite3
 import cherrypy
-import lib.requests as requests
+import requests
 import gzip
 from StringIO import StringIO
 
@@ -529,6 +529,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
                     "DetailURL":          comic['ComicURL'],
 #                    "ComicPublished":    gcdinfo['resultPublished'],
                     "ComicPublished":     "Unknown",
+                    "Type":               comic['Type'],
                     "DateAdded":          helpers.today(),
                     "Status":             "Loading"}
 
@@ -581,7 +582,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     lastpubdate = issuedata['LastPubDate']
     series_status = issuedata['SeriesStatus']
     #move the files...if imported is not empty & not futurecheck (meaning it's not from the mass importer.)
-    logger.info('imported is : ' + str(imported))
+    #logger.info('imported is : ' + str(imported))
     if imported is None or imported == 'None' or imported == 'futurecheck':
         pass
     else:
@@ -1007,7 +1008,7 @@ def GCDimport(gcomicid, pullupd=None, imported=None, ogcname=None):
     if mylar.CVINFO:
         if not os.path.exists(comlocation + "/cvinfo"):
             with open(comlocation + "/cvinfo", "w") as text_file:
-                text_file.write("http://www.comicvine.com/volume/49-" + str(comicid))
+                text_file.write("http://comicvine.gamespot.com/volume/49-" + str(comicid))
 
     logger.info(u"Updating complete for: " + ComicName)
 
@@ -1552,7 +1553,10 @@ def annual_check(ComicName, SeriesYear, comicid, issuetype, issuechk, weeklyissu
                         if int(sr['issues']) == 0 and len(issued['issuechoice']) == 1:
                             sr_issues = 1
                         else:
-                            sr_issues = sr['issues']
+                            if int(sr['issues']) != len(issued['issuechoice']):
+                                sr_issues = len(issued['issuechoice'])
+                            else:
+                                sr_issues = sr['issues']
                         logger.fdebug('[IMPORTER-ANNUAL] - There are ' + str(sr_issues) + ' annuals in this series.')
                         while (n < int(sr_issues)):
                             try:

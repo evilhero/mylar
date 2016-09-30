@@ -33,8 +33,8 @@ import locale
 import re
 from threading import Lock, Thread
 
-from lib.apscheduler.scheduler import Scheduler
-from lib.configobj import ConfigObj
+from apscheduler.scheduler import Scheduler
+from configobj import ConfigObj
 
 import cherrypy
 
@@ -89,6 +89,7 @@ DATA_DIR = None
 DBLOCK = False
 
 UMASK = None
+WANTED_TAB_OFF = False
 
 CONFIG_FILE = None
 CFG = None
@@ -126,6 +127,7 @@ HTTP_ROOT = None
 ENABLE_HTTPS = False
 HTTPS_CERT = None
 HTTPS_KEY = None
+HTTPS_CHAIN = None
 HTTPS_FORCE_ON = False
 HOST_RETURN = None
 API_ENABLED = False
@@ -252,6 +254,7 @@ USE_BLACKHOLE = False
 BLACKHOLE_DIR = None
 
 PROVIDER_ORDER = None
+TMP_PROV = None   #to be used to compare provider being used against provider that actually found the result (ie. TPSE != WWT, != DEM)
 
 NZBSU = False
 NZBSU_UID = None
@@ -356,6 +359,8 @@ ENABLE_TORRENTS = 0
 TORRENT_DOWNLOADER = None  #0 = watchfolder, #1 = uTorrent, #2 = rTorrent, #3 = transmission
 MINSEEDS = 0
 
+ALLOW_PACKS = False
+
 USE_WATCHDIR = False
 TORRENT_LOCAL = False
 LOCAL_WATCHDIR = None
@@ -367,9 +372,9 @@ SEEDBOX_PASS = None
 SEEDBOX_WATCHDIR = None
 
 ENABLE_TORRENT_SEARCH = 0
-ENABLE_KAT = 0
-KAT_PROXY = None
-KAT_VERIFY = True
+ENABLE_TPSE = 0
+TPSE_PROXY = None
+TPSE_VERIFY = True
 
 ENABLE_32P = 0
 MODE_32P = None  #0 = legacymode, #1 = authmode
@@ -424,7 +429,7 @@ def check_setting_int(config, cfg_name, item_name, def_val):
         except:
             config[cfg_name] = {}
             config[cfg_name][item_name] = my_val
-    logger.debug(item_name + " -> " + str(my_val))
+    #logger.debug(item_name + " -> " + str(my_val))
     return my_val
 
 ################################################################################
@@ -441,10 +446,10 @@ def check_setting_str(config, cfg_name, item_name, def_val, log=True):
             config[cfg_name] = {}
             config[cfg_name][item_name] = my_val
 
-    if log:
-        logger.debug(item_name + " -> " + my_val)
-    else:
-        logger.debug(item_name + " -> ******")
+    #if log:
+    #    logger.debug(item_name + " -> " + my_val)
+    #else:
+    #    logger.debug(item_name + " -> ******")
     return my_val
 
 
@@ -452,7 +457,7 @@ def initialize():
 
     with INIT_LOCK:
         global __INITIALIZED__, DBCHOICE, DBUSER, DBPASS, DBNAME, DYNAMIC_UPDATE, COMICVINE_API, DEFAULT_CVAPI, CVAPI_RATE, CV_HEADERS, BLACKLISTED_PUBLISHERS, FULL_PATH, PROG_DIR, VERBOSE, DAEMON, UPCOMING_SNATCHED, COMICSORT, DATA_DIR, CONFIG_FILE, CFG, CONFIG_VERSION, LOG_DIR, CACHE_DIR, MAX_LOGSIZE, OLDCONFIG_VERSION, OS_DETECT, \
-                queue, LOCAL_IP, EXT_IP, HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, ENABLE_HTTPS, HTTPS_CERT, HTTPS_KEY, HTTPS_FORCE_ON, HOST_RETURN, API_ENABLED, API_KEY, DOWNLOAD_APIKEY, LAUNCH_BROWSER, GIT_PATH, SAFESTART, NOWEEKLY, AUTO_UPDATE, \
+                queue, WANTED_TAB_OFF, LOCAL_IP, EXT_IP, HTTP_PORT, HTTP_HOST, HTTP_USERNAME, HTTP_PASSWORD, HTTP_ROOT, ENABLE_HTTPS, HTTPS_CERT, HTTPS_KEY, HTTPS_CHAIN, HTTPS_FORCE_ON, HOST_RETURN, API_ENABLED, API_KEY, DOWNLOAD_APIKEY, LAUNCH_BROWSER, GIT_PATH, SAFESTART, NOWEEKLY, AUTO_UPDATE, \
                 IMPORT_STATUS, IMPORT_FILES, IMPORT_TOTALFILES, IMPORT_CID_COUNT, IMPORT_PARSED_COUNT, IMPORT_FAILURE_COUNT, CHECKENABLED, \
                 CURRENT_VERSION, LATEST_VERSION, CHECK_GITHUB, CHECK_GITHUB_ON_STARTUP, CHECK_GITHUB_INTERVAL, GIT_USER, GIT_BRANCH, USER_AGENT, DESTINATION_DIR, MULTIPLE_DEST_DIRS, CREATE_FOLDERS, DELETE_REMOVE_DIR, \
                 DOWNLOAD_DIR, USENET_RETENTION, SEARCH_INTERVAL, NZB_STARTUP_SEARCH, INTERFACE, DUPECONSTRAINT, DDUMP, DUPLICATE_DUMP, AUTOWANT_ALL, AUTOWANT_UPCOMING, ZERO_LEVEL, ZERO_LEVEL_N, COMIC_COVER_LOCAL, HIGHCOUNT, \
@@ -462,10 +467,10 @@ def initialize():
                 ENABLE_TORZNAB, TORZNAB_NAME, TORZNAB_HOST, TORZNAB_APIKEY, TORZNAB_CATEGORY, TORZNAB_VERIFY, \
                 EXPERIMENTAL, ALTEXPERIMENTAL, USE_RTORRENT, RTORRENT_HOST, RTORRENT_USERNAME, RTORRENT_PASSWORD, RTORRENT_STARTONLOAD, RTORRENT_LABEL, RTORRENT_DIRECTORY, \
                 USE_UTORRENT, UTORRENT_HOST, UTORRENT_USERNAME, UTORRENT_PASSWORD, UTORRENT_LABEL, USE_TRANSMISSION, TRANSMISSION_HOST, TRANSMISSION_USERNAME, TRANSMISSION_PASSWORD, \
-                ENABLE_META, CMTAGGER_PATH, CBR2CBZ_ONLY, CT_TAG_CR, CT_TAG_CBL, CT_CBZ_OVERWRITE, UNRAR_CMD, CT_SETTINGSPATH, CMTAG_START_YEAR_AS_VOLUME, UPDATE_ENDED, INDIE_PUB, BIGGIE_PUB, IGNORE_HAVETOTAL, SNATCHED_HAVETOTAL, PROVIDER_ORDER, \
+                ENABLE_META, CMTAGGER_PATH, CBR2CBZ_ONLY, CT_TAG_CR, CT_TAG_CBL, CT_CBZ_OVERWRITE, UNRAR_CMD, CT_SETTINGSPATH, CMTAG_START_YEAR_AS_VOLUME, UPDATE_ENDED, INDIE_PUB, BIGGIE_PUB, IGNORE_HAVETOTAL, SNATCHED_HAVETOTAL, PROVIDER_ORDER, TMP_PROV, \
                 dbUpdateScheduler, searchScheduler, RSSScheduler, WeeklyScheduler, VersionScheduler, FolderMonitorScheduler, \
-                ENABLE_TORRENTS, TORRENT_DOWNLOADER, MINSEEDS, USE_WATCHDIR, TORRENT_LOCAL, LOCAL_WATCHDIR, TORRENT_SEEDBOX, SEEDBOX_HOST, SEEDBOX_PORT, SEEDBOX_USER, SEEDBOX_PASS, SEEDBOX_WATCHDIR, \
-                ENABLE_RSS, RSS_CHECKINTERVAL, RSS_LASTRUN, FAILED_DOWNLOAD_HANDLING, FAILED_AUTO, ENABLE_TORRENT_SEARCH, ENABLE_KAT, KAT_PROXY, KAT_VERIFY, ENABLE_32P, MODE_32P, KEYS_32P, RSSFEED_32P, USERNAME_32P, PASSWORD_32P, AUTHKEY_32P, PASSKEY_32P, FEEDINFO_32P, VERIFY_32P, SNATCHEDTORRENT_NOTIFY, \
+                ALLOW_PACKS, ENABLE_TORRENTS, TORRENT_DOWNLOADER, MINSEEDS, USE_WATCHDIR, TORRENT_LOCAL, LOCAL_WATCHDIR, TORRENT_SEEDBOX, SEEDBOX_HOST, SEEDBOX_PORT, SEEDBOX_USER, SEEDBOX_PASS, SEEDBOX_WATCHDIR, \
+                ENABLE_RSS, RSS_CHECKINTERVAL, RSS_LASTRUN, FAILED_DOWNLOAD_HANDLING, FAILED_AUTO, ENABLE_TORRENT_SEARCH, ENABLE_TPSE, TPSE_PROXY, TPSE_VERIFY, ENABLE_32P, MODE_32P, KEYS_32P, RSSFEED_32P, USERNAME_32P, PASSWORD_32P, AUTHKEY_32P, PASSKEY_32P, FEEDINFO_32P, VERIFY_32P, SNATCHEDTORRENT_NOTIFY, \
                 PROWL_ENABLED, PROWL_PRIORITY, PROWL_KEYS, PROWL_ONSNATCH, NMA_ENABLED, NMA_APIKEY, NMA_PRIORITY, NMA_ONSNATCH, PUSHOVER_ENABLED, PUSHOVER_PRIORITY, PUSHOVER_APIKEY, PUSHOVER_USERKEY, PUSHOVER_ONSNATCH, BOXCAR_ENABLED, BOXCAR_ONSNATCH, BOXCAR_TOKEN, \
                 PUSHBULLET_ENABLED, PUSHBULLET_APIKEY, PUSHBULLET_DEVICEID, PUSHBULLET_ONSNATCH, LOCMOVE, NEWCOM_DIR, FFTONEWCOM_DIR, \
                 PREFERRED_QUALITY, MOVE_FILES, RENAME_FILES, LOWERCASE_FILENAMES, USE_MINSIZE, MINSIZE, USE_MAXSIZE, MAXSIZE, CORRECT_METADATA, FOLDER_FORMAT, FILE_FORMAT, REPLACE_CHAR, REPLACE_SPACES, ADD_TO_CSV, CVINFO, LOG_LEVEL, POST_PROCESSING, POST_PROCESSING_SCRIPT, FILE_OPTS, SEARCH_DELAY, GRABBAG_DIR, READ2FILENAME, SEND2READ, TAB_ENABLE, TAB_HOST, TAB_USER, TAB_PASS, TAB_DIRECTORY, STORYARCDIR, COPY2ARCDIR, CVURL, CHECK_FOLDER, ENABLE_CHECK_FOLDER, \
@@ -499,6 +504,8 @@ def initialize():
             HTTPS_CERT = os.path.join(DATA_DIR, 'server.crt')
         if HTTPS_KEY == '':
             HTTPS_KEY = os.path.join(DATA_DIR, 'server.key')
+        if HTTPS_CHAIN == '':
+            HTTPS_CHAIN = os.path.join(DATA_DIR, 'chain.pem')
 
         CONFIG_VERSION = check_setting_str(CFG, 'General', 'config_version', '')
         DBCHOICE = check_setting_str(CFG, 'General', 'dbchoice', 'sqlite3')
@@ -518,6 +525,7 @@ def initialize():
         ENABLE_HTTPS = bool(check_setting_int(CFG, 'General', 'enable_https', 0))
         HTTPS_CERT = check_setting_str(CFG, 'General', 'https_cert', '')
         HTTPS_KEY = check_setting_str(CFG, 'General', 'https_key', '')
+        HTTPS_CHAIN = check_setting_str(CFG, 'General', 'https_chain', '')
         HTTPS_FORCE_ON = bool(check_setting_int(CFG, 'General', 'https_force_on', 0))
         HOST_RETURN = check_setting_str(CFG, 'General', 'host_return', '')
         API_ENABLED = bool(check_setting_int(CFG, 'General', 'api_enabled', 0))
@@ -562,6 +570,7 @@ def initialize():
         DUPECONSTRAINT = check_setting_str(CFG, 'General', 'dupeconstraint', 'filesize')
         DDUMP = bool(check_setting_int(CFG, 'General', 'ddump', 0))
         DUPLICATE_DUMP = check_setting_str(CFG, 'General', 'duplicate_dump', '')
+        PULL_REFRESH = check_setting_str(CFG, 'General', 'pull_refresh', '')
         AUTOWANT_ALL = bool(check_setting_int(CFG, 'General', 'autowant_all', 0))
         AUTOWANT_UPCOMING = bool(check_setting_int(CFG, 'General', 'autowant_upcoming', 1))
         COMIC_COVER_LOCAL = bool(check_setting_int(CFG, 'General', 'comic_cover_local', 0))
@@ -581,6 +590,7 @@ def initialize():
         IGNORE_HAVETOTAL = bool(check_setting_int(CFG, 'General', 'ignore_havetotal', 0))
         SNATCHED_HAVETOTAL = bool(check_setting_int(CFG, 'General', 'snatched_havetotal', 0))
         SYNO_FIX = bool(check_setting_int(CFG, 'General', 'syno_fix', 0))
+        ALLOW_PACKS = bool(check_setting_int(CFG, 'General', 'allow_packs', 0))
         SEARCH_DELAY = check_setting_int(CFG, 'General', 'search_delay', 1)
         GRABBAG_DIR = check_setting_str(CFG, 'General', 'grabbag_dir', '')
         if not GRABBAG_DIR:
@@ -692,9 +702,9 @@ def initialize():
         SEEDBOX_WATCHDIR = check_setting_str(CFG, 'Torrents', 'seedbox_watchdir', '')
 
         ENABLE_TORRENT_SEARCH = bool(check_setting_int(CFG, 'Torrents', 'enable_torrent_search', 0))
-        ENABLE_KAT = bool(check_setting_int(CFG, 'Torrents', 'enable_kat', 0))
-        KAT_PROXY = check_setting_str(CFG, 'Torrents', 'kat_proxy', '')
-        KAT_VERIFY = bool(check_setting_int(CFG, 'Torrents', 'kat_verify', 1))
+        ENABLE_TPSE = bool(check_setting_int(CFG, 'Torrents', 'enable_tpse', 0))
+        TPSE_PROXY = check_setting_str(CFG, 'Torrents', 'tpse_proxy', '')
+        TPSE_VERIFY = bool(check_setting_int(CFG, 'Torrents', 'tpse_verify', 1))
 
         ENABLE_CBT = check_setting_str(CFG, 'Torrents', 'enable_cbt', '-1')
         if ENABLE_CBT != '-1':
@@ -796,8 +806,8 @@ def initialize():
             if ENABLE_32P:
                 PR.append('32p')
                 PR_NUM +=1
-            if ENABLE_KAT:
-                PR.append('kat')
+            if ENABLE_TPSE:
+                PR.append('tpse')
                 PR_NUM +=1
 
 
@@ -1089,6 +1099,10 @@ def initialize():
             logger.info('Search interval too low. Resetting to 6 hour minimum')
             SEARCH_INTERVAL = 360
 
+        # set the current week for the pull-list
+        todaydate = datetime.datetime.today()
+        CURRENT_WEEKNUMBER = todaydate.strftime("%U")
+        CURRENT_YEAR = todaydate.strftime("%Y")
 
         # Initialize the database
         logger.info('Checking to see if the database has all tables....')
@@ -1178,8 +1192,13 @@ def initialize():
                                            runImmediately=True,
                                            delay=30)
 
+        if ALT_PULL == 2:
+            weektimer = 4
+        else:
+            weektimer = 24
+
         WeeklyScheduler = scheduler.Scheduler(weeklypullit.Weekly(),
-                                              cycleTime=datetime.timedelta(hours=24),
+                                              cycleTime=datetime.timedelta(hours=weektimer),
                                               threadName="WEEKLYCHECK",
                                               runImmediately=True,
                                               delay=10)
@@ -1196,11 +1215,6 @@ def initialize():
                                                      runImmediately=True,
                                                      delay=60)
 
-
-        # set the current week for the pull-list
-        todaydate = datetime.datetime.today()
-        CURRENT_WEEKNUMBER = todaydate.strftime("%U")
-        CURRENT_YEAR = todaydate.strftime("%Y")
 
         # Store the original umask
         UMASK = os.umask(0)
@@ -1299,6 +1313,7 @@ def config_write():
     new_config['General']['enable_https'] = int(ENABLE_HTTPS)
     new_config['General']['https_cert'] = HTTPS_CERT
     new_config['General']['https_key'] = HTTPS_KEY
+    new_config['General']['https_chain'] = HTTPS_CHAIN
     new_config['General']['https_force_on'] = int(HTTPS_FORCE_ON)
     new_config['General']['host_return'] = HOST_RETURN
     new_config['General']['api_enabled'] = int(API_ENABLED)
@@ -1349,6 +1364,7 @@ def config_write():
     new_config['General']['dupeconstraint'] = DUPECONSTRAINT
     new_config['General']['ddump'] = int(DDUMP)
     new_config['General']['duplicate_dump'] = DUPLICATE_DUMP
+    new_config['General']['pull_refresh'] = PULL_REFRESH
     new_config['General']['autowant_all'] = int(AUTOWANT_ALL)
     new_config['General']['autowant_upcoming'] = int(AUTOWANT_UPCOMING)
     new_config['General']['preferred_quality'] = int(PREFERRED_QUALITY)
@@ -1368,6 +1384,7 @@ def config_write():
     new_config['General']['ignore_havetotal'] = int(IGNORE_HAVETOTAL)
     new_config['General']['snatched_havetotal'] = int(SNATCHED_HAVETOTAL)
     new_config['General']['syno_fix'] = int(SYNO_FIX)
+    new_config['General']['allow_packs'] = int(ALLOW_PACKS)
     new_config['General']['search_delay'] = SEARCH_DELAY
     new_config['General']['grabbag_dir'] = GRABBAG_DIR
     new_config['General']['highcount'] = HIGHCOUNT
@@ -1444,9 +1461,9 @@ def config_write():
     new_config['Torrents']['seedbox_watchdir'] = SEEDBOX_WATCHDIR
 
     new_config['Torrents']['enable_torrent_search'] = int(ENABLE_TORRENT_SEARCH)
-    new_config['Torrents']['enable_kat'] = int(ENABLE_KAT)
-    new_config['Torrents']['kat_proxy'] = KAT_PROXY
-    new_config['Torrents']['kat_verify'] = KAT_VERIFY
+    new_config['Torrents']['enable_tpse'] = int(ENABLE_TPSE)
+    new_config['Torrents']['tpse_proxy'] = TPSE_PROXY
+    new_config['Torrents']['tpse_verify'] = TPSE_VERIFY
     new_config['Torrents']['enable_32p'] = int(ENABLE_32P)
     new_config['Torrents']['mode_32p'] = int(MODE_32P)
     new_config['Torrents']['passkey_32p'] = PASSKEY_32P
@@ -1633,19 +1650,19 @@ def dbcheck():
     c_error = 'sqlite3.OperationalError'
     c=conn.cursor()
 
-    c.execute('CREATE TABLE IF NOT EXISTS comics (ComicID TEXT UNIQUE, ComicName TEXT, ComicSortName TEXT, ComicYear TEXT, DateAdded TEXT, Status TEXT, IncludeExtras INTEGER, Have INTEGER, Total INTEGER, ComicImage TEXT, ComicPublisher TEXT, ComicLocation TEXT, ComicPublished TEXT, NewPublish TEXT, LatestIssue TEXT, LatestDate TEXT, Description TEXT, QUALalt_vers TEXT, QUALtype TEXT, QUALscanner TEXT, QUALquality TEXT, LastUpdated TEXT, AlternateSearch TEXT, UseFuzzy TEXT, ComicVersion TEXT, SortOrder INTEGER, DetailURL TEXT, ForceContinuing INTEGER, ComicName_Filesafe TEXT, AlternateFileName TEXT, ComicImageURL TEXT, ComicImageALTURL TEXT, DynamicComicName TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS comics (ComicID TEXT UNIQUE, ComicName TEXT, ComicSortName TEXT, ComicYear TEXT, DateAdded TEXT, Status TEXT, IncludeExtras INTEGER, Have INTEGER, Total INTEGER, ComicImage TEXT, ComicPublisher TEXT, ComicLocation TEXT, ComicPublished TEXT, NewPublish TEXT, LatestIssue TEXT, LatestDate TEXT, Description TEXT, QUALalt_vers TEXT, QUALtype TEXT, QUALscanner TEXT, QUALquality TEXT, LastUpdated TEXT, AlternateSearch TEXT, UseFuzzy TEXT, ComicVersion TEXT, SortOrder INTEGER, DetailURL TEXT, ForceContinuing INTEGER, ComicName_Filesafe TEXT, AlternateFileName TEXT, ComicImageURL TEXT, ComicImageALTURL TEXT, DynamicComicName TEXT, AllowPacks TEXT, Type TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS issues (IssueID TEXT, ComicName TEXT, IssueName TEXT, Issue_Number TEXT, DateAdded TEXT, Status TEXT, Type TEXT, ComicID TEXT, ArtworkURL Text, ReleaseDate TEXT, Location TEXT, IssueDate TEXT, Int_IssueNumber INT, ComicSize TEXT, AltIssueNumber TEXT, IssueDate_Edit TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS snatched (IssueID TEXT, ComicName TEXT, Issue_Number TEXT, Size INTEGER, DateAdded TEXT, Status TEXT, FolderName TEXT, ComicID TEXT, Provider TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS upcoming (ComicName TEXT, IssueNumber TEXT, ComicID TEXT, IssueID TEXT, IssueDate TEXT, Status TEXT, DisplayComicName TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS nzblog (IssueID TEXT, NZBName TEXT, SARC TEXT, PROVIDER TEXT, ID TEXT, AltNZBName TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS weekly (SHIPDATE TEXT, PUBLISHER TEXT, ISSUE TEXT, COMIC VARCHAR(150), EXTRA TEXT, STATUS TEXT, ComicID TEXT, IssueID TEXT, CV_Last_Update TEXT, DynamicName TEXT, weeknumber TEXT, year TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS weekly (SHIPDATE TEXT, PUBLISHER TEXT, ISSUE TEXT, COMIC VARCHAR(150), EXTRA TEXT, STATUS TEXT, ComicID TEXT, IssueID TEXT, CV_Last_Update TEXT, DynamicName TEXT, weeknumber TEXT, year TEXT, rowid INTEGER PRIMARY KEY)')
 #    c.execute('CREATE TABLE IF NOT EXISTS sablog (nzo_id TEXT, ComicName TEXT, ComicYEAR TEXT, ComicIssue TEXT, name TEXT, nzo_complete TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS importresults (impID TEXT, ComicName TEXT, ComicYear TEXT, Status TEXT, ImportDate TEXT, ComicFilename TEXT, ComicLocation TEXT, WatchMatch TEXT, DisplayName TEXT, SRID TEXT, ComicID TEXT, IssueID TEXT, Volume TEXT, IssueNumber TEXT, DynamicName TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS readlist (IssueID TEXT, ComicName TEXT, Issue_Number TEXT, Status TEXT, DateAdded TEXT, Location TEXT, inCacheDir TEXT, SeriesYear TEXT, ComicID TEXT, StatusChange TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS readinglist(StoryArcID TEXT, ComicName TEXT, IssueNumber TEXT, SeriesYear TEXT, IssueYEAR TEXT, StoryArc TEXT, TotalIssues TEXT, Status TEXT, inCacheDir TEXT, Location TEXT, IssueArcID TEXT, ReadingOrder INT, IssueID TEXT, ComicID TEXT, StoreDate TEXT, IssueDate TEXT, Publisher TEXT, IssuePublisher TEXT, IssueName TEXT, CV_ArcID TEXT, Int_IssueNumber INT, DynamicComicName TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS annuals (IssueID TEXT, Issue_Number TEXT, IssueName TEXT, IssueDate TEXT, Status TEXT, ComicID TEXT, GCDComicID TEXT, Location TEXT, ComicSize TEXT, Int_IssueNumber INT, ComicName TEXT, ReleaseDate TEXT, ReleaseComicID TEXT, ReleaseComicName TEXT, IssueDate_Edit TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS rssdb (Title TEXT UNIQUE, Link TEXT, Pubdate TEXT, Site TEXT, Size TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS futureupcoming (ComicName TEXT, IssueNumber TEXT, ComicID TEXT, IssueID TEXT, IssueDate TEXT, Publisher TEXT, Status TEXT, DisplayComicName TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS futureupcoming (ComicName TEXT, IssueNumber TEXT, ComicID TEXT, IssueID TEXT, IssueDate TEXT, Publisher TEXT, Status TEXT, DisplayComicName TEXT, weeknumber TEXT, year TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS failed (ID TEXT, Status TEXT, ComicID TEXT, IssueID TEXT, Provider TEXT, ComicName TEXT, Issue_Number TEXT, NZBName TEXT, DateFailed TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS searchresults (SRID TEXT, results Numeric, Series TEXT, publisher TEXT, haveit TEXT, name TEXT, deck TEXT, url TEXT, description TEXT, comicid TEXT, comicimage TEXT, issues TEXT, comicyear TEXT, ogcname TEXT)')
     conn.commit
@@ -1737,6 +1754,16 @@ def dbcheck():
         c.execute('SELECT NewPublish from comics')
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE comics ADD COLUMN NewPublish TEXT')
+
+    try:
+        c.execute('SELECT AllowPacks from comics')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE comics ADD COLUMN AllowPacks TEXT')
+
+    try:
+        c.execute('SELECT Type from comics')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE comics ADD COLUMN Type TEXT')
 
     try:
         c.execute('SELECT DynamicComicName from comics')
@@ -1902,6 +1929,11 @@ def dbcheck():
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE weekly ADD COLUMN year TEXT')
 
+    try:
+        c.execute('SELECT rowid from weekly')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE weekly ADD COLUMN rowid INTEGER PRIMARY KEY')
+
     ## -- Nzblog Table --
 
     try:
@@ -2061,6 +2093,17 @@ def dbcheck():
         c.execute('SELECT ogcname from searchresults')
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE searchresults ADD COLUMN ogcname TEXT')
+
+    ## -- futureupcoming Table --
+    try:
+        c.execute('SELECT weeknumber from futureupcoming')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE futureupcoming ADD COLUMN weeknumber TEXT')
+
+    try:
+        c.execute('SELECT year from futureupcoming')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE futureupcoming ADD COLUMN year TEXT')
 
     ## -- Failed Table --
     try:

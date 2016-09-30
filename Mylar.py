@@ -21,16 +21,14 @@ import time
 import threading
 import signal
 
-from lib.configobj import ConfigObj
+sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'lib'))
 
 import mylar
 
 from mylar import webstart, logger, filechecker, versioncheck
 
-try:
-    import argparse
-except ImportError:
-    import lib.argparse as argparse
+import argparse
+
 
 if ( sys.platform == 'win32' and sys.executable.split( '\\' )[-1] == 'pythonw.exe'):
     sys.stdout = open(os.devnull, "w")
@@ -72,6 +70,7 @@ def main():
     parser.add_argument('-d', '--daemon', action='store_true', help='Run as a daemon')
     parser.add_argument('-p', '--port', type=int, help='Force mylar to run on a specified port')
     parser.add_argument('-b', '--backup', action='store_true', help='Will automatically backup & keep the last 2 copies of the .db & ini files prior to startup')
+    parser.add_argument('-w', '--noweekly', action='store_true', help='Turn off weekly pull list check on startup (quicker boot sequence)')
     parser.add_argument('--datadir', help='Specify a directory where to store your data files')
     parser.add_argument('--config', help='Specify a config file to use')
     parser.add_argument('--nolaunch', action='store_true', help='Prevent browser from launching on startup')
@@ -135,6 +134,11 @@ def main():
     else:
         mylar.SAFESTART = False
 
+    if args.noweekly:
+        mylar.NOWEEKLY = True
+    else:
+        mylar.NOWEEKLY = False
+
     # Try to create the DATA_DIR if it doesn't exist
     #if not os.path.exists(mylar.DATA_DIR):
     #    try:
@@ -192,6 +196,7 @@ def main():
 
             i += 1
 
+    from configobj import ConfigObj
     mylar.CFG = ConfigObj(mylar.CONFIG_FILE, encoding='utf-8')
 
     # Rename the main thread
@@ -228,6 +233,7 @@ def main():
         'enable_https': mylar.ENABLE_HTTPS,
         'https_cert': mylar.HTTPS_CERT,
         'https_key': mylar.HTTPS_KEY,
+        'https_chain': mylar.HTTPS_CHAIN,
         'http_username': mylar.HTTP_USERNAME,
         'http_password': mylar.HTTP_PASSWORD,
     }

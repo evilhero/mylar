@@ -168,23 +168,27 @@ class PostProcessor(object):
             path_to_move = dupeinfo[0]['to_dupe']
             file_to_move = os.path.split(path_to_move)[1]
 
-            if dupeinfo[0]['action'] == 'dupe_src':
+            if dupeinfo[0]['action'] == 'dupe_src' and mylar.FILE_OPTS == 'move':
                 logger.info('[DUPLICATE-CLEANUP] New File will be post-processed. Moving duplicate [' + path_to_move + '] to Duplicate Dump Folder for manual intervention.')
             else:
-                logger.info('[DUPLICATE-CLEANUP] New File will not be post-processed. Moving duplicate [' + path_to_move + '] to Duplicate Dump Folder for manual intervention.')
-
-            #check to make sure duplicate_dump directory exists:
-            checkdirectory = filechecker.validateAndCreateDirectory(mylar.DUPLICATE_DUMP, True, module='[DUPLICATE-CLEANUP]')
+                if mylar.FILE_OPTS == 'move':
+                    logger.info('[DUPLICATE-CLEANUP][MOVE-MODE] New File will not be post-processed. Moving duplicate [' + path_to_move + '] to Duplicate Dump Folder for manual intervention.')
+                else:
+                    logger.info('[DUPLICATE-CLEANUP][COPY-MODE] NEW File will not be post-processed. Retaining file in original location [' + path_to_move + ']')
+                    return True
 
             #this gets tricky depending on if it's the new filename or the existing filename, and whether or not 'copy' or 'move' has been selected.
-            try:
-                shutil.move(path_to_move, os.path.join(mylar.DUPLICATE_DUMP, file_to_move))
-            except (OSError, IOError):
-                logger.warn('[DUPLICATE-CLEANUP] Failed to move ' + path_to_move + ' ... to ... ' + os.path.join(mylar.DUPLICATE_DUMP, file_to_move))
-                return False
+            if mylar.FILE_OPTS == 'move':
+                #check to make sure duplicate_dump directory exists:
+                checkdirectory = filechecker.validateAndCreateDirectory(mylar.DUPLICATE_DUMP, True, module='[DUPLICATE-CLEANUP]')
+                try:
+                    shutil.move(path_to_move, os.path.join(mylar.DUPLICATE_DUMP, file_to_move))
+                except (OSError, IOError):
+                    logger.warn('[DUPLICATE-CLEANUP] Failed to move ' + path_to_move + ' ... to ... ' + os.path.join(mylar.DUPLICATE_DUMP, file_to_move))
+                    return False
 
-            logger.warn('[DUPLICATE-CLEANUP] Successfully moved ' + path_to_move + ' ... to ... ' + os.path.join(mylar.DUPLICATE_DUMP, file_to_move))
-            return True
+                logger.warn('[DUPLICATE-CLEANUP] Successfully moved ' + path_to_move + ' ... to ... ' + os.path.join(mylar.DUPLICATE_DUMP, file_to_move))
+                return True
 
     def Process(self):
             module = self.module
@@ -266,18 +270,20 @@ class PostProcessor(object):
                 manual_list = []
 
                 for fl in filelist['comiclist']:
-                    as_d = filechecker.FileChecker(watchcomic=fl['series_name'].decode('utf-8'))
+                    as_d = filechecker.FileChecker()#watchcomic=fl['series_name'].decode('utf-8'))
                     as_dinfo = as_d.dynamic_replace(fl['series_name'])
                     mod_seriesname = as_dinfo['mod_seriesname']
                     loopchk = []
                     for x in alt_list:
                         cname = x['AS_DyComicName']
                         for ab in x['AS_Alt']:
-                            if re.sub('[\|\s]', '', mod_seriesname.lower()).strip() in re.sub('[\|\s]', '', ab.lower()).strip():
+                            tmp_ab = re.sub(' ', '', ab)
+                            tmp_mod_seriesname = re.sub(' ', '', mod_seriesname)
+                            if re.sub('\|', '', tmp_mod_seriesname.lower()).strip() == re.sub('\|', '', tmp_ab.lower()).strip():
                                 if not any(re.sub('[\|\s]', '', cname.lower()) == x for x in loopchk):
                                     loopchk.append(re.sub('[\|\s]', '', cname.lower()))
 
-                    if 'annual' in mod_seriesname.lower():
+                    if all([mylar.ANNUALS_ON, 'annual' in mod_seriesname.lower()]):
                         mod_seriesname = re.sub('annual', '', mod_seriesname, flags=re.I).strip()
 
                     #make sure we add back in the original parsed filename here.
@@ -441,12 +447,12 @@ class PostProcessor(object):
                                     # if the above both don't exist, and there's more than one series on the watchlist (or the series is > v1)
                                     # then spit out the error message and don't post-process it.
                                     watch_values = cs['WatchValues']
-                                    logger.info(watch_values)
+                                    #logger.fdebug('WATCH_VALUES:' + str(watch_values))
                                     if any([watch_values['ComicVersion'] is None, watch_values['ComicVersion'] == 'None']):
                                         tmp_watchlist_vol = '1'
                                     else:
                                         tmp_watchlist_vol = re.sub("[^0-9]", "", watch_values['ComicVersion']).strip()
-                                    if not any([watchmatch['series_volume'] != 'None', watchmatch['series_volume'] is not None]):
+                                    if all([watchmatch['series_volume'] != 'None', watchmatch['series_volume'] is not None]):
                                         tmp_watchmatch_vol = re.sub("[^0-9]","", watchmatch['series_volume']).strip()
                                         if len(tmp_watchmatch_vol) == 4:
                                             if int(tmp_watchmatch_vol) == int(watch_values['SeriesYear']):
@@ -459,7 +465,8 @@ class PostProcessor(object):
                                                 logger.fdebug(module + '[ISSUE-VERIFY][SeriesYear-Volume MATCH] Volume label of series Year of ' + str(watch_values['ComicVersion']) + ' matched to volume label of ' + str(watchmatch['series_volume']))
                                             else:
                                                 logger.fdebug(module + '[ISSUE-VERIFY][SeriesYear-Volume FAILURE] Volume label of Series Year of ' + str(watch_values['ComicVersion']) + ' DID NOT match to volume label of ' + str(watchmatch['series_volume']))
-                                                datematch = "False"
+                                                continue
+                                                #datematch = "False"
                                     else:
                                         if any([tmp_watchlist_vol is None, tmp_watchlist_vol == 'None', tmp_watchlist_vol == '']):
                                             logger.fdebug(module + '[ISSUE-VERIFY][NO VOLUME PRESENT] No Volume label present for series. Dropping down to Issue Year matching.')
@@ -470,7 +477,7 @@ class PostProcessor(object):
                                             logger.fdebug(module + '[ISSUE-VERIFY][Lone Volume FAILURE] Volume label of ' + str(watch_values['ComicVersion']) + ' indicates that there is more than one volume for this series, but the one on your watchlist has no volume label set.')
                                             datematch = "False"
 
-                                    if datematch == "False" and any([watchmatch['issue_year'] is not None, watchmatch['issue_year'] != 'None']):
+                                    if datematch == "False" and any([watchmatch['issue_year'] is not None, watchmatch['issue_year'] != 'None', watch_issueyear is not None]):
                                         #now we see if the issue year matches exactly to what we have within Mylar.
                                         if int(watch_issueyear) == int(watchmatch['issue_year']):
                                             logger.fdebug(module + '[ISSUE-VERIFY][Issue Year MATCH] Issue Year of ' + str(watch_issueyear) + ' is a match to the year found in the filename of : ' + str(watchmatch['issue_year']))
@@ -510,10 +517,10 @@ class PostProcessor(object):
                 #we should setup for manual post-processing of story-arc issues here
                 #we can also search by ComicID to just grab those particular arcs as an alternative as well (not done)
                 logger.fdebug(module + ' Now Checking if the issue also resides in one of the storyarc\'s that I am watching.')
+                manual_arclist = []
                 for fl in filelist['comiclist']:
                     #mod_seriesname = '%' + re.sub(' ', '%', fl['series_name']).strip() + '%'
                     #arc_series = myDB.select("SELECT * FROM readinglist WHERE ComicName LIKE?", [fl['series_name']]) # by StoryArcID")
-                    manual_arclist = []
 
                     as_d = filechecker.FileChecker(watchcomic=fl['series_name'].decode('utf-8'))
                     as_dinfo = as_d.dynamic_replace(fl['series_name'])
@@ -619,17 +626,19 @@ class PostProcessor(object):
 
                                             logger.info('StoreDate ' + str(issuechk['StoreDate']))
                                             logger.info('IssueDate: ' + str(issuechk['IssueDate']))
-                                            if issuechk['StoreDate'] is not None and issuechk['StoreDate'] != '0000-00-00':
-                                                monthval = issuechk['StoreDate']
-                                                if int(issuechk['StoreDate'][:4]) < int(arcmatch['issue_year']):
-                                                    logger.fdebug(module + ' ' + str(issuechk['StoreDate']) + ' is before the issue year of ' + str(arcmatch['issue_year']) + ' that was discovered in the filename')
-                                                    datematch = "False"
-   
-                                                else:
-                                                    monthval = issuechk['IssueDate']
-                                                    if int(issuechk['IssueDate'][:4]) < int(arcmatch['issue_year']):
-                                                        logger.fdebug(module + ' ' + str(issuechk['IssueDate']) + ' is before the issue year ' + str(arcmatch['issue_year']) + ' that was discovered in the filename')
+                                            if all([issuechk['StoreDate'] is not None, issuechk['StoreDate'] != '0000-00-00']) or all([issuechk['IssueDate'] is not None, issuechk['IssueDate'] != '0000-00-00']):
+                                                if issuechk['StoreDate'] == '0000-00-00':
+                                                    datevalue = issuechk['IssueDate']
+                                                    if int(datevalue[:4]) < int(arcmatch['issue_year']):
+                                                        logger.fdebug(module + ' ' + str(datevalue[:4]) + ' is before the issue year ' + str(arcmatch['issue_year']) + ' that was discovered in the filename')
                                                         datematch = "False"
+                                                else:
+                                                    datevalue = issuechk['StoreDate']
+                                                    if int(datevalue[:4]) < int(arcmatch['issue_year']):
+                                                        logger.fdebug(module + ' ' + str(datevalue[:4]) + ' is before the issue year of ' + str(arcmatch['issue_year']) + ' that was discovered in the filename')
+                                                        datematch = "False"
+
+                                                monthval = datevalue
 
                                                 if int(monthval[5:7]) == 11 or int(monthval[5:7]) == 12:
                                                     issyr = int(monthval[:4]) + 1
@@ -755,7 +764,7 @@ class PostProcessor(object):
                             if int(ml['ReadingOrder']) < 10: readord = "00" + str(ml['ReadingOrder'])
                             elif int(ml['ReadingOrder']) >= 10 and int(ml['ReadingOrder']) <= 99: readord = "0" + str(ml['ReadingOrder'])
                             else: readord = str(ml['ReadingOrder'])
-                            dfilename = str(readord) + "-" + dfilename
+                            dfilename = str(readord) + "-" + os.path.split(dfilename)[1]
                         else:
                             dfilename = dfilename
 
@@ -1171,7 +1180,7 @@ class PostProcessor(object):
             comicnzb = myDB.selectone("SELECT * from comics WHERE comicid=?", [comicid]).fetchone()
             issuenzb = myDB.selectone("SELECT * from issues WHERE issueid=? AND comicid=? AND ComicName NOT NULL", [issueid, comicid]).fetchone()
             if ml is not None and mylar.SNATCHEDTORRENT_NOTIFY:
-                snatchnzb = myDB.selectone("SELECT * from snatched WHERE IssueID=? AND ComicID=? AND (provider=? OR provider=?) AND Status='Snatched'", [issueid, comicid, 'KAT', '32P']).fetchone()
+                snatchnzb = myDB.selectone("SELECT * from snatched WHERE IssueID=? AND ComicID=? AND (provider=? OR provider=? OR provider=? OR provider=?) AND Status='Snatched'", [issueid, comicid, 'TPSE', 'DEM', 'WWT', '32P']).fetchone()
                 if snatchnzb is None:
                     logger.fdebug(module + ' Was not downloaded with Mylar and the usage of torrents. Disabling torrent manual post-processing completion notification.')
                 else:
@@ -1651,8 +1660,8 @@ class PostProcessor(object):
                 if mylar.REPLACE_SPACES:
                     #mylar.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
                     nfilename = nfilename.replace(' ', mylar.REPLACE_CHAR)
-            nfilename = re.sub('[\,\:\?]', '', nfilename)
-            nfilename = re.sub('[\/]', '-', nfilename)
+            nfilename = re.sub('[\,\:\?\"\']', '', nfilename)
+            nfilename = re.sub('[\/\*]', '-', nfilename)
             self._log("New Filename: " + nfilename)
             logger.fdebug(module + ' New Filename: ' + nfilename)
 
@@ -1930,7 +1939,7 @@ class PostProcessor(object):
 
             if mylar.PUSHOVER_ENABLED:
                 pushover = notifiers.PUSHOVER()
-                pushover.notify(prline, "Download and Post-Processing completed", module=module)
+                pushover.notify(prline, prline2, module=module)
 
             if mylar.BOXCAR_ENABLED:
                 boxcar = notifiers.BOXCAR()

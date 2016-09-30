@@ -36,8 +36,10 @@
 						grade = 'A'
 					else:
 						grade = 'Z'
+
 					if result['haveit'] != "No":
 						grade = 'H';
+
 				%>
 				<tr class="grade${grade}">
 					<td class="blank"></td>
@@ -53,7 +55,7 @@
                                             <%    
                                                  calledby = "web-import"
                                             %>
-                                            <td class="add"><a href="addbyid?comicid=${result['comicid']}&calledby=${calledby}&imported='yes'&ogcname=${result['ogcname']}"><span class="ui-icon ui-icon-plus"></span>Add this Comic</a></td> 
+                                            <td class="add"><a href="addbyid?comicid=${result['comicid']}&calledby=${calledby}&imported=${imported}&ogcname=${result['ogcname']}"><span class="ui-icon ui-icon-plus"></span>Add this Comic</a></td> 
                                         %else:
                                             <td class="add"><span class="ui-icon ui-icon-plus"></span>Already in Library</td> 
                                         %endif

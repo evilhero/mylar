@@ -134,6 +134,15 @@
                                 <div>
                                     <label><big>Status: </big><norm>${comic['Status']}</norm></label>
                                 </div>
+                                <%
+                                      if comic['Type'] == 'None' or comic['Type'] is None or comic['Type'] == 'Print':
+                                          comictype = 'Print'
+                                      else:
+                                          comictype = 'Digital'
+                                %>
+                                <div>
+                                    <label><big>Edition: </big><norm>${comictype}</norm></label>
+                                </div>
                                 <div>
                                     <label><big>Last Updated: </big>
                                 %if comic['LastUpdated'] is None:
@@ -313,18 +322,21 @@
                                        <small>Alternate file-naming to be used when post-processing / renaming files instead of the actual title.</small>
                                    </div>
 
-                                <div class="row">
+                                    <div class="row">
                                         <%
                                              year_options = "Default - Keep the Year as is\nYear Removal - Remove issue publication year from searches (dangerous)\nFuzzy the Year - Increase & Decrease the issue publication year by one"
                                         %>
                                         <label>Year Options<a href="#" title="${year_options}"><img src="interfaces/default/images/info32.png" height="16" alt="" /></a></label>
-                                         <div class="row radio left clearfix">
-                                            <input type="radio" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="fuzzy_year" value="0" ${comicConfig['fuzzy_year0']} /><label>Default</label>
-                                            <input type="radio" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="fuzzy_year" value="1" ${comicConfig['fuzzy_year1']} /><label>Year Removal</label>
-                                            <input type="radio" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="fuzzy_year" value="2" ${comicConfig['fuzzy_year2']} /><label>Fuzzy the Year</label>
-                                         </div>
-                                </div>
-                                   <input type="submit" value="Update"/>
+                                        <input type="radio" name="fuzzy_year" value="0" ${comicConfig['fuzzy_year0']} /> Default&nbsp;<input type="radio" name="fuzzy_year" value="1" ${comicConfig['fuzzy_year1']} /> Year Removal&nbsp;<input type="radio" name="fuzzy_year" value="2" ${comicConfig['fuzzy_year2']} /> Fuzzy the Year
+                                     </div>
+
+                                   %if mylar.ENABLE_32P and mylar.MODE_32P == 1:
+                                   <div class="row">
+                                       <input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="allow_packs" value="1" ${comicConfig['allow_packs']} /><label>Enable Pack Downloads<a href="#" title="Will allow downloading of multiple issues in one file (packs), but will search individual issues first"><img src="interfaces/default/images/info32.png" height="16" alt="" /></a></label>
+                                   </div>
+                                   %endif
+
+                               <input type="submit" value="Update"/>
                          </fieldset>
                 </form>
                </td>
@@ -461,7 +473,7 @@
                                                 %endif
 
                                                 %if mylar.ENABLE_META:
-                                                    <a href="#" title="Manually meta-tag issue" onclick="doAjaxCall('manual_metatag?dirName=${comic['ComicLocation'] |u}&issueid=${issue['IssueID']}&filename=${linky |u}&comicid=${issue['ComicID']}&comversion=${comic['ComicVersion']}',$(this),'table')" data-success="${comic['ComicName']} #${issue['Issue_Number']} successfully tagged."><img src="interfaces/default/images/comictagger.png" height="25" width="25" class="highqual" /></a>
+                                                    <a href="#" title="Manually meta-tag issue" onclick="doAjaxCall('manual_metatag?dirName=${comic['ComicLocation'] |u}&issueid=${issue['IssueID']}&filename=${linky |u}&comicid=${issue['ComicID']}&comversion=${comic['ComicVersion']}&seriesyear=${comic['ComicYear']}',$(this),'table')" data-success="${comic['ComicName']} #${issue['Issue_Number']} successfully tagged."><img src="interfaces/default/images/comictagger.png" height="25" width="25" class="highqual" /></a>
                                                 %endif
                                         %endif
                                         <a href="#" title="Add to Reading List" onclick="doAjaxCall('addtoreadlist?IssueID=${issue['IssueID']}',$(this),'table')" data-success="${comic['ComicName']} #${issue['Issue_Number']} added to Reading List"><img src="interfaces/default/images/glasses-icon.png" height="25" width="25" class="highqual" /></a>
@@ -569,7 +581,7 @@
                                         <a href="#" onclick="doAjaxCall('retryit?ComicName=${annual['ComicName'] |u}&ComicID=${annual['ComicID']}&IssueID=${annual['IssueID']}&IssueNumber=${annual['Issue_Number']}&ComicYear=${annual['IssueDate']}&ReleaseComicID=${annual['ReleaseComicID']}', $(this),'table')" data-success="Retrying the same version of '${annual['ComicName']}' '${annual['Issue_Number']}'" title="Retry the same download again"><img src="interfaces/default/images/retry_icon.png" height="25" width="25" class="highqual" /></a>
                                         <a href="#" title="Mark annual as Skipped" onclick="doAjaxCall('unqueueissue?IssueID=${annual['IssueID']}&ComicID=${annual['ComicID']}&ReleaseComicID=${annual['ReleaseComicID']}',$(this),'table')" data-success="'${annual['Issue_Number']}' has been marked as skipped"><img src="interfaces/default/images/skipped_icon.png" height="25" width="25" class="highqual" /></a>
                                         %if mylar.FAILED_DOWNLOAD_HANDLING:
-                                               <a href="#" title="Mark annual as Failed" onclick="doAjaxCall('unqueueissue?IssueID=${issue['IssueID']}&ComicID=${issue['ComicID']}&mode="failed"',$(this),'table')" data-success="'${issue['Issue_Number']}' has been marked as Failed"><img src="interfaces/default/images/failed.png" height="25" width="25" class="highqual" /></a>
+                                               <a href="#" title="Mark annual as Failed" onclick="doAjaxCall('unqueueissue?IssueID=${annual['IssueID']}&ComicID=${annual['ComicID']}&ReleaseComicID=${annual['ReleaseComicID']}&mode=failed',$(this),'table')" data-success="'${annual['Issue_Number']}' has been marked as Failed"><img src="interfaces/default/images/failed.png" height="25" width="25" class="highqual" /></a>
                                         %endif
                                 %elif (annual['Status'] == 'Downloaded'):
                                        <%
@@ -801,6 +813,7 @@
                                     { 'sType': 'numeric', 'aTargets': [1] },
                                     { 'iDataSort': [1], 'aTargets': [2] }
                                ],
+                               "aLengthMenu": [[10, 25, 50, -1], [10, 25, 50, 'All' ]],
                                "oLanguage": {
                                        "sLengthMenu":"",
                                        "sEmptyTable": "No issue information available",

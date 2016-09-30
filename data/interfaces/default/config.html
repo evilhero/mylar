@@ -201,7 +201,7 @@
                                   </div>
                                 </div>
                          </fieldset>
-                    <fieldset>
+                        <fieldset>
                     	<legend>Interval</legend>
 	                    <div class="row">
 	                    	<label>NZB Search Interval</label>
@@ -212,9 +212,11 @@
                                   <div class="row">
                                       <label>Search delay</label>
                                       <input type="text" name="search_delay" value="${config['search_delay']}" size="4" />mins
+                                      <small>The amount of time to wait between each search request (minimum is 1 min)</small>
                                   </div>
                             </div>
-	                    </div>
+                         </fieldset>
+	                 <fieldset>
                                <legend>Comic Location</legend>
                                 <div>
                                     <small class="heading"><span style="float: left; margin-right: .3em; margin-top: 4px;" class="ui-icon ui-icon-info"></span>Automatic folder creation happens BENEATH this path</small>
@@ -282,9 +284,9 @@
                                         <label>SABnzbd API:</label>
                                         <input type="text" name="sab_apikey" id="sab_apikey" value="${config['sab_api']}" size="28">
 <!--
-                                        <input style="float:right" type="button"><image src="interfaces/default/images/submit.png" height="20" width="20" title="Attempt to auto-populate SABnzbd API" id="find_sabapi">
+                                        <a href="#" style="float:right" type="button" onclick="doAjaxCall('findsabapi',$(this))" data-success="Successfully retrieved SABnzbd key" data-error="Unable to retrieve SABnzbd key"><span class="ui-icon ui-icon-extlink"></span>GET API</a>
 -->
-                                     <a href="#" style="float:right" type="button" id="find_sabapi" data-success="Sucessfully retrieved SABnzbd API" data-error="Error auto-populating SABnzbd API"><span class="ui-icon ui-icon-extlink"></span>Get API</a>
+                                        <a href="#" style="float:right" type="button" id="find_sabapi" data-success="Sucessfully retrieved SABnzbd API" data-error="Error auto-populating SABnzbd API"><span class="ui-icon ui-icon-extlink"></span>Get API</a>
                                      </div>
                                 </div>
 
@@ -398,7 +400,7 @@
 					<input type="radio" name="torrent_downloader" id="torrent_downloader_watchlist" value="0" ${config['torrent_downloader_watchlist']}> Watchdir&nbsp;&nbsp;
 					<input type="radio" name="torrent_downloader" id="torrent_downloader_utorrent" value="1" ${config['torrent_downloader_utorrent']}> uTorrent&nbsp;&nbsp;
 					<input type="radio" name="torrent_downloader" id="torrent_downloader_rtorrent" value="2" ${config['torrent_downloader_rtorrent']}> rTorrent&nbsp;&nbsp;
-					<!--<input type="radio" name="torrent_downloader" id="torrent_downloader_transmission" value="3" ${config['torrent_downloader_transmission']}> Transmission-->
+					<input type="radio" name="torrent_downloader" id="torrent_downloader_transmission" value="3" ${config['torrent_downloader_transmission']}> Transmission
 				</div>
 			</fieldset>
 			<fieldset id="watchlist_options">
@@ -487,7 +489,7 @@
                                         <small>Automatically start torrent on successful loading within rtorrent client</small>
                                 </div>
                         </fieldset>
-<!--			<fieldset id="transmission_options">
+			<fieldset id="transmission_options">
 				<div class="row">
 					<label>Transmission Host</label>
 					<input type="text" name="transmission_host" value="${config['transmission_host']}" size="30">
@@ -501,10 +503,9 @@
 					<input type="password" name="transmission_password" value="${config['transmission_password']}" size="30">
 				</div>
 			</fieldset>
--->
                 </td>
-            </tr>            
-    
+            </tr>
+
 	    </table>
 	</div>
 	<div id="tabs-4">
@@ -516,7 +517,7 @@
                             <input id="enable_rss" type="checkbox" onclick="initConfigCheckbox($(this));" name="enable_rss" value=1 ${config['enable_rss']} /><label>Enable RSS Feed Searches (nzbs & torrents)</label>
                           </div>
                           <div class="config">
-                            <label>RSS Inteval Feed Check</label>
+                            <label>RSS Interval Feed Check</label>
                             <input type="text" name="rss_checkinterval" value="${config['rss_checkinterval']}" size="6" /><small>(Mins)</small>
                             <a href="#" style="float:right" type="button" onclick="doAjaxCall('force_rss',$(this))" data-success="RSS Force now running" data-error="Error trying to retrieve RSS Feeds"><span class="ui-icon ui-icon-extlink"></span>Force RSS</a>
                             </br><small><% rss_last=mylar.RSS_LASTRUN %>last run: ${rss_last}</small>
@@ -573,7 +574,10 @@
                                 </div>
                                 <div class="config">
                                          <div class="row checkbox left clearfix">
-                                                <input id="enable_kat" type="checkbox" name="enable_kat" value=1 ${config['enable_kat']} /><label>Enable KAT</label>
+                                                <input id="enable_tpse" title="Will Use TPSE for searches, Demonoid & WWT for RSS feeds" type="checkbox" name="enable_tpse" value=1 ${config['enable_tpse']} /><label>Enable Public Torrent Search</label>
+                                                <div align="left">
+                                                   <small class="heading"><span style="float: left; margin-left: .3em; margin-top: 4px;" class="ui-icon ui-icon-info"></span>Search: TPSE / RSS: DEM & WWT</small>
+                                                </div>                                            
                                          </div>
                                          <div class="row checkbox left clearfix">
                                                 <input type="checkbox" id="enable_32p" onclick="initConfigCheckbox($(this));" name="enable_32p" value=1 ${config['enable_32p']} /><label>Enable 32P</label>

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #  This file is part of Mylar.
 #
 #  Mylar is free software: you can redistribute it and/or modify
@@ -67,6 +68,8 @@ def libraryScan(dir=None, append=False, ComicID=None, ComicName=None, cron=None,
                 comic = files
                 comicpath = os.path.join(r, files)
                 comicsize = os.path.getsize(comicpath)
+                logger.fdebug('Comic: ' + comic + ' [' + comicpath + '] - ' + str(comicsize) + ' bytes')
+
                 t = filechecker.FileChecker(dir=r, file=comic)
                 results = t.listFiles()
                 #logger.info(results)
@@ -83,7 +86,6 @@ def libraryScan(dir=None, append=False, ComicID=None, ComicName=None, cron=None,
                 #'annualcomicid':  annual_comicid,
                 #'scangroup':      scangroup}
 
-                logger.fdebug('Comic: ' + comic + ' [' + comicpath + '] - ' + str(comicsize) + ' bytes')
 
                 if results:
                     resultline = '[PARSE-' + results['parse_status'].upper() + ']'
@@ -135,7 +137,6 @@ def libraryScan(dir=None, append=False, ComicID=None, ComicName=None, cron=None,
     logger.info('However, ' + str(cbz_retry) + ' files are in a cbz format, which may contain metadata.')
 
     mylar.IMPORT_STATUS = 'Successfully parsed ' + str(comiccnt) + ' files'
-
     #return queue.put(valreturn)
 
     myDB = db.DBConnection()
@@ -263,7 +264,7 @@ def libraryScan(dir=None, append=False, ComicID=None, ComicName=None, cron=None,
                     comicname = issueinfo[0]['series']
                     if comicname is not None:
                         logger.fdebug('[IMPORT-CBZ] Series Name: ' + comicname)
-                        as_d = filechecker.FileChecker(watchcomic=comicname.decode('utf-8'))
+                        as_d = filechecker.FileChecker()
                         as_dyninfo = as_d.dynamic_replace(comicname)
                         logger.fdebug('Dynamic-ComicName: ' + as_dyninfo['mod_seriesname'])
                     else:
@@ -637,19 +638,30 @@ def scanLibrary(scan=None, queue=None):
                     else:
                         theissuenumber = ss['issuenumber']
 
+                    thefilename = ss['comfilename']
+                    thelocation = ss['comlocation']
+
+                    if type(ss['comfilename']) != unicode:
+                        thefilename = thefilename.decode('utf-8')
+                    if type(ss['comlocation']) != unicode:
+                        thelocation = thelocation.decode('utf-8')
+
                     nspace_dynamicname = re.sub('[\|\s]', '', ss['dynamicname'].lower()).strip()                   
+                    if type(nspace_dynamicname) != unicode:
+                        nspace_dynamicname = nspace_dynamicname.decode('utf-8')
+
                     controlValue = {"impID":        ss['impid']}
                     newValue = {"ComicYear":        ss['comicyear'],
                                 "Status":           "Not Imported",
-                                "ComicName":        ss['comicname'], #.encode('utf-8'),
-                                "DisplayName":      ss['displayname'], #.encode('utf-8'),
+                                "ComicName":        ss['comicname'].decode('utf-8'),
+                                "DisplayName":      ss['displayname'].decode('utf-8'),
                                 "DynamicName":      nspace_dynamicname,
                                 "ComicID":          ss['comicid'],  #if it's been scanned in for cvinfo, this will be the CID - otherwise it's None
                                 "IssueID":          None,
                                 "Volume":           ss['volume'],
                                 "IssueNumber":      theissuenumber,
-                                "ComicFilename":    ss['comfilename'].decode('utf-8'), #ss['comfilename'].encode('utf-8'),
-                                "ComicLocation":    ss['comlocation'],
+                                "ComicFilename":    thefilename,#.decode('utf-8'), #ss['comfilename'].encode('utf-8'),
+                                "ComicLocation":    thelocation,
                                 "ImportDate":       helpers.today(),
                                 "WatchMatch":       ss['watchmatch']}
                     myDB.upsert("importresults", newValue, controlValue)
