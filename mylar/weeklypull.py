@@ -57,6 +57,7 @@ def pullit(forcecheck=None):
     #PULLURL = 'http://www.previewsworld.com/shipping/prevues/newreleases.txt'
     PULLURL = 'http://www.previewsworld.com/shipping/newreleases.txt'
     newrl = os.path.join(mylar.CACHE_DIR, 'newreleases.txt')
+    mylar.PULLBYFILE = None
 
     if mylar.ALT_PULL == 1:
         #logger.info('[PULL-LIST] The Alt-Pull method is currently broken. Defaulting back to the normal method of grabbing the pull-list.')
@@ -75,10 +76,12 @@ def pullit(forcecheck=None):
 
         else:
             logger.info('[PULL-LIST] Unable to retrieve weekly pull-list. Dropping down to legacy method of PW-file')
-            f= urllib.urlretrieve(PULLURL, newrl)
+            urllib.urlretrieve(PULLURL, newrl)
+            mylar.PULLBYFILE = True
     else:
         logger.info('[PULL-LIST] Populating & Loading pull-list data from file')
-        f = urllib.urlretrieve(PULLURL, newrl)
+        urllib.urlretrieve(PULLURL, newrl)
+        mylar.PULLBYFILE = True
 
         #set newrl to a manual file to pull in against that particular file
         #newrl = '/mylar/tmp/newreleases.txt'
@@ -86,7 +89,7 @@ def pullit(forcecheck=None):
     #newtxtfile header info ("SHIPDATE\tPUBLISHER\tISSUE\tCOMIC\tEXTRA\tSTATUS\n")
     #STATUS denotes default status to be applied to pulllist in Mylar (default = Skipped)
 
-    if mylar.ALT_PULL != 2:
+    if mylar.ALT_PULL != 2 or mylar.PULLBYFILE is True:
         newfl = os.path.join(mylar.CACHE_DIR, 'Clean-newreleases.txt')
 
         newtxtfile = open(newfl, 'wb')
@@ -200,9 +203,8 @@ def pullit(forcecheck=None):
                         logger.fdebug("today: " + str(pulldate))
                         if pulldate == shipdaterep:
                             logger.info(u"No new pull-list available - will re-check again in 24 hours.")
-                            pullitcheck()
                             mylar.PULLNEW = 'no'
-                            return
+                            return pullitcheck()
                         else:
                             logger.info(u"Preparing to update to the new listing.")
                     break
@@ -386,7 +388,7 @@ def pullit(forcecheck=None):
                             dupefound = "no"
 
                     #-- remove html tags when alt_pull is enabled
-                    if mylar.ALT_PULL:
+                    if mylar.ALT_PULL == 1:
                         if '&amp;' in comicnm:
                             comicnm = re.sub('&amp;', '&', comicnm).strip()
                         if '&amp;' in pub:
@@ -423,7 +425,7 @@ def pullit(forcecheck=None):
 
         newtxtfile.close()
 
-        if pulldate == '00000000' and mylar.ALT_PULL != 2:
+        if all([pulldate == '00000000', mylar.ALT_PULL != 2]) or mylar.PULLBYFILE is True:
             pulldate = shipdate
 
         try:
@@ -471,7 +473,7 @@ def pullit(forcecheck=None):
 
         logger.info(u"Weekly Pull List successfully loaded.")
 
-    if mylar.ALT_PULL != 2:
+    if mylar.ALT_PULL != 2 or mylar.PULLBYFILE is True:
         pullitcheck(forcecheck=forcecheck)
 
 def pullitcheck(comic1off_name=None, comic1off_id=None, forcecheck=None, futurepull=None, issue=None):
@@ -792,7 +794,7 @@ def pullitcheck(comic1off_name=None, comic1off_id=None, forcecheck=None, futurep
                                     ComicIssue = str(watchfndiss[tot -1])
                                 ComicDate = str(week['SHIPDATE'])
                                 logger.fdebug("Watchlist hit for : " + ComicName + " ISSUE: " + str(watchfndiss[tot -1]))
-
+ 
                                 # here we add to comics.latest
                                 updater.latest_update(ComicID=ComicID, LatestIssue=ComicIssue, LatestDate=ComicDate)
                                 # here we add to upcoming table...
@@ -822,7 +824,7 @@ def pullitcheck(comic1off_name=None, comic1off_id=None, forcecheck=None, futurep
 
         logger.fdebug("There are " + str(otot) + " comics this week to get!")
         logger.info(u"Finished checking for comics on my watchlist.")
-    return
+    return {'status': 'success'}
 
 def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, forcecheck=None, issue=None):
     #the new pull method (ALT_PULL=2) already has the comicid & issueid (if available) present in the response that's polled by mylar.
@@ -831,7 +833,11 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
     myDB = db.DBConnection()
     watchlist = []
     weeklylist = []
-    comiclist = myDB.select("SELECT * FROM comics WHERE Status='Active'")
+    if comic1off_name:
+        comiclist = myDB.select("SELECT * FROM comics WHERE Status='Active' AND ComicID=?",[comic1off_id])
+    else:
+        comiclist = myDB.select("SELECT * FROM comics WHERE Status='Active'")
+
     if comiclist is None:
         pass
     else:
@@ -926,7 +932,9 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
         ki = []
         kc = []
         otot = 0
-        logger.fdebug("[WALKSOFTLY] You are watching for: " + str(len(weeklylist)) + " comics")
+        if not comic1off_id:
+            logger.fdebug("[WALKSOFTLY] You are watching for: " + str(len(weeklylist)) + " comics")
+
         weekly = myDB.select('SELECT a.comicid, IFNULL(a.Comic,IFNULL(b.ComicName, c.ComicName)) as ComicName, a.rowid, a.issue, a.issueid, c.ComicPublisher, a.weeknumber, a.shipdate, a.dynamicname FROM weekly as a INNER JOIN annuals as b INNER JOIN comics as c ON b.releasecomicid = a.comicid OR c.comicid = a.comicid OR c.DynamicComicName = a.dynamicname WHERE weeknumber = ? GROUP BY a.dynamicname', [weeknumber]) #comics INNER JOIN weekly ON comics.DynamicComicName = weekly.dynamicname OR comics.comicid = weekly.comicid INNER JOIN annuals ON annuals.comicid = weekly.comicid WHERE weeknumber = ? GROUP BY weekly.dynamicname', [weeknumber])
         for week in weekly:
             idmatch = None
