@@ -227,30 +227,36 @@
                                         <small>Where do you store your comics?<br/> (or where do you want me to store them)</small>
                                         <small>e.g. /Users/name/Comics or /Volumes/share/comics</small>
                                 </div>
-
-                                <div class="row">
-                                    <label>Directory CHMOD</label>
-                                    <input type="text" name="chmod_dir" value="${config['chmod_dir']}" size="50">
-                                    <small>Permissions on created/moved directories</small>
+                          </fieldset>
+                          <fieldset>
+                                <legend>Permissions</legend>
+                                <div class="row checkbox">
+                                   <input type="checkbox" name="enforce_perms" id="enforce_perms" value="1" ${config['enforce_perms']} /><label>Enforce Permissions</label>
                                 </div>
-                                <div class="row">
-                                    <label>File CHMOD</label>
-                                    <input type="text" name="chmod_file" value="${config['chmod_file']}" size="50">
-                                    <small>Permissions on created/moved files</small>
-                                </div>
-                                %if 'windows' not in mylar.OS_DETECT:
+                                <div id="perm_options">
                                     <div class="row">
-                                        <label>Owner</label>
-                                        <input type="text" name="chowner" value="${config['chowner']}" size="50">
-                                        <small>Set Ownership of files/directories (name OR uid)</small>
+                                        <label>Directory CHMOD</label>
+                                        <input type="text" name="chmod_dir" value="${config['chmod_dir']}" size="50">
+                                        <small>Permissions on created/moved directories</small>
                                     </div>
                                     <div class="row">
-                                        <label>Group</label>
-                                        <input type="text" name="chgroup" value="${config['chgroup']}" size="50">
-                                        <small>Set Group Ownership of files/directories (name OR gid)</small>
+                                        <label>File CHMOD</label>
+                                        <input type="text" name="chmod_file" value="${config['chmod_file']}" size="50">
+                                        <small>Permissions on created/moved files</small>
                                     </div>
-                                %endif 
-
+                                    %if 'windows' not in mylar.OS_DETECT.lower():
+                                        <div class="row">
+                                            <label>Owner</label>
+                                            <input type="text" name="chowner" value="${config['chowner']}" size="50">
+                                            <small>Set Ownership of files/directories (name OR uid)</small>
+                                        </div>
+                                        <div class="row">
+                                            <label>Group</label>
+                                            <input type="text" name="chgroup" value="${config['chgroup']}" size="50">
+                                            <small>Set Group Ownership of files/directories (name OR gid)</small>
+                                        </div>
+                                    %endif 
+                                </div>
 	                </fieldset>
                 </td>
             </tr>
@@ -502,6 +508,11 @@
 					<label>Transmission Password</label>
 					<input type="password" name="transmission_password" value="${config['transmission_password']}" size="30">
 				</div>
+                                <div class="row">
+                                        <label>Transmission Directory</label>
+                                        <input type="text" name="transmission_directory" value="${config['transmission_directory']}" size="30"><br/>
+                                        <small>Folder path where torrent download will be assigned</small>
+                                </div>
 			</fieldset>
                 </td>
             </tr>
@@ -803,7 +814,7 @@
                                  <input type="checkbox" id="enable_failed" onclick="initConfigCheckbox($this));" name="failed_download_handling" value="1" ${config['failed_download_handling']} /><label>Enable Failed Download Handling</label>
                              </div>
                                 <div class="config">
-                                    <div class="checkbox left clearfix">
+                                    <div class="row checkbox left clearfix">
                                        <input type="checkbox" name="failed_auto" value="1" ${config['failed_auto']} /><label>Enable Automatic-Retry for Failed Downloads</label>
                                     </div>
                                 </div>
@@ -819,8 +830,14 @@
                                 <div class="config">
                                     <div class="row left">
                                         <label>When Post-Processing
-                                        <select name="file_opts">
-                                         %for x in ['move', 'copy']:
+                                        <select name="file_opts" onchange="changeTest()" id="file_opts">
+                                         <%
+                                               if 'windows' in mylar.OS_DETECT.lower():
+                                                   optionlist = ['move', 'copy']
+                                               else:
+                                                   optionlist = ['move', 'copy', 'hardlink', 'softlink']
+                                         %>
+                                         %for x in optionlist:
                                              <%
                                                     if config['file_opts'] == x:
                                                         outputselect = 'selected'
@@ -876,13 +893,6 @@
                                      <input id="enable_meta" type="checkbox" onclick="initConfigCheckbox($this));" name="enable_meta" value="1" ${config['enable_meta']} /><label>Enable Metadata Tagging</label>
                                 </div>
                                 <div class="config">
-<!---                                    
-                                        <div class="row">
-                                                <label>ComicTagger Path</label>
-                                                <input type="text" name="cmtagger_path" value="${config['cmtagger_path']}" size="30" />
-                                                <small>If left blank, will assume it's in root of mylar</small>
-                                        </div>
---->
                                         <div class="row checkbox left clearfix">
                                                 <input id="cbr2cbz" type="checkbox" name="cbr2cbz_only" value="1" ${config['cbr2cbz_only']} /><label>Convert CBR to CBZ ONLY</label>
                                         </div>
@@ -903,6 +913,7 @@
                                             </div>
                                         </div>
                                 </div>
+                                <div id="warningmeta" style="color:Green; font-family:Calibri; font-size:small; font-weight:bold; text-align:center"></div>
                         </fieldset>
 
                </td>
@@ -1094,30 +1105,31 @@
                         </div>
                      </fieldset>
                                         
-                                        <fieldset>
-                                             <h3><img src="interfaces/default/images/pushover_logo.png" style="vertical-align: middle; margin: 3px; margin-top: -1px;" height="30" width="30"/>Pushover</h3>
-                                             <div class="row checkbox">
-                                                 <input type="checkbox" name="pushover_enabled" id="pushover" value="1" ${config['pushover_enabled']} /><label>Enable Pushover Notifications</label>
-                                             </div>
-                                             <div id="pushoveroptions">
-                                                   <div class="row">
-                                                       <label>API key</label><input type="text" title="Leave blank if you don't have your own API (recommended to get your own)" name="pushover_apikey" value="${config['pushover_apikey']}" size="50">
-                                                   </div>
-                                                   <div class="row">
-                                                       <label>User key</label><input type="text" name="pushover_userkey" value="${config['pushover_userkey']}" size="50">
-                                                   </div>
-                                                   <div class="row checkbox">
-                                                       <input type="checkbox" name="pushover_onsnatch" value="1" ${config['pushover_onsnatch']} /><label>Notify on snatch?</label>
-                                                   </div>
-                                                   <div class="row">
-                                                       <label>Priority (-2,-1,0,1 or 2):</label>
-                                                       <input type="text" name="pushover_priority" value="${config['pushover_priority']}" size="2">
-                                                   </div>
-                                                   <div class="row">
-                                                        <input type="button" value="Test Pushover" id="pushover_test" />
-                                                   </div>
-                                             </div>
-                                        </fieldset>            
+                     <fieldset>
+                        <h3><img src="interfaces/default/images/pushover_logo.png" style="vertical-align: middle; margin: 3px; margin-top: -1px;" height="30" width="30"/>Pushover</h3>
+                        <div class="row checkbox">
+                             <input type="checkbox" name="pushover_enabled" id="pushover" value="1" ${config['pushover_enabled']} /><label>Enable Pushover Notifications</label>
+                        </div>
+                        <div id="pushoveroptions">
+                             <div class="row">
+                                 <label>API key</label><input type="text" title="Leave blank if you don't have your own API (recommended to get your own)" name="pushover_apikey" value="${config['pushover_apikey']}" size="50">
+                             </div>
+                             <div class="row">
+                                 <label>User key</label><input type="text" name="pushover_userkey" value="${config['pushover_userkey']}" size="50">
+                             </div>
+                             <div class="row checkbox">
+                                 <input type="checkbox" name="pushover_onsnatch" value="1" ${config['pushover_onsnatch']} /><label>Notify on snatch?</label>
+                             </div>
+                             <div class="row">
+                                 <label>Priority (-2,-1,0,1 or 2):</label>
+                                 <input type="text" name="pushover_priority" value="${config['pushover_priority']}" size="2">
+                             </div>
+                             <div class="row">
+                                 <input type="button" value="Test Pushover" id="pushover_test" />
+                             </div>
+                        </div>
+                     </fieldset>            
+
                      <fieldset>
                         <h3><img src="interfaces/default/images/boxcar_logo.png" style="vertical-align: middle; margin: 3px; margin-top: -1px;" height="30" width="30"/>Boxcar.IO</h3>
                         <div class="checkbox row">
@@ -1162,6 +1174,28 @@
                                     </div>
                                 </div>
                             </fieldset>
+
+                     <fieldset>
+                        <h3><img src="interfaces/default/images/telegram.png" style="vertical-align: middle; margin: 3px; margin-top: -1px;" height="30" width="30"/>Telegram</h3>
+                        <div class="row checkbox">
+                             <input type="checkbox" name="telegram_enabled" id="telegram" value="1" ${config['telegram_enabled']} /><label>Enable Telegram Notifications</label>
+                        </div>
+                        <div id="telegramoptions">
+                             <div class="row">
+                                 <label>Userid</label><input type="text" name="telegram_userid" value="${config['telegram_userid']}" size="50">
+                             </div>
+                             <div class="row">
+                                 <label>Token</label><input type="text" name="telegram_token" value="${config['telegram_token']}" size="50">
+                             </div>
+                             <div class="row checkbox">
+                                 <input type="checkbox" name="telegram_onsnatch" value="1" ${config['telegram_onsnatch']} /><label>Notify on snatch?</label>
+                             </div>
+                             <div class="row">
+                                 <input type="button" value="Test Telegram" id="telegram_test" />
+                             </div>
+                        </div>
+                     </fieldset>
+
 	       </td>
              </tr>
         </table>
@@ -1176,6 +1210,24 @@
 </%def>
 
 <%def name="javascriptIncludes()">
+        <script>
+        function changeTest()
+        {
+            var answer = document.getElementById("file_opts");
+            var meta = document.getElementById("enable_meta");
+            if(answer[answer.selectedIndex].value == "hardlink" || answer[answer.selectedIndex].value == "softlink"){
+                meta.checked = false;
+                initConfigCheckbox("#enable_meta");
+                document.getElementById("warningmeta").style.display = "block";
+                document.getElementById("warningmeta").innerHTML = "Metadata cannot be used when Hardlink / Softlink options are enabled.";
+                meta.setAttribute("disabled", "disabled");
+            } else {
+                document.getElementById("warningmeta").style.display = "none";
+                meta.removeAttribute("disabled");
+            }
+        }
+        </script>
+
 	<script>
 	function initThisPage() 
 	
@@ -1200,6 +1252,7 @@
                                 $("#apioptions").slideUp();
                         }
                 });
+
 
                 if ($("#cbr2cbz").is(":checked"))
                         {
@@ -1278,6 +1331,26 @@
                         else
                         {
                                 $("#pushoveroptions").slideUp();
+                        }
+                });
+
+                if ($("#telegram").is(":checked"))
+                        {
+                                $("#telegramoptions").show();
+                        }
+                else
+                        {
+                                $("#telegramoptions").hide();
+                        }
+
+                $("#telegram").click(function(){
+                        if ($("#telegram").is(":checked"))
+                        {
+                                $("#telegramoptions").slideDown();
+                        }
+                        else
+                        {
+                                $("#telegramoptions").slideUp();
                         }
                 });
 
@@ -1508,6 +1581,24 @@
                             $("#https_options").slideUp();
                         }
                 });
+                if ($("#enforce_perms").is(":checked"))
+                        {
+                            $("#perms_options").show();
+                        }
+                else
+                        {
+                            $("#perms_options").hide();
+                        }
+                $("#enforce_perms").click(function(){
+                        if ($("#enforce_perms").is(":checked"))
+                        {
+                            $("#perms_options").slideDown();
+                        }
+                        else
+                        {
+                            $("#perms_options").slideUp();
+                        }
+                });
                 $('#sab_apikey').click(function(){ $('#sab_apikey').select() });
                 $("#find_sabapi").click(function(){
                     $.get('findsabAPI',
@@ -1567,12 +1658,20 @@
                     $('#ajaxMsg').addClass('success').fadeIn().delay(3000).fadeOut();
                 });
 
+                $('#telegram_test').click(function () {
+                    $.get("testtelegram",
+                        function (data) { $('#ajaxMsg').html("<div class='msg'><span class='ui-icon ui-icon-check'></span>"+data+"</div>"); });
+                    $('#ajaxMsg').addClass('success').fadeIn().delay(3000).fadeOut();
+                });
+
 		$(function() {
 			$( "#tabs" ).tabs();
 		});
 		initActions();
+                changeTest();
                 initConfigCheckbox("#launch_browser");
                 initConfigCheckbox("#enable_https");
+                initConfigCheckbox("#enforce_perms");
                 initConfigCheckbox("#enable_api");
                 initConfigCheckbox("#sab_to_mylar");
                 initConfigCheckbox("#usenewznab");

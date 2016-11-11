@@ -157,6 +157,7 @@ CHECK_GITHUB_INTERVAL = None
 
 DESTINATION_DIR = None   #if M_D_D_ is enabled, this will be the DEFAULT for writing
 MULTIPLE_DEST_DIRS = None  #Nothing will ever get written to these dirs - just for scanning, unless it's metatagging/renaming.
+ENFORCE_PERMS = True
 CHMOD_DIR = None
 CHMOD_FILE = None
 CHOWNER = None
@@ -222,6 +223,10 @@ PUSHBULLET_ENABLED = False
 PUSHBULLET_APIKEY = None
 PUSHBULLET_DEVICEID = None
 PUSHBULLET_ONSNATCH = False
+TELEGRAM_ENABLED = False
+TELEGRAM_TOKEN = None
+TELEGRAM_USERID = None
+TELEGRAM_ONSNATCH = False
 
 SKIPPED2WANTED = False
 CVINFO = False
@@ -407,6 +412,7 @@ USE_TRANSMISSION = False
 TRANSMISSION_HOST = None
 TRANSMISSION_USERNAME = None
 TRANSMISSION_PASSWORD = None
+TRANSMISSION_DIRECTORY = None
 
 def CheckSection(sec):
     """ Check if INI section exists, if not create it """
@@ -467,7 +473,7 @@ def initialize():
                 NEWZNAB, NEWZNAB_NAME, NEWZNAB_HOST, NEWZNAB_APIKEY, NEWZNAB_VERIFY, NEWZNAB_UID, NEWZNAB_ENABLED, EXTRA_NEWZNABS, NEWZNAB_EXTRA, \
                 ENABLE_TORZNAB, TORZNAB_NAME, TORZNAB_HOST, TORZNAB_APIKEY, TORZNAB_CATEGORY, TORZNAB_VERIFY, \
                 EXPERIMENTAL, ALTEXPERIMENTAL, USE_RTORRENT, RTORRENT_HOST, RTORRENT_USERNAME, RTORRENT_PASSWORD, RTORRENT_STARTONLOAD, RTORRENT_LABEL, RTORRENT_DIRECTORY, \
-                USE_UTORRENT, UTORRENT_HOST, UTORRENT_USERNAME, UTORRENT_PASSWORD, UTORRENT_LABEL, USE_TRANSMISSION, TRANSMISSION_HOST, TRANSMISSION_USERNAME, TRANSMISSION_PASSWORD, \
+                USE_UTORRENT, UTORRENT_HOST, UTORRENT_USERNAME, UTORRENT_PASSWORD, UTORRENT_LABEL, USE_TRANSMISSION, TRANSMISSION_HOST, TRANSMISSION_USERNAME, TRANSMISSION_PASSWORD, TRANSMISSION_DIRECTORY, \
                 ENABLE_META, CMTAGGER_PATH, CBR2CBZ_ONLY, CT_TAG_CR, CT_TAG_CBL, CT_CBZ_OVERWRITE, UNRAR_CMD, CT_SETTINGSPATH, CMTAG_START_YEAR_AS_VOLUME, UPDATE_ENDED, INDIE_PUB, BIGGIE_PUB, IGNORE_HAVETOTAL, SNATCHED_HAVETOTAL, PROVIDER_ORDER, TMP_PROV, \
                 dbUpdateScheduler, searchScheduler, RSSScheduler, WeeklyScheduler, VersionScheduler, FolderMonitorScheduler, \
                 ALLOW_PACKS, ENABLE_TORRENTS, TORRENT_DOWNLOADER, MINSEEDS, USE_WATCHDIR, TORRENT_LOCAL, LOCAL_WATCHDIR, TORRENT_SEEDBOX, SEEDBOX_HOST, SEEDBOX_PORT, SEEDBOX_USER, SEEDBOX_PASS, SEEDBOX_WATCHDIR, \
@@ -475,7 +481,9 @@ def initialize():
                 PROWL_ENABLED, PROWL_PRIORITY, PROWL_KEYS, PROWL_ONSNATCH, NMA_ENABLED, NMA_APIKEY, NMA_PRIORITY, NMA_ONSNATCH, PUSHOVER_ENABLED, PUSHOVER_PRIORITY, PUSHOVER_APIKEY, PUSHOVER_USERKEY, PUSHOVER_ONSNATCH, BOXCAR_ENABLED, BOXCAR_ONSNATCH, BOXCAR_TOKEN, \
                 PUSHBULLET_ENABLED, PUSHBULLET_APIKEY, PUSHBULLET_DEVICEID, PUSHBULLET_ONSNATCH, LOCMOVE, NEWCOM_DIR, FFTONEWCOM_DIR, \
                 PREFERRED_QUALITY, MOVE_FILES, RENAME_FILES, LOWERCASE_FILENAMES, USE_MINSIZE, MINSIZE, USE_MAXSIZE, MAXSIZE, CORRECT_METADATA, FOLDER_FORMAT, FILE_FORMAT, REPLACE_CHAR, REPLACE_SPACES, ADD_TO_CSV, CVINFO, LOG_LEVEL, POST_PROCESSING, POST_PROCESSING_SCRIPT, FILE_OPTS, SEARCH_DELAY, GRABBAG_DIR, READ2FILENAME, SEND2READ, TAB_ENABLE, TAB_HOST, TAB_USER, TAB_PASS, TAB_DIRECTORY, STORYARCDIR, COPY2ARCDIR, CVURL, CHECK_FOLDER, ENABLE_CHECK_FOLDER, \
-                COMIC_LOCATION, QUAL_ALTVERS, QUAL_SCANNER, QUAL_TYPE, QUAL_QUALITY, ENABLE_EXTRA_SCRIPTS, EXTRA_SCRIPTS, ENABLE_PRE_SCRIPTS, PRE_SCRIPTS, PULLNEW, ALT_PULL, PULLBYFILE, COUNT_ISSUES, COUNT_HAVES, COUNT_COMICS, SYNO_FIX, CHMOD_FILE, CHMOD_DIR, CHOWNER, CHGROUP, ANNUALS_ON, CV_ONLY, CV_ONETIMER, CURRENT_WEEKNUMBER, CURRENT_YEAR, PULL_REFRESH, WEEKFOLDER, WEEKFOLDER_LOC, UMASK
+                COMIC_LOCATION, QUAL_ALTVERS, QUAL_SCANNER, QUAL_TYPE, QUAL_QUALITY, ENABLE_EXTRA_SCRIPTS, EXTRA_SCRIPTS, ENABLE_PRE_SCRIPTS, PRE_SCRIPTS, PULLNEW, ALT_PULL, PULLBYFILE, COUNT_ISSUES, COUNT_HAVES, COUNT_COMICS, \
+                SYNO_FIX, ENFORCE_PERMS, CHMOD_FILE, CHMOD_DIR, CHOWNER, CHGROUP, ANNUALS_ON, CV_ONLY, CV_ONETIMER, CURRENT_WEEKNUMBER, CURRENT_YEAR, PULL_REFRESH, WEEKFOLDER, WEEKFOLDER_LOC, UMASK, \
+                TELEGRAM_ENABLED, TELEGRAM_TOKEN, TELEGRAM_USERID
 
         if __INITIALIZED__:
             return False
@@ -550,6 +558,7 @@ def initialize():
         MULTIPLE_DEST_DIRS = check_setting_str(CFG, 'General', 'multiple_dest_dirs', '')
         CREATE_FOLDERS = bool(check_setting_int(CFG, 'General', 'create_folders', 1))
         DELETE_REMOVE_DIR = bool(check_setting_int(CFG, 'General', 'delete_remove_dir', 0))
+        ENFORCE_PERMS = bool(check_setting_int(CFG, 'General', 'enforce_perms', 1))
         CHMOD_DIR = check_setting_str(CFG, 'General', 'chmod_dir', '0777')
         CHMOD_FILE = check_setting_str(CFG, 'General', 'chmod_file', '0660')
         CHOWNER = check_setting_str(CFG, 'General', 'chowner', '')
@@ -642,6 +651,11 @@ def initialize():
         PUSHBULLET_DEVICEID = check_setting_str(CFG, 'PUSHBULLET', 'pushbullet_deviceid', '')
         PUSHBULLET_ONSNATCH = bool(check_setting_int(CFG, 'PUSHBULLET', 'pushbullet_onsnatch', 0))
 
+        TELEGRAM_ENABLED = bool(check_setting_int(CFG, 'TELEGRAM', 'telegram_enabled', 0))
+        TELEGRAM_TOKEN = check_setting_str(CFG, 'TELEGRAM', 'telegram_token', '')
+        TELEGRAM_USERID = check_setting_str(CFG, 'TELEGRAM', 'telegram_userid', '')
+        TELEGRAM_ONSNATCH = bool(check_setting_int(CFG, 'TELEGRAM', 'telegram_onsnatch', 0))
+
         USE_MINSIZE = bool(check_setting_int(CFG, 'General', 'use_minsize', 0))
         MINSIZE = check_setting_str(CFG, 'General', 'minsize', '')
         USE_MAXSIZE = bool(check_setting_int(CFG, 'General', 'use_maxsize', 0))
@@ -668,7 +682,11 @@ def initialize():
         POST_PROCESSING = bool(check_setting_int(CFG, 'General', 'post_processing', 1))
         POST_PROCESSING_SCRIPT = check_setting_str(CFG, 'General', 'post_processing_script', '')
         FILE_OPTS = check_setting_str(CFG, 'General', 'file_opts', 'move')
-        ENABLE_META = bool(check_setting_int(CFG, 'General', 'enable_meta', 0))
+        if any([FILE_OPTS == 'hardlink', FILE_OPTS == 'softlink']):
+            #we can't have metatagging enabled with hard/soft linking. Forcibly disable it here just in case it's set on load.
+            ENABLE_META = 0
+        else:
+            ENABLE_META = bool(check_setting_int(CFG, 'General', 'enable_meta', 0))      
         CBR2CBZ_ONLY = bool(check_setting_int(CFG, 'General', 'cbr2cbz_only', 0))
         CT_TAG_CR = bool(check_setting_int(CFG, 'General', 'ct_tag_cr', 1))
         CT_TAG_CBL = bool(check_setting_int(CFG, 'General', 'ct_tag_cbl', 1))
@@ -784,10 +802,17 @@ def initialize():
         PR_NUM = 0  # provider counter here (used for provider orders)
         PR = []
         TORRENT_DOWNLOADER = check_setting_int(CFG, 'General', 'torrent_downloader', 0)
-        if TORRENT_DOWNLOADER == 0: USE_WATCHDIR = True
-        elif TORRENT_DOWNLOADER == 1: USE_UTORRENT = True
-        elif TORRENT_DOWNLOADER == 2: USE_RTORRENT = True
-        elif TORRENT_DOWNLOADER == 3: USE_TRANSMISSION = True
+        if TORRENT_DOWNLOADER == 0:
+            USE_WATCHDIR = True
+        elif TORRENT_DOWNLOADER == 1:
+            TORRENT_LOCAL = False
+            USE_UTORRENT = True
+        elif TORRENT_DOWNLOADER == 2:
+            TORRENT_LOCAL = False
+            USE_RTORRENT = True
+        elif TORRENT_DOWNLOADER == 3:
+            TORRENT_LOCAL = False
+            USE_TRANSMISSION = True
         else:
                 TORRENT_DOWNLOADER = 0
                 USE_WATCHDIR = True
@@ -801,7 +826,8 @@ def initialize():
         TRANSMISSION_HOST = check_setting_str(CFG, 'Transmission', 'transmission_host', '')
         TRANSMISSION_USERNAME = check_setting_str(CFG, 'Transmission', 'transmission_username', '')
         TRANSMISSION_PASSWORD = check_setting_str(CFG, 'Transmission', 'transmission_password', '')
-        
+        TRANSMISSION_DIRECTORY = check_setting_str(CFG, 'Transmission', 'transmission_directory', '')
+
         #add torrents to provider counter.
         if ENABLE_TORRENT_SEARCH:
             if ENABLE_32P:
@@ -1337,6 +1363,7 @@ def config_write():
     new_config['General']['multiple_dest_dirs'] = MULTIPLE_DEST_DIRS
     new_config['General']['create_folders'] = int(CREATE_FOLDERS)
     new_config['General']['delete_remove_dir'] = int(DELETE_REMOVE_DIR)
+    new_config['General']['enforce_perms'] = int(ENFORCE_PERMS)
     new_config['General']['chmod_dir'] = CHMOD_DIR
     new_config['General']['chmod_file'] = CHMOD_FILE
     new_config['General']['chowner'] = CHOWNER
@@ -1537,6 +1564,7 @@ def config_write():
     new_config['Transmission']['transmission_host'] = TRANSMISSION_HOST
     new_config['Transmission']['transmission_username'] = TRANSMISSION_USERNAME
     new_config['Transmission']['transmission_password'] = TRANSMISSION_PASSWORD
+    new_config['Transmission']['transmission_directory'] = TRANSMISSION_DIRECTORY
 
     # Need to unpack the extra newznabs for saving in config.ini
     flattened_newznabs = []
@@ -1575,6 +1603,12 @@ def config_write():
     new_config['PUSHBULLET']['pushbullet_apikey'] = PUSHBULLET_APIKEY
     new_config['PUSHBULLET']['pushbullet_deviceid'] = PUSHBULLET_DEVICEID
     new_config['PUSHBULLET']['pushbullet_onsnatch'] = int(PUSHBULLET_ONSNATCH)
+
+    new_config['TELEGRAM'] = {}
+    new_config['TELEGRAM']['telegram_enabled'] = int(TELEGRAM_ENABLED)
+    new_config['TELEGRAM']['telegram_token'] = TELEGRAM_TOKEN
+    new_config['TELEGRAM']['telegram_userid'] = TELEGRAM_USERID
+    new_config['TELEGRAM']['telegram_onsnatch'] = int(TELEGRAM_ONSNATCH)
 
     new_config.write()
 
@@ -1651,7 +1685,7 @@ def dbcheck():
     c_error = 'sqlite3.OperationalError'
     c=conn.cursor()
 
-    c.execute('CREATE TABLE IF NOT EXISTS comics (ComicID TEXT UNIQUE, ComicName TEXT, ComicSortName TEXT, ComicYear TEXT, DateAdded TEXT, Status TEXT, IncludeExtras INTEGER, Have INTEGER, Total INTEGER, ComicImage TEXT, ComicPublisher TEXT, ComicLocation TEXT, ComicPublished TEXT, NewPublish TEXT, LatestIssue TEXT, LatestDate TEXT, Description TEXT, QUALalt_vers TEXT, QUALtype TEXT, QUALscanner TEXT, QUALquality TEXT, LastUpdated TEXT, AlternateSearch TEXT, UseFuzzy TEXT, ComicVersion TEXT, SortOrder INTEGER, DetailURL TEXT, ForceContinuing INTEGER, ComicName_Filesafe TEXT, AlternateFileName TEXT, ComicImageURL TEXT, ComicImageALTURL TEXT, DynamicComicName TEXT, AllowPacks TEXT, Type TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS comics (ComicID TEXT UNIQUE, ComicName TEXT, ComicSortName TEXT, ComicYear TEXT, DateAdded TEXT, Status TEXT, IncludeExtras INTEGER, Have INTEGER, Total INTEGER, ComicImage TEXT, ComicPublisher TEXT, ComicLocation TEXT, ComicPublished TEXT, NewPublish TEXT, LatestIssue TEXT, LatestDate TEXT, Description TEXT, QUALalt_vers TEXT, QUALtype TEXT, QUALscanner TEXT, QUALquality TEXT, LastUpdated TEXT, AlternateSearch TEXT, UseFuzzy TEXT, ComicVersion TEXT, SortOrder INTEGER, DetailURL TEXT, ForceContinuing INTEGER, ComicName_Filesafe TEXT, AlternateFileName TEXT, ComicImageURL TEXT, ComicImageALTURL TEXT, DynamicComicName TEXT, AllowPacks TEXT, Type TEXT, Corrected_SeriesYear TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS issues (IssueID TEXT, ComicName TEXT, IssueName TEXT, Issue_Number TEXT, DateAdded TEXT, Status TEXT, Type TEXT, ComicID TEXT, ArtworkURL Text, ReleaseDate TEXT, Location TEXT, IssueDate TEXT, Int_IssueNumber INT, ComicSize TEXT, AltIssueNumber TEXT, IssueDate_Edit TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS snatched (IssueID TEXT, ComicName TEXT, Issue_Number TEXT, Size INTEGER, DateAdded TEXT, Status TEXT, FolderName TEXT, ComicID TEXT, Provider TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS upcoming (ComicName TEXT, IssueNumber TEXT, ComicID TEXT, IssueID TEXT, IssueDate TEXT, Status TEXT, DisplayComicName TEXT)')
@@ -1765,6 +1799,11 @@ def dbcheck():
         c.execute('SELECT Type from comics')
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE comics ADD COLUMN Type TEXT')
+
+    try:
+        c.execute('SELECT Corrected_SeriesYear from comics')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE comics ADD COLUMN Corrected_SeriesYear TEXT')
 
     try:
         c.execute('SELECT DynamicComicName from comics')
@@ -2141,6 +2180,7 @@ def dbcheck():
     c.execute("DELETE from annuals WHERE ComicName='None' OR ComicName is NULL or Issue_Number is NULL")
     c.execute("DELETE from upcoming WHERE ComicName='None' OR ComicName is NULL or IssueNumber is NULL")
     c.execute("DELETE from importresults WHERE ComicName='None' OR ComicName is NULL")
+    c.execute("DELETE from Failed WHERE ComicName='None' OR ComicName is NULL")
     logger.info('Ensuring DB integrity - Removing all Erroneous Comics (ie. named None)')
 
     logger.info('Correcting Null entries that make the main page break on startup.')

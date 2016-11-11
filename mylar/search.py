@@ -56,7 +56,12 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueD
         if Publisher == 'IDW Publishing':
             Publisher = 'IDW'
         logger.fdebug('Publisher is : ' + Publisher)
-    issuetitle = helpers.get_issue_title(IssueID)
+
+    if IssueArcID and not IssueID:
+        issuetitle = helpers.get_issue_title(IssueArcID)
+    else:
+        issuetitle = helpers.get_issue_title(IssueID)
+
     if issuetitle:
         logger.info('Issue Title given as : ' + issuetitle)
     else:
@@ -887,8 +892,9 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                     cleantitle = helpers.cleanName(cleantitle)
                     # this is new - if title contains a '&' in the title it will assume the filename has ended at that point
                     # which causes false positives (ie. wolverine & the x-men becomes the x-men, which matches on x-men.
+                    # handle escaped and/or possibly double escaped ampersands as well.
                     # 'the' is removed for comparisons later on
-                    if '&' in cleantitle: cleantitle = re.sub('[\&]', 'and', cleantitle)
+                    if '&' in cleantitle: cleantitle = re.sub('\&amp;(amp;)?|\&', 'and', cleantitle)
 
                     nzbname = cleantitle
 
@@ -1870,7 +1876,7 @@ def nzbname_create(provider, title=None, info=None):
         # let's change all space to decimals for simplicity
         logger.fdebug('[SEARCHER] entry[title]: ' + title)
         #gotta replace & or escape it
-        nzbname = re.sub("\&", 'and', title)
+        nzbname = re.sub('\&amp;(amp;)?|\&', 'and', title)
         nzbname = re.sub('[\,\:\?\'\+]', '', nzbname)
         nzbname = re.sub('[\(\)]', ' ', nzbname)
         logger.fdebug('[SEARCHER] nzbname (remove chars): ' + nzbname)
@@ -1934,7 +1940,7 @@ def searcher(nzbprov, nzbname, comicinfo, link, IssueID, ComicID, tmpprov, direc
             #one-off information
             logger.fdebug("ComicName: " + ComicName)
             logger.fdebug("Issue: " + str(IssueNumber))
-            logger.fdebug("Year: " + str(ComicYear))
+            logger.fdebug("Year: " + str(comyear))
             logger.fdebug("IssueDate:" + str(IssueDate))
         logger.info(u"Found " + ComicName + " (" + str(comyear) + ") issue: " + IssueNumber + " using " + str(tmpprov))
 
@@ -2080,13 +2086,16 @@ def searcher(nzbprov, nzbname, comicinfo, link, IssueID, ComicID, tmpprov, direc
                 alt_nzbname = re.sub('.nzb', '', filen).strip()
                 alt_nzbname = re.sub('[\s+]', ' ', alt_nzbname)
                 alt_nzbname = re.sub('[\s\_]', '.', alt_nzbname)
-                logger.info('filen: ' + alt_nzbname + ' -- nzbname: ' + nzbname + ' are not identical. Storing extra value as : ' + alt_nzbname)
+                logger.info('filen: ' + filen + ' -- nzbname: ' + nzbname + ' are not identical. Storing extra value as : ' + alt_nzbname)
 
             #make sure the cache directory exists - if not, create it (used for storing nzbs).
             if os.path.exists(mylar.CACHE_DIR):
-                logger.fdebug("Cache Directory successfully found at : " + mylar.CACHE_DIR + ". Ensuring proper permissions.")
-                #enforce the permissions here to ensure the lower portion writes successfully
-                filechecker.setperms(mylar.CACHE_DIR, True)
+                if mylar.ENFORCE_PERMS:
+                    logger.fdebug("Cache Directory successfully found at : " + mylar.CACHE_DIR + ". Ensuring proper permissions.")
+                    #enforce the permissions here to ensure the lower portion writes successfully
+                    filechecker.setperms(mylar.CACHE_DIR, True)
+                else:
+                    logger.fdebug("Cache Directory successfully found at : " + mylar.CACHE_DIR)
             else:
                 #let's make the dir.
                 logger.fdebug("Could not locate Cache Directory, attempting to create at : " + mylar.CACHE_DIR)
@@ -2381,6 +2390,10 @@ def notify_snatch(nzbname, sent_to, modcomicname, comyear, IssueNumber, nzbprov)
         logger.info(u"Sending Pushbullet notification")
         pushbullet = notifiers.PUSHBULLET()
         pushbullet.notify(snline=snline, snatched=nzbname, sent_to=sent_to, prov=nzbprov, method='POST')
+    if mylar.TELEGRAM_ENABLED and mylar.TELEGRAM_ONSNATCH:
+        logger.info(u"Sending Telegram notification")
+        telegram = notifiers.TELEGRAM()
+        telegram.notify(snline, nzbname)
 
     return
 

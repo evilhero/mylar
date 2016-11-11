@@ -190,6 +190,61 @@ class PostProcessor(object):
                 logger.warn('[DUPLICATE-CLEANUP] Successfully moved ' + path_to_move + ' ... to ... ' + os.path.join(mylar.DUPLICATE_DUMP, file_to_move))
                 return True
 
+    def tidyup(self, odir=None, del_nzbdir=False, sub_path=None):
+            # del_nzbdir will remove the original directory location. Must be set to False for manual pp or else will delete manual dir that's provided (if empty).
+            # move = cleanup/delete original location (self.nzb_folder) AND cache location (odir) if metatagging is enabled.
+            # copy = cleanup/delete cache location (odir) only if enabled.
+            #tidyup old path
+            try:
+                logger.fdebug('File Option: ' + mylar.FILE_OPTS + ' [META-ENABLED: ' + str(mylar.ENABLE_META) + ']')
+                logger.fdebug('odir: ' + odir + ' [self.nzb_folder: ' + self.nzb_folder + ']')
+                #if sub_path exists, then we need to use that in place of self.nzb_folder since the file was in a sub-directory within self.nzb_folder
+                if all([sub_path is not None, sub_path != self.nzb_folder]):
+                    logger.fdebug('Sub-directory detected during cleanup. Will attempt to remove if empty: ' + sub_path)
+                    orig_folder = sub_path
+                else:
+                    orig_folder = self.nzb_folder
+    
+                #make sure we don't delete the directory passed via manual-pp and ajust for trailling slashes or not
+                if orig_folder.endswith('/') or orig_folder.endswith('\\'):
+                    tmp_folder = orig_folder[:-1]
+                else:
+                    tmp_folder = orig_folder
+
+                if all([os.path.isdir(odir), self.nzb_folder != tmp_folder]) or del_nzbdir is True:
+                    # check to see if the directory is empty or not.
+                    if mylar.FILE_OPTS == 'move' and any([del_nzbdir is True, tmp_folder != self.nzb_folder]):
+                        if not os.listdir(tmp_folder):
+                            logger.fdebug(self.module + ' Tidying up. Deleting original folder location : ' + tmp_folder)
+                            shutil.rmtree(tmp_folder)
+                            self._log("Removed temporary directory : " + tmp_folder)
+                        else:
+                            self._log('Failed to remove temporary directory: ' + tmp_folder)
+                            raise OSError(self.module + ' ' + tmp_folder + ' not empty. Skipping removal of directory - this will either be caught in further post-processing or it will have to be manually deleted.')
+
+                    if mylar.ENABLE_META:
+                        #Regardless of the copy/move operation, we need to delete the files from within the cache directory, then remove the cache directory itself for the given issue.
+                        #sometimes during a meta, it retains the cbr as well after conversion depending on settings. Make sure to delete too thus the 'walk'.
+                        for filename in os.listdir(odir):
+                            filepath = os.path.join(odir, filename)
+                            try:
+                                os.remove(filepath)
+                            except OSError:
+                                pass
+
+                        if not os.listdir(odir):
+                            logger.fdebug(self.module + ' Tidying up. Deleting temporary cache directory : ' + odir)
+                            shutil.rmtree(odir)
+                            self._log("Removed temporary directory : " + odir)
+                        else:
+                            self._log('Failed to remove temporary directory: ' + odir)
+                            raise OSError(self.module + ' ' + odir + ' not empty. Skipping removal of temporary cache directory - this will either be caught in further post-processing or have to be manually deleted.')
+
+            except (OSError, IOError):
+                logger.fdebug(self.module + ' Failed to remove directory - Processing will continue, but manual removal is necessary')
+                self._log('Failed to remove temporary directory')
+
+
     def Process(self):
             module = self.module
             self._log("nzb name: " + self.nzb_name)
@@ -243,11 +298,6 @@ class PostProcessor(object):
             if self.nzb_name == 'Manual Run':
                 logger.fdebug (module + ' Manual Run initiated')
                 #Manual postprocessing on a folder.
-                #use the nzb_folder to determine every file
-                #walk the dir,
-                #once a series name and issue are matched,
-                #write the series/issue/filename to a tuple
-                #when all done, iterate over the tuple until completion...
                 #first we get a parsed results list  of the files being processed, and then poll against the sql to get a short list of hits.
                 flc = filechecker.FileChecker(self.nzb_folder, justparse=True)
                 filelist = flc.listFiles()
@@ -268,6 +318,7 @@ class PostProcessor(object):
                                          'AS_DyComicName': aldb['DynamicComicName']})
 
                 manual_list = []
+                manual_arclist = []
 
                 for fl in filelist['comiclist']:
                     as_d = filechecker.FileChecker()
@@ -279,8 +330,6 @@ class PostProcessor(object):
                         for ab in x['AS_Alt']:
                             tmp_ab = re.sub(' ', '', ab)
                             tmp_mod_seriesname = re.sub(' ', '', mod_seriesname)
-                            logger.info(tmp_mod_seriesname)
-                            logger.info(tmp_ab.lower)
                             if re.sub('\|', '', tmp_mod_seriesname.lower()).strip() == re.sub('\|', '', tmp_ab.lower()).strip():
                                 if not any(re.sub('[\|\s]', '', cname.lower()) == x for x in loopchk):
                                     loopchk.append(re.sub('[\|\s]', '', cname.lower()))
@@ -510,37 +559,32 @@ class PostProcessor(object):
                                 else:
                                     logger.fdebug(module + '[NON-MATCH: ' + cs['ComicName'] + '-' + cs['ComicID'] + '] Incorrect series - not populating..continuing post-processing')
                                     continue
-                                #ccnt+=1
+
                         logger.fdebug(module + '[SUCCESSFUL MATCH: ' + cs['ComicName'] + '-' + cs['ComicID'] + '] Match verified for ' + helpers.conversion(fl['comicfilename']))
                         break
 
-                logger.fdebug(module + ' There are ' + str(len(manual_list)) + ' files found that match on your watchlist, ' + str(int(filelist['comiccount'] - len(manual_list))) + ' do not match anything and will be ignored.')
 
-                #we should setup for manual post-processing of story-arc issues here
-                #we can also search by ComicID to just grab those particular arcs as an alternative as well (not done)
-                logger.fdebug(module + ' Now Checking if the issue also resides in one of the storyarc\'s that I am watching.')
-                manual_arclist = []
-                for fl in filelist['comiclist']:
-                    #mod_seriesname = '%' + re.sub(' ', '%', fl['series_name']).strip() + '%'
-                    #arc_series = myDB.select("SELECT * FROM readinglist WHERE ComicName LIKE?", [fl['series_name']]) # by StoryArcID")
+                    #we should setup for manual post-processing of story-arc issues here
+                    #we can also search by ComicID to just grab those particular arcs as an alternative as well (not done)
+                    logger.fdebug(module + ' Now Checking if the issue also resides in one of the storyarc\'s that I am watching.')
+                    
+                    #as_d = filechecker.FileChecker()
+                    #as_dinfo = as_d.dynamic_replace(helpers.conversion(fl['series_name']))
+                    #mod_seriesname = as_dinfo['mod_seriesname']
+                    #arcloopchk = []
+                    #for x in alt_list:
+                    #    cname = x['AS_DyComicName']
+                    #    for ab in x['AS_Alt']:
+                    #        if re.sub('[\|\s]', '', mod_seriesname.lower()).strip() in re.sub('[\|\s]', '', ab.lower()).strip():
+                    #            if not any(re.sub('[\|\s]', '', cname.lower()) == x for x in arcloopchk):
+                    #                arcloopchk.append(re.sub('[\|\s]', '', cname.lower()))
 
-                    as_d = filechecker.FileChecker()
-                    as_dinfo = as_d.dynamic_replace(helpers.conversion(fl['series_name']))
-                    mod_seriesname = as_dinfo['mod_seriesname']
-                    arcloopchk = []
-                    for x in alt_list:
-                        cname = x['AS_DyComicName']
-                        for ab in x['AS_Alt']:
-                            if re.sub('[\|\s]', '', mod_seriesname.lower()).strip() in re.sub('[\|\s]', '', ab.lower()).strip():
-                                if not any(re.sub('[\|\s]', '', cname.lower()) == x for x in arcloopchk):
-                                    arcloopchk.append(re.sub('[\|\s]', '', cname.lower()))
+                    ##make sure we add back in the original parsed filename here.
+                    #if not any(re.sub('[\|\s]', '', mod_seriesname).lower() == x for x in arcloopchk):
+                    #    arcloopchk.append(re.sub('[\|\s]', '', mod_seriesname.lower()))
 
-                    #make sure we add back in the original parsed filename here.
-                    if not any(re.sub('[\|\s]', '', mod_seriesname).lower() == x for x in arcloopchk):
-                        arcloopchk.append(re.sub('[\|\s]', '', mod_seriesname.lower()))
-
-                    tmpsql = "SELECT * FROM readinglist WHERE DynamicComicName IN ({seq}) COLLATE NOCASE".format(seq=','.join('?' * len(arcloopchk)))
-                    arc_series = myDB.select(tmpsql, tuple(arcloopchk))
+                    tmpsql = "SELECT * FROM readinglist WHERE DynamicComicName IN ({seq}) COLLATE NOCASE".format(seq=','.join('?' * len(loopchk))) #len(arcloopchk)))
+                    arc_series = myDB.select(tmpsql, tuple(loopchk)) #arcloopchk))
 
                     if arc_series is None:
                         logger.error(module + ' No Story Arcs in Watchlist that contain that particular series - aborting Manual Post Processing. Maybe you should be running Import?')
@@ -693,8 +737,9 @@ class PostProcessor(object):
 
                             i+=1
 
+                    logger.fdebug(module + ' There are ' + str(len(manual_list)) + ' files found that match on your watchlist, ' + str(int(filelist['comiccount'] - len(manual_list))) + ' do not match anything.')
 
-
+                delete_arc = []
                 if len(manual_arclist) > 0:
                     logger.info('[STORY-ARC MANUAL POST-PROCESSING] I have found ' + str(len(manual_arclist)) + ' issues that belong to Story Arcs. Flinging them into the correct directories.')
                     for ml in manual_arclist:
@@ -783,20 +828,16 @@ class PostProcessor(object):
 
                         logger.info(module + '[' + mylar.FILE_OPTS + '] ' + str(ofilename) + ' into directory : ' + str(grab_dst))
                         try:
-                            self.fileop(grab_src, grab_dst)
+                            fileoperation = helpers.file_ops(grab_src, grab_dst)
+                            if not fileoperation:
+                                raise OSError
                         except (OSError, IOError):
-                            logger.warn(module + ' Failed to ' + mylar.FILE_OPTS + ' directory - check directories and manually re-run.')
+                            logger.fdebug(module + ' Failed to ' + mylar.FILE_OPTS + ' ' + src + ' - check directories and manually re-run.')
                             return
 
                         #tidyup old path
-                        try:
-                            pass
-                            #shutil.rmtree(self.nzb_folder)
-                        except (OSError, IOError):
-                            logger.warn(module + ' Failed to remove temporary directory - check directory and manually re-run.')
-                            return
-
-                        logger.fdebug(module + ' Removed temporary directory : ' + self.nzb_folder)
+                        if any([mylar.FILE_OPTS == 'move', mylar.FILE_OPTS == 'copy']):
+                            self.tidyup(src_location, True)
 
                         #delete entry from nzblog table
                         #if it was downloaded via mylar from the storyarc section, it will have an 'S' in the nzblog
@@ -1040,34 +1081,17 @@ class PostProcessor(object):
                         logger.info(module + '[' + mylar.FILE_OPTS + '] ' + str(ofilename) + ' into directory : ' + str(grab_dst))
 
                         try:
-                            self.fileop(grab_src, grab_dst)
+                            fileoperation = helpers.file_ops(grab_src, grab_dst)
+                            if not fileoperation:
+                                raise OSError
                         except (OSError, IOError):
-                            self._log("Failed to " + mylar.FILE_OPTS + " directory - check directories and manually re-run.")
-                            logger.debug(module + ' Failed to ' + mylar.FILE_OPTS + ' directory - check directories and manually re-run.')
+                            logger.fdebug(module + ' Failed to ' + mylar.FILE_OPTS + ' ' + src + ' - check directories and manually re-run.')
+                            self._log("Failed to " + mylar.FILE_OPTS + " " + src + " - check directories and manually re-run.")
                             return
 
                         #tidyup old path
-                        if mylar.FILE_OPTS == 'move':
-                            try:
-                                #make sure we don't delete the directory passed via manual-pp and ajust for trailling slashes or not
-                                if self.nzb_folder.endswith('/') or self.nzb_folder.endswith('\\'):
-                                    tmp_folder = self.nzb_folder[:-1]
-                                else:
-                                    tmp_folder = self.nzb_folder
-
-                                if os.path.isdir(src_location) and odir != tmp_folder:
-                                    if not os.listdir(src_location):
-                                        shutil.rmtree(src_location)
-                                        logger.debug(module + ' Removed temporary directory : ' + src_location)
-                                        self._log("Removed temporary directory : " + src_location)
-                                    if not os.listdir(self.nzb_folder):
-                                        shutil.rmtree(self.nzb_folder)
-                                        logger.debug(module + ' Removed temporary directory : ' + self.nzb_folder)
-                                        self._log("Removed temporary directory : " + self.nzb_folder)
-                            except (OSError, IOError):
-                                self._log("Failed to remove temporary directory.")
-                                logger.debug(module + ' Failed to remove temporary directory - check directory and manually re-run.')
-                                return
+                        if any([mylar.FILE_OPTS == 'move', mylar.FILE_OPTS == 'copy']):
+                            self.tidyup(src_location, True)
 
                         #delete entry from nzblog table
                         myDB.action('DELETE from nzblog WHERE issueid=?', [issueid])
@@ -1113,7 +1137,7 @@ class PostProcessor(object):
                         waiting = False
                         try:
                             ctime = max(os.path.getctime(ml['ComicLocation']), os.path.getmtime(ml['ComicLocation']))
-                            if time.time() > ctime > time.time() - 15:
+                            if time.time() > ctime > time.time() - 10:
                                 time.sleep(max(time.time() - ctime, 0))
                                 waiting = True
                             else:
@@ -1494,6 +1518,13 @@ class PostProcessor(object):
             #if meta-tagging is enabled, it gets changed just below to a default of pass
             pcheck = "fail"
 
+            #make sure we know any sub-folder off of self.nzb_folder that is being used so when we do
+            #tidy-up we can remove the empty directory too. odir is the original COMPLETE path at this point
+            if ml is None:
+                subpath = odir
+            else:
+                subpath = os.path.split(ml['ComicLocation'])[0]
+
             #tag the meta.
             if mylar.ENABLE_META:
 
@@ -1618,7 +1649,7 @@ class PostProcessor(object):
 #                logger.fdebug(module + ' ofilename: ' + ofilename)
 
             if ml:
-#            else:
+
                 if pcheck == "fail":
                     odir, ofilename = os.path.split(ml['ComicLocation'])
                 elif pcheck:
@@ -1707,30 +1738,22 @@ class PostProcessor(object):
                 #src = os.path.join(self.nzb_folder, str(nfilename + ext))
                 src = os.path.join(odir, ofilename)
                 try:
-                    self.fileop(src, dst)
+                    fileoperation = helpers.file_ops(src, dst)
+                    if not fileoperation:
+                        raise OSError
                 except (OSError, IOError):
-                    self._log("Failed to " + mylar.FILE_OPTS + " directory - check directories and manually re-run.")
+                    self._log("Failed to " + mylar.FILE_OPTS + " " + src  + " - check directories and manually re-run.")
                     self._log("Post-Processing ABORTED.")
-                    logger.warn(module + ' Failed to ' + mylar.FILE_OPTS + ' directory : ' + src + ' to ' + dst + ' - check directory and manually re-run')
+                    logger.warn(module + ' Failed to ' + mylar.FILE_OPTS + ' ' + src + ' - check directories and manually re-run.')
                     logger.warn(module + ' Post-Processing ABORTED')
                     self.valreturn.append({"self.log": self.log,
                                            "mode": 'stop'})
                     return self.queue.put(self.valreturn)
 
                 #tidyup old path
-                if mylar.FILE_OPTS == 'move':
-                    try:
-                        shutil.rmtree(self.nzb_folder)
-                    except (OSError, IOError):
-                        self._log("Failed to remove temporary directory - check directory and manually re-run.")
-                        self._log("Post-Processing ABORTED.")
-                        logger.warn(module + ' Failed to remove temporary directory : ' + self.nzb_folder)
-                        logger.warn(module + ' Post-Processing ABORTED')
-                        self.valreturn.append({"self.log": self.log,
-                                               "mode": 'stop'})
-                        return self.queue.put(self.valreturn)
-                    self._log("Removed temporary directory : " + self.nzb_folder)
-                    logger.fdebug(module + ' Removed temporary directory : ' + self.nzb_folder)
+                if any([mylar.FILE_OPTS == 'move', mylar.FILE_OPTS == 'copy']):
+                    self.tidyup(odir, True)
+
             else:
                 #downtype = for use with updater on history table to set status to 'Post-Processed'
                 downtype = 'PP'
@@ -1745,11 +1768,13 @@ class PostProcessor(object):
                         logger.fdebug(module + ' Filename is identical as original, not renaming.')
 
                 logger.fdebug(module + ' odir src : ' + src)
-                logger.fdebug(module + ' ' + mylar.FILE_OPTS + 'ing ' + src + ' ... to ... ' + dst)
+                logger.fdebug(module + '[' + mylar.FILE_OPTS + '] ' + src + ' ... to ... ' + dst)
                 try:
-                    self.fileop(src, dst)
+                    fileoperation = helpers.file_ops(src, dst)
+                    if not fileoperation:
+                        raise OSError
                 except (OSError, IOError):
-                    logger.fdebug(module + ' Failed to ' + mylar.FILE_OPTS + ' directory - check directories and manually re-run.')
+                    logger.fdebug(module + ' Failed to ' + mylar.FILE_OPTS + ' ' + src + ' - check directories and manually re-run.')
                     logger.fdebug(module + ' Post-Processing ABORTED.')
 
                     self.valreturn.append({"self.log": self.log,
@@ -1757,37 +1782,21 @@ class PostProcessor(object):
                     return self.queue.put(self.valreturn)
                 logger.info(module + ' ' + mylar.FILE_OPTS + ' successful to : ' + dst)
 
-                if mylar.FILE_OPTS == 'move':
-                    #tidyup old path
-                    try:
-                        #make sure we don't delete the directory passed via manual-pp and ajust for trailling slashes or not
-                        if self.nzb_folder.endswith('/') or self.nzb_folder.endswith('\\'): 
-                            tmp_folder = self.nzb_folder[:-1]
-                        else:
-                            tmp_folder = self.nzb_folder
-                        if os.path.isdir(odir) and odir != tmp_folder:
-                            # check to see if the directory is empty or not.
-                            if not os.listdir(odir):
-                                logger.fdebug(module + ' Tidying up. Deleting folder : ' + odir)
-                                shutil.rmtree(odir)
-                            else:
-                                raise OSError(module + ' ' + odir + ' not empty. Skipping removal of directory - this will either be caught in further post-processing or it will have to be removed manually.')
-                        else:
-                            raise OSError(module + ' ' + odir + ' unable to remove at this time.')
-                    except (OSError, IOError):
-                        logger.fdebug(module + ' Failed to remove temporary directory (' + odir + ') - Processing will continue, but manual removal is necessary')
+                if any([mylar.FILE_OPTS == 'move', mylar.FILE_OPTS == 'copy']):
+                    self.tidyup(odir, False, subpath)
 
             #Hopefully set permissions on downloaded file
-            if mylar.OS_DETECT != 'windows':
-                filechecker.setperms(dst.rstrip())
-            else:
-                try:
-                    permission = int(mylar.CHMOD_FILE, 8)
-                    os.umask(0)
-                    os.chmod(dst.rstrip(), permission)
-                except OSError:
-                    logger.error(module + ' Failed to change file permissions. Ensure that the user running Mylar has proper permissions to change permissions in : ' + dst)
-                    logger.fdebug(module + ' Continuing post-processing but unable to change file permissions in ' + dst)
+            if mylar.ENFORCE_PERMS:
+                if mylar.OS_DETECT != 'windows':
+                    filechecker.setperms(dst.rstrip())
+                else:
+                    try:
+                        permission = int(mylar.CHMOD_FILE, 8)
+                        os.umask(0)
+                        os.chmod(dst.rstrip(), permission)
+                    except OSError:
+                        logger.error(module + ' Failed to change file permissions. Ensure that the user running Mylar has proper permissions to change permissions in : ' + dst)
+                        logger.fdebug(module + ' Continuing post-processing but unable to change file permissions in ' + dst)
 
             #let's reset the fileop to the original setting just in case it's a manual pp run
             if mylar.FILE_OPTS == 'copy':
@@ -1858,9 +1867,13 @@ class PostProcessor(object):
                         logger.info(module + ' Copying ' + str(dst) + ' into directory : ' + str(grab_dst))
 
                         try:
-                            shutil.copy(grab_src, grab_dst)
+                            #need to ensure that src is pointing to the series in order to do a soft/hard-link properly
+                            fileoperation = helpers.file_ops(grab_src, grab_dst, arc=True)
+                            if not fileoperation:
+                                raise OSError
+                            #shutil.copy(grab_src, grab_dst)
                         except (OSError, IOError):
-                            logger.warn(module + ' Failed to move directory - check directories and manually re-run.')
+                            logger.fdebug(module + ' Failed to ' + mylar.FILE_OPTS + ' ' + src + ' - check directories and manually re-run.')
                             return
 
                         #delete entry from nzblog table in case it was forced via the Story Arc Page
@@ -1950,6 +1963,10 @@ class PostProcessor(object):
             if mylar.PUSHBULLET_ENABLED:
                 pushbullet = notifiers.PUSHBULLET()
                 pushbullet.notify(prline=prline, prline2=prline2, module=module)
+
+            if mylar.TELEGRAM_ENABLED:
+                telegram = notifiers.TELEGRAM()
+                telegram.notify(prline, prline2)
 
             logger.info(module + ' Post-Processing completed for: ' + series + ' ' + dispiss)
             self._log(u"Post Processing SUCCESSFUL! ")
