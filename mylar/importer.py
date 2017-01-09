@@ -490,7 +490,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     if mylar.COMIC_COVER_LOCAL:
         try:
             comiclocal = os.path.join(comlocation, 'cover.jpg')
-            shutil.copy(coverfile, comiclocal)
+            shutil.copyfile(coverfile, comiclocal)
             if mylar.ENFORCE_PERMS:
                 filechecker.setperms(comiclocal)
         except IOError as e:
@@ -1073,7 +1073,9 @@ def issue_collection(issuedata, nostatus):
                             "Issue_Number":       issue['Issue_Number'],
                             "IssueDate":          issue['IssueDate'],
                             "ReleaseDate":        issue['ReleaseDate'],
-                            "Int_IssueNumber":    issue['Int_IssueNumber']
+                            "Int_IssueNumber":    issue['Int_IssueNumber'],
+                            "ImageURL":           issue['ImageURL'],
+                            "ImageURL_ALT":       issue['ImageURL_ALT']
                             #"Status":             "Skipped"  #set this to Skipped by default to avoid NULL entries.
                             }
 
@@ -1389,7 +1391,9 @@ def updateissuedata(comicid, comicname=None, issued=None, comicIssues=None, call
                               "Issue_Number":       issnum,
                               "IssueDate":          issdate,
                               "ReleaseDate":        storedate,
-                              "Int_IssueNumber":    int_issnum})
+                              "Int_IssueNumber":    int_issnum,
+                              "ImageURL":           firstval['Image'],
+                              "ImageURL_ALT":       firstval['ImageALT']})
 
             n+=1
 

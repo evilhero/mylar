@@ -34,7 +34,7 @@ def dbUpdate(ComicIDList=None, calledfrom=None):
         if mylar.UPDATE_ENDED:
             logger.info('Updating only Continuing Series (option enabled) - this might cause problems with the pull-list matching for rebooted series')
             comiclist = []
-            completelist = myDB.select('SELECT LatestDate, ComicPublished, ForceContinuing, NewPublish, LastUpdated, ComicID, ComicName, Corrected_SeriesYear from comics WHERE Status="Active" or Status="Loading" order by LatestDate DESC, LastUpdated ASC')
+            completelist = myDB.select('SELECT LatestDate, ComicPublished, ForceContinuing, NewPublish, LastUpdated, ComicID, ComicName, Corrected_SeriesYear, ComicYear from comics WHERE Status="Active" or Status="Loading" order by LatestDate DESC, LastUpdated ASC')
             for comlist in completelist:
                 if comlist['LatestDate'] is None:
                     recentstatus = 'Loading'
@@ -62,10 +62,11 @@ def dbUpdate(ComicIDList=None, calledfrom=None):
                                       "LastUpdated":           comlist['LastUpdated'],
                                       "ComicID":               comlist['ComicID'],
                                       "ComicName":             comlist['ComicName'],
+                                      "ComicYear":             comlist['ComicYear'],
                                       "Corrected_SeriesYear":  comlist['Corrected_SeriesYear']})
 
         else:
-            comiclist = myDB.select('SELECT LatestDate, LastUpdated, ComicID, ComicName from comics WHERE Status="Active" or Status="Loading" order by LatestDate DESC, LastUpdated ASC')
+            comiclist = myDB.select('SELECT LatestDate, LastUpdated, ComicID, ComicName, ComicYear, Corrected_SeriesYear from comics WHERE Status="Active" or Status="Loading" order by LatestDate DESC, LastUpdated ASC')
     else:
         comiclist = []
         comiclisting = ComicIDList
@@ -78,6 +79,15 @@ def dbUpdate(ComicIDList=None, calledfrom=None):
     cnt = 1
 
     for comic in comiclist:
+        dspyear = comic['ComicYear']
+        csyear = None
+
+        if comic['Corrected_SeriesYear'] is not None:
+            csyear = comic['Corrected_SeriesYear']
+            if int(csyear) != int(comic['ComicYear']):
+                comic['ComicYear'] = csyear
+                dspyear = csyear
+
         if ComicIDList is None:
             ComicID = comic['ComicID']
             ComicName = comic['ComicName']
@@ -93,20 +103,10 @@ def dbUpdate(ComicIDList=None, calledfrom=None):
                     logger.info(ComicName + '[' + str(ComicID) + '] Was refreshed less than 5 hours ago. Skipping Refresh at this time.')
                     cnt +=1
                     continue
-            logger.info('[' + str(cnt) + '/' + str(len(comiclist)) + '] Refreshing :' + ComicName + ' [' + str(ComicID) + ']')
+            logger.info('[' + str(cnt) + '/' + str(len(comiclist)) + '] Refreshing :' + ComicName + ' (' + str(dspyear) + ') [' + str(ComicID) + ']')
         else:
             ComicID = comic['ComicID']
             ComicName = comic['ComicName']
-            logger.info('csyear: ' + str(comic['Corrected_SeriesYear']))
-            dspyear = comic['ComicYear']
-            csyear = None
-
-            if comic['Corrected_SeriesYear'] is not None:
-                csyear = comic['Corrected_SeriesYear']
-                if int(csyear) != int(comic['ComicYear']):
-                    comic['ComicYear'] = csyear
-                    dspyear = csyear
-            
            
             logger.fdebug('Refreshing: ' + ComicName + ' (' + str(dspyear) + ') [' + str(ComicID) + ']')
 
@@ -356,6 +356,7 @@ def upcoming_update(ComicID, ComicName, IssueNumber, IssueDate, forcecheck=None,
 
     if 'annual' in ComicName.lower():
         if mylar.ANNUALS_ON:
+            logger.info('checking: ' + str(ComicID) + ' -- issue#: ' + str(IssueNumber))
             issuechk = myDB.selectone("SELECT * FROM annuals WHERE ComicID=? AND Issue_Number=?", [ComicID, IssueNumber]).fetchone()
         else:
             logger.fdebug('Annual detected, but annuals not enabled. Ignoring result.')
@@ -544,12 +545,12 @@ def weekly_update(ComicName, IssueNumber, CStatus, CID, weeknumber, year, altiss
     # added Issue to stop false hits on series' that have multiple releases in a week
     # added CStatus to update status flags on Pullist screen
     myDB = db.DBConnection()
-    issuecheck = myDB.selectone("SELECT * FROM weekly WHERE COMIC=? AND ISSUE=? and WEEKNUMBER=? AND YEAR=?", [ComicName, IssueNumber, weeknumber, year]).fetchone()
+    issuecheck = myDB.selectone("SELECT * FROM weekly WHERE COMIC=? AND ISSUE=? and WEEKNUMBER=? AND YEAR=?", [ComicName, IssueNumber, int(weeknumber), year]).fetchone()
 
     if issuecheck is not None:
         controlValue = {"COMIC":         str(ComicName),
                         "ISSUE":         str(IssueNumber),
-                        "WEEKNUMBER":    weeknumber,
+                        "WEEKNUMBER":    int(weeknumber),
                         "YEAR":          year}
 
         logger.info('controlValue:' + str(controlValue))
@@ -642,7 +643,7 @@ def nzblog(IssueID, NZBName, ComicName, SARC=None, IssueArcID=None, id=None, pro
     myDB.upsert("nzblog", newValue, controlValue)
 
 
-def foundsearch(ComicID, IssueID, mode=None, down=None, provider=None, SARC=None, IssueArcID=None, module=None):
+def foundsearch(ComicID, IssueID, mode=None, down=None, provider=None, SARC=None, IssueArcID=None, module=None, hash=None):
     # When doing a Force Search (Wanted tab), the resulting search calls this to update.
 
     # this is all redudant code that forceRescan already does.
@@ -680,6 +681,8 @@ def foundsearch(ComicID, IssueID, mode=None, down=None, provider=None, SARC=None
         # update the status to Snatched (so it won't keep on re-downloading!)
         logger.info(module + ' Updating status to snatched')
         logger.fdebug(module + ' Provider is ' + provider)
+        if hash:
+            logger.fdebug(module + ' Hash set to : ' + hash)
         newValue = {"Status":    "Snatched"}
         if mode == 'story_arc':
             cValue = {"IssueArcID": IssueArcID}
@@ -711,7 +714,8 @@ def foundsearch(ComicID, IssueID, mode=None, down=None, provider=None, SARC=None
                                "ComicID":         'None',
                                "Issue_Number":    IssueNum,
                                "DateAdded":       helpers.now(),
-                               "Status":          "Snatched"
+                               "Status":          "Snatched",
+                               "Hash":            hash
                                }
         else:
             if modcomicname:
@@ -726,7 +730,8 @@ def foundsearch(ComicID, IssueID, mode=None, down=None, provider=None, SARC=None
                                "ComicID":         ComicID,
                                "Issue_Number":    IssueNum,
                                "DateAdded":       helpers.now(),
-                               "Status":          "Snatched"
+                               "Status":          "Snatched",
+                               "Hash":            hash
                                }
         myDB.upsert("snatched", newsnatchValues, snatchedupdate)
 
@@ -1073,6 +1078,14 @@ def forceRescan(ComicID, archive=None, module=None):
             else:
                 reannuals = myDB.select('SELECT * FROM annuals WHERE ComicID=?', [ComicID])
                 ANNComicID = ComicID
+
+            if len(reannuals) == 0:
+                #it's possible if annual integration is enabled, and an annual series is added directly to the wachlist,
+                #not as part of a series, that the above won't work since it's looking in the wrong table.
+                reannuals = myDB.select('SELECT * FROM issues WHERE ComicID=?', [ComicID])
+                ANNComicID = None #need to set this to None so we write to the issues table and not the annuals
+
+
             # annual inclusion here.
             #logger.fdebug("checking " + str(temploc))
             fcnew = shlex.split(str(temploc))

@@ -25,7 +25,7 @@ import requests
 
 import mylar
 from mylar import logger, db, cv
-from mylar.helpers import multikeysort, replace_all, cleanName, listLibrary
+from mylar.helpers import multikeysort, replace_all, cleanName, listLibrary, listStoryArcs
 import httplib
 
 mb_lock = threading.Lock()
@@ -49,7 +49,7 @@ def pullsearch(comicapi, comicquery, offset, explicit, type):
     u_comicquery = u_comicquery.replace(" ", "%20")
 
     if explicit == 'all' or explicit == 'loose':
-        PULLURL = mylar.CVURL + 'search?api_key=' + str(comicapi) + '&resources=' + str(type) + '&query=' + u_comicquery + '&field_list=id,name,start_year,first_issue,site_detail_url,count_of_issues,image,publisher,deck,description,last_issue&format=xml&page=' + str(offset)
+        PULLURL = mylar.CVURL + 'search?api_key=' + str(comicapi) + '&resources=' + str(type) + '&query=' + u_comicquery + '&field_list=id,name,start_year,first_issue,site_detail_url,count_of_issues,image,publisher,deck,description,last_issue&format=xml&limit=100&page=' + str(offset)
 
     else:
         # 02/22/2014 use the volume filter label to get the right results.
@@ -393,7 +393,7 @@ def findComic(name, mode, issue, limityear=None, explicit=None, type=None):
 
 def storyarcinfo(xmlid):
 
-    comicLibrary = listLibrary()
+    comicLibrary = listStoryArcs()
 
     arcinfo = {}
 
@@ -404,8 +404,8 @@ def storyarcinfo(xmlid):
         comicapi = mylar.COMICVINE_API
 
     #respawn to the exact id for the story arc and count the # of issues present.
-    ARCPULL_URL = mylar.CVURL + 'story_arc/4045-' + str(xmlid) + '/?api_key=' + str(comicapi) + '&field_list=issues,name,first_appeared_in_issue,deck,image&format=xml&offset=0'
-    logger.fdebug('arcpull_url:' + str(ARCPULL_URL))
+    ARCPULL_URL = mylar.CVURL + 'story_arc/4045-' + str(xmlid) + '/?api_key=' + str(comicapi) + '&field_list=issues,publisher,name,first_appeared_in_issue,deck,image&format=xml&offset=0'
+    #logger.fdebug('arcpull_url:' + str(ARCPULL_URL))
 
     #new CV API restriction - one api request / second.
     if mylar.CVAPI_RATE is None or mylar.CVAPI_RATE < 2:
@@ -488,6 +488,11 @@ def storyarcinfo(xmlid):
         xmldesc = "None"
 
     try:
+        xmlpub = arcdom.getElementsByTagName('publisher')[0].firstChild.wholeText
+    except:
+        xmlpub = "None"
+
+    try:
         xmldeck = arcdom.getElementsByTagName('deck')[0].firstChild.wholeText
     except:
         xmldeck = "None"
@@ -508,7 +513,8 @@ def storyarcinfo(xmlid):
             'description':          xmldesc,
             'deck':                 xmldeck,
             'arclist':              arclist,
-            'haveit':               haveit
+            'haveit':               haveit,
+            'publisher':            xmlpub
             }
 
     return arcinfo

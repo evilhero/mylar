@@ -36,6 +36,8 @@
                         %if annuals:
                                 <a id="menu_link_delete" href="annualDelete?comicid=${comic['ComicID']}">Delete Annuals</a>
                         %endif
+
+                        <a id="menu_link_addalltoRL" href="#" class="menu_link_addalltoRL">Add All to Readinglist</a>
 		</div>
 	</div>
 </%def>
@@ -427,7 +429,7 @@
                         %>
                         <tr class="${issue['Status']} grade${grade}">
 
-                                <td id="select"><input type="checkbox" name="${issue['IssueID']}" class="issCheck" value="${issue['IssueID']}"/></td>
+                                <td id="select"><input type="checkbox" name="${issue['IssueID']}" class="issCheck checkbox" value="${issue['IssueID']}"/></td>
                                 <td id="int_issuenumber">${issue['Int_IssueNumber']}</td>
                                 <td id="issuenumber">${issue['Issue_Number']}</td>
                                 <%
@@ -626,6 +628,8 @@
                                         <a href="#" title="Archive" onclick="doAjaxCall('archiveissue?IssueID=${annual['IssueID']}',$(this),'table')"><img src="interfaces/default/images/archive_icon.png" height="25" width="25" title="Mark issue as Archived" class="highqual" /></a>
                                         <a href="#" title="Add to Reading List"><img src="interfaces/default/images/glasses-icon.png" height="25" width="25" class="highqual" /></a>
 -->
+                                        <a href="#" title="Add to Reading List" onclick="doAjaxCall('addtoreadlist?IssueID=${annual['IssueID']}',$(this),'table')" data-success="${aninfo['annualComicName']} #${annual['Issue_Number']} added to Reading List"><img src="interfaces/default/images/glasses-icon.png" height="25" width="25" class="highqual" /></a>
+
                                         <a href="#" onclick="doAjaxCall('retryit?ComicName=${annual['ComicName'] |u}&ComicID=${annual['ComicID']}&IssueID=${annual['IssueID']}&IssueNumber=${annual['Issue_Number']}&ComicYear=${annual['IssueDate']}&ReleaseComicID=${annual['ReleaseComicID']}', $(this),'table')" data-success="Retrying the same version of '${annual['ComicName']}' '${annual['Issue_Number']}'" title="Retry the same download again"><img src="interfaces/default/images/retry_icon.png" height="25" width="25" class="highqual" /></a>
                                         <a href="#" title="Mark annual as Skipped" onclick="doAjaxCall('unqueueissue?IssueID=${annual['IssueID']}&ComicID=${annual['ComicID']}',$(this),'table')" data-success="'${annual['Issue_Number']}' has been marked as skipped"><img src="interfaces/default/images/skipped_icon.png" height="25" width="25" class="highqual" /></a>
 
@@ -808,6 +812,12 @@
                     $(this).hide();
                 }
             });
+        });
+
+        $('#menu_link_addalltoRL').click(function(){
+          $('#issue_table tbody tr').each(function(){
+            $(this).find('a[title="Add to Reading List"]').click();            
+          });
         });
 
         $.fn.showHideRows = function(whichClass){

@@ -8,7 +8,7 @@
 <%def name="headerIncludes()">
 	<div id="subhead_container">
 		<div id="subhead_menu">
-                        <a id="menu_link_refresh" href="manualpull">Refresh Pull-list</a>
+                        <a href="#" id="menu_link_refresh" onclick="doAjaxCall('pullist?week=${weekinfo['weeknumber']}&year=${weekinfo['year']}',$(this),'table')" data-success="Refresh submitted.">Refresh Pull-list</a>
                         <a id="menu_link_retry" href="pullrecreate">Recreate Pull-list</a>
                         <a id="menu_link_scan" class="button">Download</a>
 		</div>
@@ -21,7 +21,7 @@
            </br></br>
            <table width="100%" align="center">
               <tr>
-              <td style="vertical-align: middle; text-align: right"><a href="pullist?week=${weekinfo['prev_weeknumber']}&year=${weekinfo['year']}" title="Previous Week (${weekinfo['prev_weeknumber']})"><img src="interfaces/default/images/prev.gif" width="16" height="18" Alt="Previous"/></td>
+              <td style="vertical-align: middle; text-align: right"><a href="pullist?week=${weekinfo['prev_weeknumber']}&year=${weekinfo['prev_year']}" title="Previous Week (${weekinfo['prev_weeknumber']})"><img src="interfaces/default/images/prev.gif" width="16" height="18" Alt="Previous"/></td>
               <td style="vertical-align: middle; text-align: center">
               %if wantedcount == 0:
                    <h1><center>Weekly Pull list for week ${weekinfo['weeknumber']} :</br>${weekinfo['startweek']} - ${weekinfo['endweek']}</center></h1>
@@ -29,7 +29,7 @@
                    <h1><center>Weekly Pull list for week ${weekinfo['weeknumber']} :</br>${weekinfo['startweek']} - ${weekinfo['endweek']} (${wantedcount})</center></h1>
               %endif
               </td><td style="vertical-align: middle; text-align: left">
-              <a href="pullist?week=${weekinfo['next_weeknumber']}&year=${weekinfo['year']}" title="Next Week (${weekinfo['next_weeknumber']})"><img src="interfaces/default/images/next.gif" width="16" height="18" Alt="Next"/></a></td>
+              <a href="pullist?week=${weekinfo['next_weeknumber']}&year=${weekinfo['next_year']}" title="Next Week (${weekinfo['next_weeknumber']})"><img src="interfaces/default/images/next.gif" width="16" height="18" Alt="Next"/></a></td>
            <tr>
            </table>
         </div>
@@ -42,7 +42,9 @@
                        <input type="checkbox" name="weekfolder" id="weekfolder" value="1" ${checked(mylar.WEEKFOLDER)} /><label>Store in Weekly Directory (${weekfold})</label> 
                  </div>
 
-               <input type="hidden" name="pulldate" value="${weekinfo}">
+               <input type="hidden" name="year" value="${weekinfo['year']}">
+               <input type="hidden" name="weeknumber" value="${weekinfo['weeknumber']}">
+               <input type="hidden" name="midweek" value="${weekinfo['midweek']}">
                <input type="submit" style="display:none" />
              </fieldset>
           </form>
@@ -117,6 +119,7 @@
 		%endfor
 		</tbody>
 	</table>
+             </br><small><center>last updated: ${weekinfo['last_update']}</center></small>
       </div>
 </%def>
 

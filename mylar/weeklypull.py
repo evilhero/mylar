@@ -55,7 +55,7 @@ def pullit(forcecheck=None):
 
     #only for pw-file or ALT_PULL = 1
     newrl = os.path.join(mylar.CACHE_DIR, 'newreleases.txt')
-    mylar.PULLBYFILE = None
+    mylar.PULLBYFILE = False
 
     if mylar.ALT_PULL == 1:
         #logger.info('[PULL-LIST] The Alt-Pull method is currently broken. Defaulting back to the normal method of grabbing the pull-list.')
@@ -928,7 +928,7 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
         if not comic1off_id:
             logger.fdebug("[WALKSOFTLY] You are watching for: " + str(len(weeklylist)) + " comics")
 
-        weekly = myDB.select('SELECT a.comicid, IFNULL(a.Comic,IFNULL(b.ComicName, c.ComicName)) as ComicName, a.rowid, a.issue, a.issueid, c.ComicPublisher, a.weeknumber, a.shipdate, a.dynamicname FROM weekly as a INNER JOIN annuals as b INNER JOIN comics as c ON b.releasecomicid = a.comicid OR c.comicid = a.comicid OR c.DynamicComicName = a.dynamicname WHERE weeknumber = ? GROUP BY a.dynamicname', [weeknumber]) #comics INNER JOIN weekly ON comics.DynamicComicName = weekly.dynamicname OR comics.comicid = weekly.comicid INNER JOIN annuals ON annuals.comicid = weekly.comicid WHERE weeknumber = ? GROUP BY weekly.dynamicname', [weeknumber])
+        weekly = myDB.select('SELECT a.comicid, IFNULL(a.Comic,IFNULL(b.ComicName, c.ComicName)) as ComicName, a.rowid, a.issue, a.issueid, c.ComicPublisher, a.weeknumber, a.shipdate, a.dynamicname FROM weekly as a INNER JOIN annuals as b INNER JOIN comics as c ON b.releasecomicid = a.comicid OR c.comicid = a.comicid OR c.DynamicComicName = a.dynamicname WHERE weeknumber = ? AND year = ? GROUP BY a.dynamicname', [int(weeknumber),pullyear]) #comics INNER JOIN weekly ON comics.DynamicComicName = weekly.dynamicname OR comics.comicid = weekly.comicid INNER JOIN annuals ON annuals.comicid = weekly.comicid WHERE weeknumber = ? GROUP BY weekly.dynamicname', [weeknumber])
         for week in weekly:
             idmatch = None
             annualidmatch = None
@@ -940,10 +940,10 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
             annualidmatch = [x for x in weeklylist if week['comicid'] is not None and ([xa for xa in x['AnnualIDs'] if int(xa['ComicID']) == int(week['comicid'])])]
             #The above will auto-match against ComicID if it's populated on the pullsite, otherwise do name-matching.
             namematch = [ab for ab in weeklylist if ab['DynamicName'] == week['dynamicname']]
-            logger.info('rowid: ' + str(week['rowid']))
-            logger.info('idmatch: ' + str(idmatch))
-            logger.info('annualidmatch: ' + str(annualidmatch))
-            logger.info('namematch: ' + str(namematch))
+            #logger.fdebug('rowid: ' + str(week['rowid']))
+            #logger.fdebug('idmatch: ' + str(idmatch))
+            #logger.fdebug('annualidmatch: ' + str(annualidmatch))
+            #logger.fdebug('namematch: ' + str(namematch))
             if any([idmatch,namematch,annualidmatch]):
                 if idmatch:
                     comicname = idmatch[0]['ComicName'].strip()
@@ -953,7 +953,10 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
                 elif annualidmatch:
                     comicname = annualidmatch[0]['AnnualIDs'][0]['ComicName'].strip()
                     latestiss = annualidmatch[0]['latestIssue'].strip()
-                    comicid = annualidmatch[0]['AnnualIDs'][0]['ComicID'].strip()
+                    if mylar.ANNUALS_ON:
+                        comicid = annualidmatch[0]['ComicID'].strip()
+                    else:
+                        comicid = annualidmatch[0]['AnnualIDs'][0]['ComicID'].strip()
                     logger.fdebug('[WEEKLY-PULL] Series Match to ID --- ' + comicname + ' [' + comicid + ']')
                 else:
                     #if it's a name metch, it means that CV hasn't been populated yet with the necessary data
@@ -1067,7 +1070,7 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
 
                     newValue['COMIC'] = comicname
                     newValue['ISSUE'] = week['issue']
-                    newValue['WEEKNUMBER'] = weeknumber
+                    newValue['WEEKNUMBER'] = int(weeknumber)
                     newValue['YEAR'] = pullyear
 
                     if issueid:
@@ -1077,7 +1080,7 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
                     newValue = {"ComicID":       comicid,
                                 "COMIC":         week['ComicName'],
                                 "ISSUE":         week['issue'],
-                                "WEEKNUMBER":    weeknumber,
+                                "WEEKNUMBER":    int(weeknumber),
                                 "YEAR":          pullyear}
 
                 logger.info('controlValue:' + str(controlValue))
@@ -1112,12 +1115,16 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
 
                 #if the issueid exists on the pull, but not in the series issue list, we need to forcibly refresh the series so it's in line
                 if issueid:
-                    logger.info('issue id check passed.')
-                    isschk = myDB.selectone('SELECT * FROM issues where IssueID=?', [issueid]).fetchone()
+                    #logger.info('issue id check passed.')
+                    if annualidmatch:
+                        isschk = myDB.selectone('SELECT * FROM annuals where IssueID=?', [issueid]).fetchone()
+                    else:
+                        isschk = myDB.selectone('SELECT * FROM issues where IssueID=?', [issueid]).fetchone()
+
                     if isschk is None:
                         isschk = myDB.selectone('SELECT * FROM annuals where IssueID=?', [issueid]).fetchone()
                         if isschk is None:
-                            logger.fdebug('REFRESH THE SERIES.')
+                            logger.fdebug('[WEEKLY-PULL] Forcing a refresh of the series to ensure it is current.')
                             cchk = mylar.importer.updateissuedata(comicid, comicname, calledfrom='weeklycheck')
                             #refresh series.
                         else:
@@ -1133,7 +1140,10 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
                             #make sure the status is Wanted and that the issue status is identical if not.
                                 newStat = {'Status': 'Wanted'}
                                 ctrlStat = {'IssueID': issueid}
-                                myDB.upsert("issues", newStat, ctrlStat)
+                                if all([annualidmatch, mylar.ANNUALS_ON]):
+                                    myDB.upsert("annuals", newStat, ctrlStat)
+                                else:
+                                    myDB.upsert("issues", newStat, ctrlStat)
             else:
                 continue
 #                else:
@@ -1228,7 +1238,7 @@ def pull_the_file(newrl):
     PULLURL = 'https://www.previewsworld.com/shipping/newreleases.txt'
     PULL_AGENT = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246'}
     try:
-        r = requests.get(PULLURL, verify=False, headers=PULL_AGENT, stream=True)
+        r = requests.get(PULLURL, verify=True, headers=PULL_AGENT, stream=True)
     except requests.exceptions.RequestException as e:
         logger.warn(e)
         return False
