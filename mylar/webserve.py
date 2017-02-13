@@ -757,7 +757,7 @@ class WebInterface(object):
                     logger.error('mode is unsupported: ' + chk[0]['mode'])
                     yield chk[0]['self.log']
                     break
-
+        return
     post_process.exposed = True
 
     def pauseSeries(self, ComicID):
@@ -1277,7 +1277,7 @@ class WebInterface(object):
                                 logger.error(str(newznab_info[0]) + ' is not enabled - unable to process retry request until provider is re-enabled.')
                                 continue
 
-                sendit = search.searcher(Provider, nzbname, comicinfo, link=link, IssueID=IssueID, ComicID=ComicID, tmpprov=fullprov, directsend=True, newznab=newznabinfo)
+                sendit = search.searcher(fullprov, nzbname, comicinfo, link=link, IssueID=IssueID, ComicID=ComicID, tmpprov=fullprov, directsend=True, newznab=newznabinfo)
                 break
         return
     retryissue.exposed = True
@@ -1286,7 +1286,7 @@ class WebInterface(object):
         threading.Thread(target=self.queueissue, kwargs=kwargs).start()
     queueit.exposed = True
 
-    def queueissue(self, mode, ComicName=None, ComicID=None, ComicYear=None, ComicIssue=None, IssueID=None, new=False, redirect=None, SeriesYear=None, SARC=None, IssueArcID=None, manualsearch=None, Publisher=None):
+    def queueissue(self, mode, ComicName=None, ComicID=None, ComicYear=None, ComicIssue=None, IssueID=None, new=False, redirect=None, SeriesYear=None, SARC=None, IssueArcID=None, manualsearch=None, Publisher=None, pullinfo=None):
         logger.fdebug('ComicID:' + str(ComicID))
         logger.fdebug('mode:' + str(mode))
         now = datetime.datetime.now()
@@ -1347,12 +1347,14 @@ class WebInterface(object):
             #this is for marking individual comics from the pullist to be downloaded.
             #because ComicID and IssueID will both be None due to pullist, it's probably
             #better to set both to some generic #, and then filter out later...
-            cyear = myDB.selectone("SELECT SHIPDATE FROM weekly").fetchone()
-            ComicYear = str(cyear['SHIPDATE'])[:4]
+            IssueDate = pullinfo
+            try:
+                ComicYear = str(pullinfo)[:4]
+            except:
+                ComicYear == now.year
             if Publisher == 'COMICS': Publisher = None
-            if ComicYear == '': ComicYear = now.year
             logger.info(u"Marking " + ComicName + " " + ComicIssue + " as wanted...")
-            foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=Publisher, IssueDate=cyear['SHIPDATE'], StoreDate=cyear['SHIPDATE'], IssueID=None, AlternateSearch=None, UseFuzzy=None, ComicVersion=None, allow_packs=False)
+            foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=Publisher, IssueDate=IssueDate, StoreDate=IssueDate, IssueID=None, AlternateSearch=None, UseFuzzy=None, ComicVersion=None, allow_packs=False)
             if foundcom  == "yes":
                 logger.info(u"Downloaded " + ComicName + " " + ComicIssue)
             raise cherrypy.HTTPRedirect("pullist")
@@ -1665,7 +1667,7 @@ class WebInterface(object):
                 try:
                     x = float(weekly['ISSUE'])
                 except ValueError, e:
-                    if 'au' in weekly['ISSUE'].lower() or 'ai' in weekly['ISSUE'].lower() or '.inh' in weekly['ISSUE'].lower() or '.now' in weekly['ISSUE'].lower():
+                    if 'au' in weekly['ISSUE'].lower() or 'ai' in weekly['ISSUE'].lower() or '.inh' in weekly['ISSUE'].lower() or '.now' in weekly['ISSUE'].lower() or '.mu' in weekly['ISSUE'].lower():
                         x = weekly['ISSUE']
 
                 if x is not None:
@@ -1768,7 +1770,7 @@ class WebInterface(object):
                 try:
                     x = float(future['ISSUE'])
                 except ValueError, e:
-                    if 'au' in future['ISSUE'].lower() or 'ai' in future['ISSUE'].lower() or '.inh' in future['ISSUE'].lower() or '.now' in future['ISSUE'].lower():
+                    if 'au' in future['ISSUE'].lower() or 'ai' in future['ISSUE'].lower() or '.inh' in future['ISSUE'].lower() or '.now' in future['ISSUE'].lower() or '.mu' in future['ISSUE'].lower():
                         x = future['ISSUE']
 
                 if future['EXTRA'] == 'N/A' or future['EXTRA'] == '':
@@ -2273,6 +2275,7 @@ class WebInterface(object):
     def markComics(self, action=None, **args):
         myDB = db.DBConnection()
         comicsToAdd = []
+        clist = []
         for k,v in args.items():
             if k == 'manage_comic_length':
                 continue
@@ -2281,30 +2284,41 @@ class WebInterface(object):
             comyr = k.find('[')
             ComicYear = re.sub('[\[\]]', '', k[comyr:]).strip()
             ComicName = k[:comyr].strip()
-            ComicID = v
-            #cid = ComicName.decode('utf-8', 'replace')
+            if isinstance(v, list):
+                #because multiple items can have the same comicname & year, we need to make sure they're all unique entries
+                for x in v:
+                    clist.append({'ComicName':  ComicName,
+                                  'ComicYear':  ComicYear,
+                                  'ComicID':    x})
+            else:
+                clist.append({'ComicName':  ComicName,
+                              'ComicYear':  ComicYear,
+                              'ComicID':    v})
 
+        for cl in clist:
             if action == 'delete':
-                logger.info('[MANAGE COMICS][DELETION] Now deleting ' + ComicName + ' (' + str(ComicYear) + ') [' + str(ComicID) + '] form the DB.')
-                myDB.action('DELETE from comics WHERE ComicID=?', [ComicID])
-                myDB.action('DELETE from issues WHERE ComicID=?', [ComicID])
-                logger.info('[MANAGE COMICS][DELETION] Successfully deleted ' + ComicName + '(' + str(ComicYear) + ')')
+                logger.info('[MANAGE COMICS][DELETION] Now deleting ' + cl['ComicName'] + ' (' + str(cl['ComicYear']) + ') [' + str(cl['ComicID']) + '] form the DB.')
+                myDB.action('DELETE from comics WHERE ComicID=?', [cl['ComicID']])
+                myDB.action('DELETE from issues WHERE ComicID=?', [cl['ComicID']])
+                if mylar.ANNUALS_ON:
+                    myDB.action('DELETE from annuals WHERE ComicID=?', [cl['ComicID']])
+                logger.info('[MANAGE COMICS][DELETION] Successfully deleted ' + cl['ComicName'] + '(' + str(cl['ComicYear']) + ')')
             elif action == 'pause':
-                controlValueDict = {'ComicID': ComicID}
+                controlValueDict = {'ComicID': cl['ComicID']}
                 newValueDict = {'Status': 'Paused'}
                 myDB.upsert("comics", newValueDict, controlValueDict)
-                logger.info('[MANAGE COMICS][PAUSE] ' + ComicName + ' has now been put into a Paused State.')
+                logger.info('[MANAGE COMICS][PAUSE] ' + cl['ComicName'] + ' has now been put into a Paused State.')
             elif action == 'resume':
-                controlValueDict = {'ComicID': ComicID}
+                controlValueDict = {'ComicID': cl['ComicID']}
                 newValueDict = {'Status': 'Active'}
                 myDB.upsert("comics", newValueDict, controlValueDict)
-                logger.info('[MANAGE COMICS][RESUME] ' + ComicName + ' has now been put into a Resumed State.')
+                logger.info('[MANAGE COMICS][RESUME] ' + cl['ComicName'] + ' has now been put into a Resumed State.')
             elif action == 'recheck' or action == 'metatag':
-                comicsToAdd.append({'ComicID':   ComicID,
-                                    'ComicName': ComicName,
-                                    'ComicYear': ComicYear})
+                comicsToAdd.append({'ComicID':   cl['ComicID'],
+                                    'ComicName': cl['ComicName'],
+                                    'ComicYear': cl['ComicYear']})
             else:
-                comicsToAdd.append(ComicID)
+                comicsToAdd.append(cl['ComicID'])
 
         if len(comicsToAdd) > 0:
             if action == 'recheck':
@@ -3432,8 +3446,8 @@ class WebInterface(object):
     importResults.exposed = True
 
     def ImportFilelisting(self, comicname, dynamicname, volume):
-        comicname = urllib.unquote_plus(helpers.econversion(comicname))
-        dynamicname = helpers.econversion(urllib.unquote_plus(dynamicname)) #urllib.unquote(dynamicname).decode('utf-8')
+        comicname = urllib.unquote_plus(helpers.conversion(comicname))
+        dynamicname = helpers.conversion(urllib.unquote_plus(dynamicname)) #urllib.unquote(dynamicname).decode('utf-8')
         myDB = db.DBConnection()
         if volume is None or volume == 'None':
             results = myDB.select("SELECT * FROM importresults WHERE (WatchMatch is Null OR WatchMatch LIKE 'C%') AND DynamicName=? AND Volume IS NULL",[dynamicname])
@@ -4722,12 +4736,9 @@ class WebInterface(object):
                 return 'Unable to reach SABnzbd'
 
             try:
-                if dom.getElementsByTagName('status')[0].firstChild.wholeText == 'True':
-                    q_sabhost = dom.getElementsByTagName('host')[0].firstChild.wholeText
-                    q_nzbkey = dom.getElementsByTagName('nzb_key')[0].firstChild.wholeText
-                    q_apikey = dom.getElementsByTagName('api_key')[0].firstChild.wholeText
-                else:
-                    raise ValueError
+                q_sabhost = dom.getElementsByTagName('host')[0].firstChild.wholeText
+                q_nzbkey = dom.getElementsByTagName('nzb_key')[0].firstChild.wholeText
+                q_apikey = dom.getElementsByTagName('api_key')[0].firstChild.wholeText
             except:
                 errorm = dom.getElementsByTagName('error')[0].firstChild.wholeText
                 logger.error(u"Error detected attempting to retrieve SAB data using FULL APIKey: " + errorm)
@@ -5137,8 +5148,11 @@ class WebInterface(object):
 
     def test_32p(self):
         import auth32p
-        p = auth32p.info32p(test=True)
-        rtnvalues = p.authenticate()
-        logger.info('32p return values: ' + str(rtnvalues))
-        return rtnvalues
+        tmp = auth32p.info32p(test=True)
+        rtnvalues = tmp.authenticate()
+        if rtnvalues is True:
+            return "Successfully Authenticated."
+        else:
+            return "Could not Authenticate."
+
     test_32p.exposed = True

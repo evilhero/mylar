@@ -345,7 +345,11 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
         if comversion == 'None':
             chunk_f_f = re.sub('\$VolumeN', '', mylar.FOLDER_FORMAT)
             chunk_f = re.compile(r'\s+')
-            mylar.FOLDER_FORMAT = chunk_f.sub(' ', chunk_f_f)
+            chunk_folder_format = chunk_f.sub(' ', chunk_f_f)
+            logger.fdebug('No version # found for series, removing from folder format')
+            logger.fdebug("new folder format: " + str(chunk_folder_format))
+        else:
+            chunk_folder_format = mylar.FOLDER_FORMAT
 
         #do work to generate folder path
 
@@ -362,7 +366,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
         if mylar.FOLDER_FORMAT == '':
             comlocation = os.path.join(mylar.DESTINATION_DIR, comicdir, " (" + SeriesYear + ")")
         else:
-            comlocation = os.path.join(mylar.DESTINATION_DIR, helpers.replace_all(mylar.FOLDER_FORMAT, values))
+            comlocation = os.path.join(mylar.DESTINATION_DIR, helpers.replace_all(chunk_folder_format, values))
 
 
         #comlocation = mylar.DESTINATION_DIR + "/" + comicdir + " (" + comic['ComicYear'] + ")"
@@ -1260,6 +1264,8 @@ def updateissuedata(comicid, comicname=None, issued=None, comicIssues=None, call
                     int_issnum = (int(issnum[:-4]) * 1000) + ord('i') + ord('n') + ord('h')
                 elif 'now' in issnum.lower():
                     int_issnum = (int(issnum[:-4]) * 1000) + ord('n') + ord('o') + ord('w')
+                elif 'mu' in issnum.lower():
+                    int_issnum = (int(issnum[:-3]) * 1000) + ord('m') + ord('u')
                 elif u'\xbd' in issnum:
                     int_issnum = .5 * 1000
                     logger.info('1/2 issue detected :' + issnum + ' === ' + str(int_issnum))

@@ -26,6 +26,7 @@ import cache
 import imghdr
 from operator import itemgetter
 from cherrypy.lib.static import serve_file, serve_download
+import datetime
 
 cmd_list = ['getIndex', 'getComic', 'getUpcoming', 'getWanted', 'getHistory',
             'getLogs', 'clearLogs','findComic', 'addComic', 'delComic',
@@ -173,14 +174,25 @@ class Api(object):
 
     def _getUpcoming(self, **kwargs):
         if 'include_downloaded_issues' in kwargs and kwargs['include_downloaded_issues'].upper() == 'Y':
-            select_status_clause = "w.STATUS IN ('Wanted', 'Downloaded')"
+            select_status_clause = "w.STATUS IN ('Wanted', 'Snatched', 'Downloaded')"
         else:
             select_status_clause = "w.STATUS = 'Wanted'"
+
+        # Days in a new year that precede the first Sunday will look to the previous Sunday for week and year.
+        today = datetime.date.today()
+        if today.strftime('%U') == '00':
+            weekday = 0 if today.isoweekday() == 7 else today.isoweekday()
+            sunday = today - datetime.timedelta(days=weekday)
+            week = sunday.strftime('%U')
+            year = sunday.strftime('%Y')
+        else:
+            week = today.strftime('%U')
+            year = today.strftime('%Y')
 
         self.data = self._dic_from_query(
             "SELECT w.COMIC AS ComicName, w.ISSUE AS IssueNumber, w.ComicID, w.IssueID, w.SHIPDATE AS IssueDate, w.STATUS AS Status, c.ComicName AS DisplayComicName \
             FROM weekly w JOIN comics c ON w.ComicID = c.ComicID WHERE w.COMIC IS NOT NULL AND w.ISSUE IS NOT NULL AND \
-            w.weeknumber = strftime('%W', 'now') AND w.year = strftime('%Y', 'now') AND " + select_status_clause + " ORDER BY c.ComicSortName")
+            SUBSTR('0' || w.weeknumber, -2) = '" + week + "' AND w.year = '" + year + "' AND " + select_status_clause + " ORDER BY c.ComicSortName")
         return
 
     def _getWanted(self, **kwargs):

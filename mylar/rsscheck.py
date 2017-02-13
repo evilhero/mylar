@@ -117,7 +117,7 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
             feedtype = ' from the New Releases RSS Feed from Demonoid'
             verify = bool(mylar.TPSE_VERIFY)
         elif pickfeed == "999":    #WWT rss feed
-            feed = 'https://www.worldwidetorrents.eu/rss.php?cat=50'
+            feed = 'https://www.worldwidetorrents.eu/rss.php?cat=132,50'
             feedtype = ' from the New Releases RSS Feed from WorldWideTorrents'
         elif int(pickfeed) >= 7 and feedinfo is not None:
             #personal 32P notification feeds.
@@ -159,7 +159,8 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
                     r = scraper.get(feed, verify=verify)#requests.get(feed, params=payload, verify=verify)
             except Exception, e:
                 logger.warn('Error fetching RSS Feed Data from %s: %s' % (picksite, e))
-                return
+                lp+=1
+                continue
 
             feedme = feedparser.parse(r.content)
             #logger.info(feedme)   #<-- uncomment this to see what Mylar is retrieving from the feed
@@ -191,12 +192,12 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
             #DEMONOID SEARCH RESULT (parse)
             pass
         elif pickfeed == "999":
-            logger.info('FEED: ' + feed)
             try:
                 feedme = feedparser.parse(feed)
             except Exception, e:
                 logger.warn('Error fetching RSS Feed Data from %s: %s' % (picksite, e))
-                return
+                lp+=1
+                continue
 
             #WWT / FEED
             for entry in feedme.entries:
@@ -463,7 +464,7 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None):
     tsearch_rem1 = re.sub("\\band\\b", "%", seriesname.lower())
     tsearch_rem2 = re.sub("\\bthe\\b", "%", tsearch_rem1.lower())
     tsearch_removed = re.sub('\s+', ' ', tsearch_rem2)
-    tsearch_seriesname = re.sub('[\'\!\@\#\$\%\:\-\;\/\\=\?\&\.\s]', '%', tsearch_removed)
+    tsearch_seriesname = re.sub('[\'\!\@\#\$\%\:\-\;\/\\=\?\&\.\s\,]', '%', tsearch_removed)
     if mylar.PREFERRED_QUALITY == 0:
         tsearch = tsearch_seriesname + "%"
     elif mylar.PREFERRED_QUALITY == 1:
@@ -502,7 +503,7 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None):
             AS_Alternate = re.sub('[\_\#\,\/\:\;\.\-\!\$\%\+\'\&\?\@\s]', '%', AS_Altrem)
 
             AS_Altrem_mod = re.sub('[\&]', ' ', AS_Altrem)
-            AS_formatrem_seriesname = re.sub('[\'\!\@\#\$\%\:\;\/\\=\?\.]', '', AS_Altrem_mod)
+            AS_formatrem_seriesname = re.sub('[\'\!\@\#\$\%\:\;\/\\=\?\.\,]', '', AS_Altrem_mod)
             AS_formatrem_seriesname = re.sub('\s+', ' ', AS_formatrem_seriesname)
             if AS_formatrem_seriesname[:1] == ' ': AS_formatrem_seriesname = AS_formatrem_seriesname[1:]
             AS_Alt.append(AS_formatrem_seriesname)
@@ -584,13 +585,13 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None):
         seriesname_mod = re.sub('[\&]', ' ', seriesname_mod)
         foundname_mod = re.sub('[\&]', ' ', foundname_mod)
 
-        formatrem_seriesname = re.sub('[\'\!\@\#\$\%\:\;\=\?\.]', '', seriesname_mod)
+        formatrem_seriesname = re.sub('[\'\!\@\#\$\%\:\;\=\?\.\,]', '', seriesname_mod)
         formatrem_seriesname = re.sub('[\-]', ' ', formatrem_seriesname)
         formatrem_seriesname = re.sub('[\/]', ' ', formatrem_seriesname)  #not necessary since seriesname in a torrent file won't have /
         formatrem_seriesname = re.sub('\s+', ' ', formatrem_seriesname)
         if formatrem_seriesname[:1] == ' ': formatrem_seriesname = formatrem_seriesname[1:]
 
-        formatrem_torsplit = re.sub('[\'\!\@\#\$\%\:\;\\=\?\.]', '', foundname_mod)
+        formatrem_torsplit = re.sub('[\'\!\@\#\$\%\:\;\\=\?\.\,]', '', foundname_mod)
         formatrem_torsplit = re.sub('[\-]', ' ', formatrem_torsplit)  #we replace the - with space so we'll get hits if differnces
         formatrem_torsplit = re.sub('[\/]', ' ', formatrem_torsplit)  #not necessary since if has a /, should be removed in above line
         formatrem_torsplit = re.sub('\s+', ' ', formatrem_torsplit)

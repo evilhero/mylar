@@ -162,7 +162,7 @@ def pullit(forcecheck=None):
 
         #denotes issues that contain special characters within that would normally fail when checked if issue ONLY contained numerics.
         #add freely, just lowercase and exclude decimals (they get stripped during comparisons)
-        specialissues = {'au', 'ai', 'inh', 'now'}
+        specialissues = {'au', 'ai', 'inh', 'now', 'mu'}
 
         pub = "COMICS"
         prevcomic = ""
@@ -452,7 +452,7 @@ def pullit(forcecheck=None):
                                 'STATUS': row[5],
                                 'COMICID': None,
                                 'DYNAMICNAME': dynamic_name,
-                                'WEEKNUMBER': weeknumber,
+                                'WEEKNUMBER': int(weeknumber),
                                 'YEAR': mylar.CURRENT_YEAR}
                 myDB.upsert("weekly", newValueDict, controlValueDict)
             except Exception, e:
