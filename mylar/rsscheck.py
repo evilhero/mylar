@@ -10,6 +10,7 @@ import ftpsshup
 import datetime
 import gzip
 import time
+import random
 from StringIO import StringIO
 
 import mylar
@@ -144,7 +145,10 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
 
         if all([pickfeed != '4', pickfeed != '3', pickfeed != '5', pickfeed != '999']):
             payload = None
-            
+
+            ddos_protection = round(random.uniform(0,15),2)
+            time.sleep(ddos_protection)
+
             try:
                 cf_cookievalue = None
                 scraper = cfscrape.create_scraper()
@@ -360,8 +364,12 @@ def nzbs(provider=None, forcerss=False):
         newznabuid = newznabuid or '1'
         newznabcat = newznabcat or '7030'
 
-        # 11-21-2014: added &num=100 to return 100 results (or maximum) - unsure of cross-reliablity
-        _parse_feed(site, newznab_host[1].rstrip() + '/rss?t=' + str(newznabcat) + '&dl=1&i=' + str(newznabuid) + '&num=100&r=' + newznab_host[3].rstrip(), bool(newznab_host[2]))
+        if site[-10:] == '[nzbhydra]':
+            #to allow nzbhydra to do category search by most recent (ie. rss)
+            _parse_feed(site, newznab_host[1].rstrip() + '/api?t=search&cat=' + str(newznabcat) + '&dl=1&i=' + str(newznabuid) + '&num=100&apikey=' + newznab_host[3].rstrip(), bool(newznab_host[2]))
+        else:
+            # 11-21-2014: added &num=100 to return 100 results (or maximum) - unsure of cross-reliablity
+            _parse_feed(site, newznab_host[1].rstrip() + '/rss?t=' + str(newznabcat) + '&dl=1&i=' + str(newznabuid) + '&num=100&r=' + newznab_host[3].rstrip(), bool(newznab_host[2]))
 
     feeddata = []
 
