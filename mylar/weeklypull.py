@@ -937,7 +937,8 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
                 break
             #logger.info('looking for ' + week['ComicName'] + ' [' + week['comicid'] + ']')
             idmatch = [x for x in weeklylist if week['comicid'] is not None and int(x['ComicID']) == int(week['comicid'])]
-            annualidmatch = [x for x in weeklylist if week['comicid'] is not None and ([xa for xa in x['AnnualIDs'] if int(xa['ComicID']) == int(week['comicid'])])]
+            if mylar.ANNUALS_ON:
+                annualidmatch = [x for x in weeklylist if week['comicid'] is not None and ([xa for xa in x['AnnualIDs'] if int(xa['ComicID']) == int(week['comicid'])])]
             #The above will auto-match against ComicID if it's populated on the pullsite, otherwise do name-matching.
             namematch = [ab for ab in weeklylist if ab['DynamicName'] == week['dynamicname']]
             #logger.fdebug('rowid: ' + str(week['rowid']))
@@ -949,7 +950,7 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
                     comicname = idmatch[0]['ComicName'].strip()
                     latestiss = idmatch[0]['latestIssue'].strip()
                     comicid = idmatch[0]['ComicID'].strip()
-                    logger.fdebug('[WEEKLY-PULL] Series Match to ID --- ' + comicname + ' [' + comicid + ']')
+                    logger.fdebug('[WEEKLY-PULL-ID] Series Match to ID --- ' + comicname + ' [' + comicid + ']')
                 elif annualidmatch:
                     comicname = annualidmatch[0]['AnnualIDs'][0]['ComicName'].strip()
                     latestiss = annualidmatch[0]['latestIssue'].strip()
@@ -957,7 +958,7 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
                         comicid = annualidmatch[0]['ComicID'].strip()
                     else:
                         comicid = annualidmatch[0]['AnnualIDs'][0]['ComicID'].strip()
-                    logger.fdebug('[WEEKLY-PULL] Series Match to ID --- ' + comicname + ' [' + comicid + ']')
+                    logger.fdebug('[WEEKLY-PULL-ANNUAL] Series Match to ID --- ' + comicname + ' [' + comicid + ']')
                 else:
                     #if it's a name metch, it means that CV hasn't been populated yet with the necessary data
                     #do a quick issue check to see if the next issue number is in sequence and not a #1, or like #900
@@ -970,7 +971,7 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
                     if diff >= 0 and diff < 3:
                         comicname = namematch[0]['ComicName'].strip()
                         comicid = namematch[0]['ComicID'].strip()
-                        logger.fdebug('[WEEKLY-PULL] Series Match to Name --- ' + comicname + ' [' + comicid + ']')
+                        logger.fdebug('[WEEKLY-PULL-NAME] Series Match to Name --- ' + comicname + ' [' + comicid + ']')
                     else:
                         logger.fdebug('[WEEKLY-PULL] Series ID:' + namematch[0]['ComicID'] + ' not a match based on issue number comparison [LatestIssue:' + latestiss + '][MatchIssue:' + week['Issue'] + ']')
                         continue
@@ -1124,7 +1125,7 @@ def new_pullcheck(weeknumber, pullyear, comic1off_name=None, comic1off_id=None, 
                     if isschk is None:
                         isschk = myDB.selectone('SELECT * FROM annuals where IssueID=?', [issueid]).fetchone()
                         if isschk is None:
-                            logger.fdebug('[WEEKLY-PULL] Forcing a refresh of the series to ensure it is current.')
+                            logger.fdebug('[WEEKLY-PULL] Forcing a refresh of the series to ensure it is current [' + str(comicid) +'].')
                             cchk = mylar.importer.updateissuedata(comicid, comicname, calledfrom='weeklycheck')
                             #refresh series.
                         else:
@@ -1257,18 +1258,6 @@ def weekly_check(comicid, issuenum, file=None, path=None, module=None, issueid=N
         module = ''
     module += '[WEEKLY-PULL]'
     myDB = db.DBConnection()
-    try:
-        pull_date = myDB.selectone("SELECT SHIPDATE from weekly").fetchone()
-        if (pull_date is None):
-            pulldate = '00000000'
-        else:
-            pulldate = pull_date['SHIPDATE']
-
-        logger.fdebug(module + ' Weekly pull list detected as : ' + str(pulldate))
-
-    except (sqlite3.OperationalError, TypeError), msg:
-        logger.info(module + ' Error determining current weekly pull-list date - you should refresh the pull-list manually probably.')
-        return
 
     if issueid is None:
        chkit = myDB.selectone('SELECT * FROM weekly WHERE ComicID=? AND ISSUE=?', [comicid, issuenum]).fetchone()
@@ -1280,20 +1269,29 @@ def weekly_check(comicid, issuenum, file=None, path=None, module=None, issueid=N
         return
 
     logger.info(module + ' Issue found on weekly pull-list.')
+
+    weekinfo = helpers.weekly_info(chkit['weeknumber'],chkit['year'])
+
     if mylar.WEEKFOLDER:
-        weekly_singlecopy(comicid, issuenum, file, path, pulldate)
+        weekly_singlecopy(comicid, issuenum, file, path, weekinfo)
     if mylar.SEND2READ:
         send2read(comicid, issueid, issuenum)
     return
 
-def weekly_singlecopy(comicid, issuenum, file, path, pulldate):
+def weekly_singlecopy(comicid, issuenum, file, path, weekinfo):
 
     module = '[WEEKLY-PULL COPY]'
     if mylar.WEEKFOLDER:
         if mylar.WEEKFOLDER_LOC:
-            desdir = os.path.join(mylar.WEEKFOLDER_LOC, pulldate)
+            weekdst = mylar.WEEKFOLDER_LOC
         else:
-            desdir = os.path.join(mylar.DESTINATION_DIR, pulldate)
+            weekdst = mylar.DESTINATION_DIR
+
+        if mylar.WEEKFOLDER_FORMAT == 0:
+            desdir = os.path.join(weekdst, str( str(weekinfo['year']) + '-' + str(weekinfo['weeknumber']) ))
+        else:
+            desdir = os.path.join(weekdst, str( str(weekinfo['midweek']) ))
+
         dircheck = mylar.filechecker.validateAndCreateDirectory(desdir, True, module=module)
         if dircheck:
             pass
