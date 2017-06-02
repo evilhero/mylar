@@ -316,6 +316,14 @@ class PostProcessor(object):
                     return                    
                 logger.info('I have located ' + str(filelist['comiccount']) + ' files that I should be able to post-process. Continuing...')
 
+                #load the hashes for torrents so continual post-processing of same isseus doesn't occur.
+                pp_crclist = []
+                if mylar.ENABLE_TORRENTS:
+                    pp_crc = myDB.select("SELECT a.crc, b.IssueID FROM Snatched as a INNER JOIN issues as b ON a.IssueID=b.IssueID WHERE a.Status='Post-Processed' and a.crc is not NULL and (b.Status='Downloaded' or b.status='Archived ORDER BY b.IssueDate')")
+                    for pp in pp_crc:
+                        pp_crclist.append({'IssueID':   pp['IssueID'],
+                                           'crc':       pp['crc']})
+
                 #preload the entire ALT list in here.
                 alt_list = []
                 alt_db = myDB.select("SELECT * FROM Comics WHERE AlternateSearch != 'None'")
@@ -331,6 +339,14 @@ class PostProcessor(object):
                 manual_arclist = []
 
                 for fl in filelist['comiclist']:
+                    if mylar.ENABLE_TORRENTS:
+                        crcchk = None
+                        tcrc = helpers.crc(os.path.join(fl['comiclocation'], fl['comicfilename'].decode(mylar.SYS_ENCODING)))
+                        crcchk = [x for x in pp_crclist if tcrc == x['crc']]
+                        if crcchk:
+                           logger.fdebug('Already post-processed this item %s - Ignoring' % crcchk)
+                           continue
+
                     as_d = filechecker.FileChecker()
                     as_dinfo = as_d.dynamic_replace(helpers.conversion(fl['series_name']))
                     mod_seriesname = as_dinfo['mod_seriesname']
@@ -576,7 +592,6 @@ class PostProcessor(object):
 
                     #we should setup for manual post-processing of story-arc issues here
                     #we can also search by ComicID to just grab those particular arcs as an alternative as well (not done)
-                    logger.fdebug(module + ' Now Checking if the issue also resides in one of the storyarc\'s that I am watching.')
                     
                     #as_d = filechecker.FileChecker()
                     #as_dinfo = as_d.dynamic_replace(helpers.conversion(fl['series_name']))
@@ -642,6 +657,7 @@ class PostProcessor(object):
                             if k is None or k == 'None':
                                 pass
                             else:
+                                logger.fdebug(module + ' Now Checking if the issue also resides in one of the storyarc\'s that I am watching.')
                                 arcm = filechecker.FileChecker(watchcomic=k, Publisher=v[i]['ArcValues']['ComicPublisher'], manual=v[i]['WatchValues'])
                                 arcmatch = arcm.matchIT(fl)
                                 logger.info('arcmatch: ' + str(arcmatch))
@@ -771,6 +787,9 @@ class PostProcessor(object):
 
                         #tag the meta.
                         metaresponse = None
+
+                        crcvalue = helpers.crc(ofilename)
+
                         if mylar.ENABLE_META:
                             logger.info('[STORY-ARC POST-PROCESSING] Metatagging enabled - proceeding...')
                             try:
@@ -801,6 +820,16 @@ class PostProcessor(object):
                         else:
                             dfilename = ml['Filename']
 
+
+                        if metaresponse:
+                            src_location = odir
+                            grab_src = os.path.join(src_location, ofilename)
+                        else:
+                            src_location = ofilename
+                            grab_src = ofilename
+
+                        logger.fdebug(module + ' Source Path : ' + grab_src)
+
                         checkdirectory = filechecker.validateAndCreateDirectory(grdst, True, module=module)
                         if not checkdirectory:
                             logger.warn(module + ' Error trying to validate/create directory. Aborting this process at this time.')
@@ -827,13 +856,6 @@ class PostProcessor(object):
                         grab_dst = os.path.join(grdst, dfilename)
 
                         logger.fdebug(module + ' Destination Path : ' + grab_dst)
-                        if metaresponse:
-                            src_location = odir
-                            grab_src = os.path.join(src_location, ofilename)
-                        else:
-                            src_location = ofilename
-                            grab_src = ofilename
-
                         logger.fdebug(module + ' Source Path : ' + grab_src)
 
                         logger.info(module + '[ONE-OFF MODE][' + mylar.ARC_FILEOPS.upper() + '] ' + grab_src + ' into directory : ' + grab_dst)
@@ -923,11 +945,16 @@ class PostProcessor(object):
                     logger.fdebug(module + ' Issueid: ' + str(issueid))
                     sarc = nzbiss['SARC']
                     tmpiss = myDB.selectone('SELECT * FROM issues WHERE IssueID=?', [issueid]).fetchone()
+
+                    comicid = None
+                    comicname = None
+                    issuenumber = None
+
                     if tmpiss is not None:
                         comicid = tmpiss['ComicID']
                         comicname = tmpiss['ComicName']
                         issuenumber = tmpiss['Issue_Number']
-
+                        
                     #use issueid to get publisher, series, year, issue number
 
                 annchk = "no"
@@ -986,17 +1013,6 @@ class PostProcessor(object):
                         if sandwich is not None and 'S' in sandwich:
                             self._log("One-off STORYARC mode enabled for Post-Processing for " + str(sarc))
                             logger.info(module + ' One-off STORYARC mode enabled for Post-Processing for ' + str(sarc))
-                            arcdir = helpers.filesafe(sarc)
-                            if mylar.REPLACE_SPACES:
-                               arcdir = arcdir.replace(' ', mylar.REPLACE_CHAR)
-                            if mylar.STORYARCDIR:
-                                storyarcd = os.path.join(mylar.DESTINATION_DIR, "StoryArcs", arcdir)
-                                self._log("StoryArc Directory set to : " + storyarcd)
-                                logger.info(module + ' Story Arc Directory set to : ' + storyarcd)
-                            else:
-                                self._log("Grab-Bag Directory set to : " + mylar.GRABBAG_DIR)
-                                logger.info(module + ' Story Arc Directory set to : ' + mylar.GRABBAG_DIR)
-
                         else:
                             self._log("One-off mode enabled for Post-Processing. All I'm doing is moving the file untouched into the Grab-bag directory.")
                             logger.info(module + ' One-off mode enabled for Post-Processing. Will move into Grab-bag directory.')
@@ -1025,11 +1041,32 @@ class PostProcessor(object):
                             issuearcid = re.sub('S', '', issueid)
                             logger.fdebug(module + ' issuearcid:' + str(issuearcid))
                             arcdata = myDB.selectone("SELECT * FROM readinglist WHERE IssueArcID=?", [issuearcid]).fetchone()
+                            if arcdata is None:
+                                logger.warn(module + ' Unable to locate issue within Story Arcs. Cannot post-process at this time - try to Refresh the Arc and manual post-process if necessary')
+                                self._log('Unable to locate issue within Story Arcs in orde to properly assign metadata. PostProcessing aborted.')
+                                self.valreturn.append({"self.log": self.log,
+                                                       "mode": 'stop'})
+                                return self.queue.put(self.valreturn)
 
+                            if arcdata['Publisher'] is None:
+                                arcpub = arcdata['IssuePublisher']
+                            else:
+                                arcpub = arcdata['Publisher']
+
+                            grdst = helpers.arcformat(arcdata['StoryArc'], helpers.spantheyears(arcdata['StoryArcID']), arcpub)
+
+                            if comicid is None:
+                                comicid = arcdata['ComicID']
+                            if comicname is None:
+                                comicname = arcdata['ComicName']
+                            if issuenumber is None:
+                                issuenumber = arcdata['IssueNumber']
                             issueid = arcdata['IssueID']
 
                         #tag the meta.
                         metaresponse = None
+
+                        crcvalue = helpers.crc(os.path.join(self.nzb_folder, ofilename))
 
                         #if a one-off download from the pull-list, will not have an issueid associated with it, and will fail to due conversion/tagging.
                         #if altpull/2 method is being used, issueid may already be present so conversion/tagging is possible with some additional fixes.
@@ -1037,7 +1074,7 @@ class PostProcessor(object):
                             self._log("Metatagging enabled - proceeding...")
                             try:
                                 import cmtagmylar
-                                metaresponse = cmtagmylar.run(self.nzb_folder, issueid=issueid, filename=ofilename)
+                                metaresponse = cmtagmylar.run(self.nzb_folder, issueid=issueid, filename=os.path.join(self.nzb_folder, ofilename))
                             except ImportError:
                                 logger.warn(module + ' comictaggerlib not found on system. Ensure the ENTIRE lib directory is located within mylar/lib/comictaggerlib/')
                                 metaresponse = "fail"
@@ -1060,16 +1097,14 @@ class PostProcessor(object):
 
                         dfilename = ofilename
 
-                        if sandwich is not None and 'S' in sandwich:
-                            if mylar.STORYARCDIR:
-                                grdst = storyarcd
-                            else:
-                                grdst = mylar.DESTINATION_DIR
+                        if metaresponse:
+                            src_location = odir
                         else:
-                            if mylar.GRABBAG_DIR:
-                                grdst = mylar.GRABBAG_DIR
-                            else:
-                                grdst = mylar.DESTINATION_DIR
+                            src_location = self.nzb_folder
+
+                        grab_src = os.path.join(src_location, ofilename)
+                        self._log("Source Path : " + grab_src)
+                        logger.info(module + ' Source Path : ' + grab_src)
 
                         checkdirectory = filechecker.validateAndCreateDirectory(grdst, True, module=module)
                         if not checkdirectory:
@@ -1103,14 +1138,6 @@ class PostProcessor(object):
                         self._log("Destination Path : " + grab_dst)
 
                         logger.info(module + ' Destination Path : ' + grab_dst)
-                        if metaresponse:
-                            src_location = odir
-                        else:
-                            src_location = self.nzb_folder
-
-                        grab_src = os.path.join(src_location, ofilename)
-                        self._log("Source Path : " + grab_src)
-                        logger.info(module + ' Source Path : ' + grab_src)
 
                         logger.info(module + '[' + mylar.FILE_OPTS + '] ' + str(ofilename) + ' into directory : ' + str(grab_dst))
 
@@ -1558,8 +1585,11 @@ class PostProcessor(object):
             #tidy-up we can remove the empty directory too. odir is the original COMPLETE path at this point
             if ml is None:
                 subpath = odir
+                crcvalue = helpers.crc(os.path.join(odir, ofilename))
             else:
                 subpath = os.path.split(ml['ComicLocation'])[0]
+                crcvalue = helpers.crc(ml['ComicLocation'])
+
 
             #tag the meta.
             if mylar.ENABLE_META:
@@ -1846,10 +1876,10 @@ class PostProcessor(object):
 
             #update snatched table to change status to Downloaded
             if annchk == "no":
-                updater.foundsearch(comicid, issueid, down=downtype, module=module)
+                updater.foundsearch(comicid, issueid, down=downtype, module=module, crc=crcvalue)
                 dispiss = 'issue: ' + issuenumOG
             else:
-                updater.foundsearch(comicid, issueid, mode='want_ann', down=downtype, module=module)
+                updater.foundsearch(comicid, issueid, mode='want_ann', down=downtype, module=module, crc=crcvalue)
                 if 'annual' not in series.lower():
                     dispiss = 'annual issue: ' + issuenumOG
                 else:

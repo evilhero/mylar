@@ -402,13 +402,15 @@
                                            <label>Minimum # of seeders</label>
                                            <input type="text" name="minseeds" value="${config['minseeds']}" size="10">
                                        </div>
-
-					<input type="radio" name="torrent_downloader" id="torrent_downloader_watchlist" value="0" ${config['torrent_downloader_watchlist']}> Watchdir&nbsp;&nbsp;
-					<input type="radio" name="torrent_downloader" id="torrent_downloader_utorrent" value="1" ${config['torrent_downloader_utorrent']}> uTorrent&nbsp;&nbsp;
-					<input type="radio" name="torrent_downloader" id="torrent_downloader_rtorrent" value="2" ${config['torrent_downloader_rtorrent']}> rTorrent&nbsp;&nbsp;
-					<input type="radio" name="torrent_downloader" id="torrent_downloader_transmission" value="3" ${config['torrent_downloader_transmission']}> Transmission
-                    <input type="radio" name="torrent_downloader" id="torrent_downloader_deluge" value="4" ${config['torrent_downloader_deluge']}> Deluge
-				</div>
+                                          <center>
+                                            <input type="radio" name="torrent_downloader" id="torrent_downloader_watchlist" value="0" ${config['torrent_downloader_watchlist']}> Watchdir&nbsp;&nbsp;
+                                            <input type="radio" name="torrent_downloader" id="torrent_downloader_utorrent" value="1" ${config['torrent_downloader_utorrent']}> uTorrent&nbsp;&nbsp;
+                                            <input type="radio" name="torrent_downloader" id="torrent_downloader_rtorrent" value="2" ${config['torrent_downloader_rtorrent']}> rTorrent</br>
+                                            <input type="radio" name="torrent_downloader" id="torrent_downloader_transmission" value="3" ${config['torrent_downloader_transmission']}> Transmission&nbsp;&nbsp;
+                                            <input type="radio" name="torrent_downloader" id="torrent_downloader_deluge" value="4" ${config['torrent_downloader_deluge']}> Deluge&nbsp;&nbsp;
+                                            <input type="radio" name="torrent_downloader" id="torrent_downloader_qbittorrent" value="5" ${config['torrent_downloader_qbittorrent']}> qBittorrent
+                                          </center>
+                                </div>
 			</fieldset>
 			<fieldset id="watchlist_options">
                                 <div class="row checkbox left clearfix">
@@ -560,6 +562,36 @@
 					<small>Label to be used on the torrents</small>
 				</div>
 			</fieldset>
+                        </fieldset>
+                                <fieldset id="qbittorrent_options">
+                                <div class="row">
+                                        <label>qBittorrent Host:Port </label>
+                                        <input type="text" name="qbittorrent_host" value="${config['qbittorrent_host']}" size="30">
+                                </div>
+                                <div class="row">
+                                        <label>qBittorrent Username</label>
+                                        <input type="text" name="qbittorrent_username" value="${config['qbittorrent_username']}" size="30">
+                                </div>
+                                <div class="row">
+                                        <label>qBittorrent Password</label>
+                                        <input type="password" name="qbittorrent_password" value="${config['qbittorrent_password']}" size="30">
+                                </div>
+                                <div class="row">
+                                        <label>qBittorrent Label</label>
+                                        <input type="text" name="qbittorrent_label" value="${config['qbittorrent_label']}" size="30"><br/>
+                                        <small>Label to be used on the torrents</small>
+                                </div>
+                                <div class="row">
+                                        <label>qBittorrent Folder</label>
+                                        <input type="text" name="qbittorrent_folder" value="${config['qbittorrent_folder']}" size="30"><br/>
+                                        <small>Folder path where torrents will be assigned to</small>
+                                </div>
+                                <div class="row checkbox left clearfix">
+                                        <input id="qbittorrent_startonload" type="checkbox" name="qbittorrent_startonload" value="1" ${config['qbittorrent_startonload']} /><label>Start Torrent on Successful Load</label>
+                                        <small>Automatically start torrent on successful loading within qBittorrent client</small>
+                                </div>
+                        </fieldset>
+
                 </td>
             </tr>
 
@@ -913,7 +945,7 @@
                                     </div>
                                 </div>
                                 <div class="row checkbox left clearfix">
-                                    <input type="checkbox" id="enable_pre_scripts" onclick="initConfigCheckbox($this));" name="enable_pre_scripts" value="1" ${config['enable_pre_scripts']} /><label>Use Extra Script BEFORE Post-Processing</label>
+                                    <input type="checkbox" id="enable_pre_scripts" onclick="initConfigCheckbox($this));" name="enable_pre_scripts" value="1" ${config['enable_pre_scripts']} /><label>Run script BEFORE Post-Processing</label>
                                 </div>
                                 <div class="config">
                                    <div class="row">
@@ -921,9 +953,19 @@
                                       <input type="text" name="pre_scripts" value="${config['pre_scripts']}" size="30">
                                       <small>enter in the absolute path to the script</small>
                                    </div>
-                                </div>  
+                                </div>
                                 <div class="row checkbox left clearfix">
-                                    <input type="checkbox" id="enable_extra_scripts" onclick="initConfigCheckbox($this));" name="enable_extra_scripts" value="1" ${config['enable_extra_scripts']} /><label>Use Extra Script AFTER Post-Processing</label>
+                                    <input type="checkbox" id="enable_snatch_script" onclick="initConfigCheckbox($this));" name="enable_snatch_script" value="1" ${config['enable_snatch_script']} /><label>Run script AFTER an item has been snatched and sent to client</label>
+                                </div>
+                                <div class="config">
+                                    <div class="row">
+                                        <label>On Snatch Script Location</label>
+                                        <input type="text" name="snatch_script" value="${config['snatch_script']}" size="30">
+                                        <small>enter in the absolute path to the script</small>
+                                    </div>
+                                </div>
+                                <div class="row checkbox left clearfix">
+                                    <input type="checkbox" id="enable_extra_scripts" onclick="initConfigCheckbox($this));" name="enable_extra_scripts" value="1" ${config['enable_extra_scripts']} /><label>Run script AFTER Post-Processing</label>
                                 </div>
                                 <div class="config">
                                     <div class="row">
@@ -1117,7 +1159,7 @@
                                         <input type="checkbox" name="nma_onsnatch" value="1" ${config['nma_onsnatch']} /><label>Notify on snatch?</label>
                                     </div>
                                     <label>NotifyMyAndroid API Key</label>
-                                    <input type="text" name="nma_apikey" value="${config['nma_apikey']}" size="30">
+                                    <input type="text" name="nma_apikey" id="nma_apikey" value="${config['nma_apikey']}" size="30">
                                     <small>Separate multiple api keys with commas</small>
                             </div>
                             <div class="row">
@@ -1145,8 +1187,9 @@
                                         %endfor
                                 </select>
                             </div>
-                            <div class="row">
-                                    <input type="button" value="Test NMA" id="nma_test" />
+                            <div align="center" class="row">
+                                 <input type="button" value="Test NMA" id="nma_test" style="float:center" /></br>
+                                 <input type="text" name="nmastatus" style="text-align:center; font-size:11px;" id="nmastatus" size="55" DISABLED />
                             </div>
                         </div>
                      </fieldset>
@@ -1204,7 +1247,7 @@
                                         <input type="checkbox" name="pushbullet_onsnatch" value="1" ${config['pushbullet_onsnatch']} /><label>Notify on snatch?</label>
                                     </div>
                                     <div class="row">
-                                        <label>API Key</label><input type="text" name="pushbullet_apikey" value="${config['pushbullet_apikey']}" size="50">
+                                        <label>API Key</label><input type="text" name="pushbullet_apikey" id="pushbullet_apikey" value="${config['pushbullet_apikey']}" size="50">
                                         <small>Warning: Will send to ALL your pushbullet devices</small>
                                     </div>
                                     <div class="row">
@@ -1215,9 +1258,10 @@
                                         <input type="button" class="btn" value="Update device list" id="getPushbulletDevices" />
 -->
                                     </div>
-                                    <div class="row">
-                                         <input type="button" value="Test Pushbullet" id="pushbullet_test" />
-                                    </div>
+                                    <div align="center" class="row">
+                                        <input type="button" value="Test Pushbullet" id="pushbullet_test" style="float:center" /></br>
+                                        <input type="text" name="pbstatus" style="text-align:center; font-size:11px;" id="pbstatus" size="55" DISABLED />
+                                   </div>
                                 </div>
                             </fieldset>
 
@@ -1520,29 +1564,34 @@
 
                 if ($("#torrent_downloader_watchlist").is(":checked"))
                         {
-                                $("#utorrent_options,#rtorrent_options,#transmission_options,#deluge_options").hide();
+                                $("#utorrent_options,#rtorrent_options,#transmission_options,#deluge_options,#qbittorrent_options").hide();
                                 $("#watchlist_options").show();
                         }
                 if ($("#torrent_downloader_utorrent").is(":checked"))
                         {
-                                $("#watchlist_options,#rtorrent_options,#transmission_options,#deluge_options").hide();
+                                $("#watchlist_options,#rtorrent_options,#transmission_options,#deluge_options,#qbittorrent_options").hide();
                                 $("#utorrent_options").show();
                         }
-               if ($("#torrent_downloader_rtorrent").is(":checked"))
+                if ($("#torrent_downloader_rtorrent").is(":checked"))
                         {
-                                $("#utorrent_options,#watchlist_options,#transmission_options,#deluge_options").hide();
+                                $("#utorrent_options,#watchlist_options,#transmission_options,#deluge_options,#qbittorrent_options").hide();
                                 $("#rtorrent_options").show();
                         }
                 if ($("#torrent_downloader_transmission").is(":checked"))
                         {
-                                $("#utorrent_options,#rtorrent_options,#watchlist_options,#deluge_options").hide();
+                                $("#utorrent_options,#rtorrent_options,#watchlist_options,#deluge_options,#qbittorrent_options").hide();
                                 $("#transmission_options").show();
                         }
-                 if ($("#torrent_downloader_deluge").is(":checked"))
+                if ($("#torrent_downloader_deluge").is(":checked"))
                         {
-                                $("#utorrent_options,#rtorrent_options,#watchlist_options,#transmission_options").hide();
+                                $("#utorrent_options,#rtorrent_options,#watchlist_options,#transmission_options,#qbittorrent_options").hide();
                                 $("#deluge_options").show();
                         } 
+                if ($("#torrent_downloader_qbittorrent").is(":checked"))
+                        {
+                                $("#utorrent_options,#rtorrent_options,#watchlist_options,#transmission_options,#deluge_options").hide();
+                                $("#qbittorrent_options").show();
+                        }
 
                 $('input[type=radio]').change(function(){
                         if ($("#nzb_downloader_sabnzbd").is(":checked"))
@@ -1559,24 +1608,28 @@
                         }
 		   if ($("#torrent_downloader_watchlist").is(":checked"))
 		   {
-			$("#utorrent_options,#rtorrent_options,#transmission_options,#deluge_options").fadeOut("fast", function() { $("#watchlist_options").fadeIn() });
+			$("#utorrent_options,#rtorrent_options,#transmission_options,#deluge_options,#qbittorrent_options").fadeOut("fast", function() { $("#watchlist_options").fadeIn() });
 		   }
 		   if ($("#torrent_downloader_utorrent").is(":checked"))
 		   {
-			$("#watchlist_options,#rtorrent_options,#transmission_options,#deluge_options").fadeOut("fast", function() { $("#utorrent_options").fadeIn() });
+			$("#watchlist_options,#rtorrent_options,#transmission_options,#deluge_options,#qbittorrent_options").fadeOut("fast", function() { $("#utorrent_options").fadeIn() });
 		   }
 		   if ($("#torrent_downloader_rtorrent").is(":checked"))
 		   {
-			$("#utorrent_options,#watchlist_options,#transmission_options,#deluge_options").fadeOut("fast", function() { $("#rtorrent_options").fadeIn() });
+			$("#utorrent_options,#watchlist_options,#transmission_options,#deluge_options,#qbittorrent_options").fadeOut("fast", function() { $("#rtorrent_options").fadeIn() });
 		   }
 		   if ($("#torrent_downloader_transmission").is(":checked"))
 		   {
-			$("#utorrent_options,#rtorrent_options,#watchlist_options,#deluge_options").fadeOut("fast", function() { $("#transmission_options").fadeIn() });
+			$("#utorrent_options,#rtorrent_options,#watchlist_options,#deluge_options,#qbittorrent_options").fadeOut("fast", function() { $("#transmission_options").fadeIn() });
 		   }
 		   if ($("#torrent_downloader_deluge").is(":checked"))
 		   {
-			$("#utorrent_options,#rtorrent_options,#watchlist_options,#transmission_options").fadeOut("fast", function() { $("#deluge_options").fadeIn() });
+			$("#utorrent_options,#rtorrent_options,#watchlist_options,#transmission_options,#qbittorrent_options").fadeOut("fast", function() { $("#deluge_options").fadeIn() });
 		   }
+                   if ($("#torrent_downloader_qbittorrent").is(":checked"))
+                   {
+                        $("#utorrent_options,#rtorrent_options,#watchlist_options,#transmission_options,#deluge_options").fadeOut("fast", function() { $("#qbittorrent_options").fadeIn() });
+                   }
                 });
 
                 var deletedNewznabs = 0;
@@ -1681,10 +1734,18 @@
                 function addAction() {
                         $('#autoadd').append('<input type="hidden" name="tsab" value=1 />');
                 };
-
                 $('#nma_test').click(function () {
+                    var apikey = document.getElementById('nma_apikey').value;
                     $.get("testNMA",
-                        function (data) { $('#ajaxMsg').html("<div class='msg'><span class='ui-icon ui-icon-check'></span>"+data+"</div>"); });
+                        { apikey: apikey },
+                        function(data){
+                            if (data.error != undefined) {
+                                alert(data.error);
+                                return;
+                            }
+                            $('#nmastatus').val(data);
+                            $('#ajaxMsg').html("<div class='msg'><span class='ui-icon ui-icon-check'></span>"+data+"</div>");
+                    });
                     $('#ajaxMsg').addClass('success').fadeIn().delay(3000).fadeOut();
                 });
 
@@ -1707,8 +1768,17 @@
                 });
 
                 $('#pushbullet_test').click(function () {
+                    var apikey = document.getElementById('pushbullet_apikey').value;
                     $.get("testpushbullet",
-                        function (data) { $('#ajaxMsg').html("<div class='msg'><span class='ui-icon ui-icon-check'></span>"+data+"</div>"); });
+                        { apikey: apikey },
+                        function(data){
+                            if (data.error != undefined) {
+                                alert(data.error);
+                                return;
+                            }
+                            $('#pbstatus').val(data);
+                            $('#ajaxMsg').html("<div class='msg'><span class='ui-icon ui-icon-check'></span>"+data+"</div>");
+                    });
                     $('#ajaxMsg').addClass('success').fadeIn().delay(3000).fadeOut();
                 });
 
@@ -1749,6 +1819,7 @@
                 initConfigCheckbox("#post_processing");
                 initConfigCheckbox("#enable_check_folder");
                 initConfigCheckbox("#enable_pre_scripts");
+                initConfigCheckbox("#enable_snatch_script");
                 initConfigCheckbox("#enable_extra_scripts");
 	}
 	$(document).ready(function() {

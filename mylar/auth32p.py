@@ -48,7 +48,7 @@ class info32p(object):
             self.authkey = lses.authkey
             self.passkey = lses.passkey
             self.uid = lses.uid
-         
+
         self.reauthenticate = reauthenticate
         self.searchterm = searchterm
         self.publisher_list = {'Entertainment', 'Press', 'Comics', 'Publishing', 'Comix', 'Studios!'}
@@ -165,8 +165,6 @@ class info32p(object):
         #self.searchterm is a tuple containing series name, issue number, volume and publisher.
         series_search = self.searchterm['series']
         comic_id = self.searchterm['id']
-        if comic_id:
-            chk_id = helpers.checkthe_id(comic_id)
 
         annualize = False
         if 'Annual' in series_search:
@@ -300,18 +298,18 @@ class info32p(object):
                     dataset += data
                 if len(pdata) > 0:
                     dataset += pdata
-                
+
             if chk_id is None and any([len(data) == 1, len(pdata) == 1]):
                 #update the 32p_reference so we avoid doing a url lookup next time
                 helpers.checkthe_id(comic_id, dataset)
             else:
-                logger.warn('More than one result - will update the 32p reference point once the issue has been successfully matched against.')
+                logger.warn('Unable to properly verify reference on 32P - will update the 32P reference point once the issue has been successfully matched against.')
 
             results32p = []
             resultlist = {}
 
             for x in dataset:
-
+                #for 0-day packs, issue=week#, volume=month, id=0-day year pack
                 payload = {'action': 'groupsearch',
                            'id':     x['id'], #searchid,
                            'issue':  issue_search}
@@ -490,7 +488,7 @@ class info32p(object):
 
             if r.status_code != 200:
                 logger.warn(self.module + " Got bad status code from login POST: %d\n%s\n%s", r.status_code, r.text, r.headers)
-                logger.debug(self.module + " Request URL: %s \n Content: %s \n History: %s \n Json: %s", r.url ,r.text, r.history, d)
+                logger.debug(self.module + " Request URL: %s \n Content: %s \n History: %s", r.url ,r.text, r.history)
                 self.error = {'status':'Bad Status code', 'message':(r.status_code, r.text, r.headers)}
                 return False
 
@@ -498,7 +496,7 @@ class info32p(object):
                 logger.debug(self.module + ' Trying to analyze login JSON reply from 32P: %s', r.text)
                 d = r.json()
             except:
-                logger.debug(self.module + " Request URL: %s \n Content: %s \n History: %s \n Json: %s", r.url ,r.text, r.history, d)
+                logger.debug(self.module + " Request URL: %s \n Content: %s \n History: %s", r.url ,r.text, r.history)
                 logger.error(self.module + " The data returned by the login page was not JSON: %s", r.text)
                 self.error = {'status':'JSON not returned', 'message':r.text}
                 return False
