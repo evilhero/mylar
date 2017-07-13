@@ -371,6 +371,7 @@ class WebInterface(object):
                         return serve_template(templatename="searchfix-2.html", title="In-Depth Results", sresults=sresults)
         #print ("imported is: " + str(imported))
         threading.Thread(target=importer.addComictoDB, args=[comicid, mismatch, None, imported, ogcname]).start()
+        time.sleep(5) #wait 5s so the db can be populated enough to display the page - otherwise will return to home page if not enough info is loaded.
         raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % comicid)
     addComic.exposed = True
 
@@ -1074,6 +1075,9 @@ class WebInterface(object):
                     #updater.forceRescan(mi['ComicID'])
                     issuestoArchive.append(IssueID)
                 elif action == 'Wanted' or action == 'Retry':
+                    if mi['Status'] == 'Wanted':
+                        logger.fdebug('Issue already set to Wanted status - no need to change it again.')
+                        continue
                     if action == 'Retry': newaction = 'Wanted'
                     logger.fdebug(u"Marking %s %s as %s" % (comicname, mi['Issue_Number'], newaction))
                     issuesToAdd.append(IssueID)
@@ -1329,7 +1333,7 @@ class WebInterface(object):
         threading.Thread(target=self.queueissue, kwargs=kwargs).start()
     queueit.exposed = True
 
-    def queueissue(self, mode, ComicName=None, ComicID=None, ComicYear=None, ComicIssue=None, IssueID=None, new=False, redirect=None, SeriesYear=None, SARC=None, IssueArcID=None, manualsearch=None, Publisher=None, pullinfo=None):
+    def queueissue(self, mode, ComicName=None, ComicID=None, ComicYear=None, ComicIssue=None, IssueID=None, new=False, redirect=None, SeriesYear=None, SARC=None, IssueArcID=None, manualsearch=None, Publisher=None, pullinfo=None, pullweek=None, pullyear=None):
         logger.fdebug('ComicID:' + str(ComicID))
         logger.fdebug('mode:' + str(mode))
         now = datetime.datetime.now()
@@ -1383,25 +1387,26 @@ class WebInterface(object):
                 controlValueDict = {"IssueArcID": IssueArcID}
                 newStatus = {"Status": "Snatched"}
             myDB.upsert("readinglist", newStatus, controlValueDict)
-            #raise cherrypy.HTTPRedirect("readlist")
             return foundcom
 
-        elif ComicID is None and mode == 'pullwant':
+        elif mode == 'pullwant':  #and ComicID is None
             #this is for marking individual comics from the pullist to be downloaded.
+            #--comicid & issueid may both be known (or either) at any given point if alt_pull = 2
             #because ComicID and IssueID will both be None due to pullist, it's probably
             #better to set both to some generic #, and then filter out later...
             IssueDate = pullinfo
             try:
-                ComicYear = str(pullinfo)[:4]
+                ComicYear = IssueDate[:4]
             except:
                 ComicYear == now.year
             if Publisher == 'COMICS': Publisher = None
             logger.info(u"Marking " + ComicName + " " + ComicIssue + " as wanted...")
-            foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=Publisher, IssueDate=IssueDate, StoreDate=IssueDate, IssueID=None, AlternateSearch=None, UseFuzzy=None, ComicVersion=None, allow_packs=False)
+            foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=Publisher, IssueDate=IssueDate, StoreDate=IssueDate, IssueID=IssueID, ComicID=ComicID, AlternateSearch=None, mode=mode, UseFuzzy=None, ComicVersion=None, allow_packs=False)
             if foundcom['status'] is True:
-                logger.info(u"Downloaded " + ComicName + " " + ComicIssue)
-            raise cherrypy.HTTPRedirect("pullist")
-            #return
+                logger.info('[ONE-OFF MODE] Successfully Downloaded ' + ComicName + ' ' + ComicIssue)
+                return updater.foundsearch(ComicID, IssueID, mode=mode, provider=prov, hash=foundcom['info']['t_hash'], pullinfo={'weeknumber': pullweek, 'year': pullyear})
+            return
+
         elif mode == 'want' or mode == 'want_ann' or manualsearch:
             cdname = myDB.selectone("SELECT * from comics where ComicID=?", [ComicID]).fetchone()
             ComicName_Filesafe = cdname['ComicName_Filesafe']
@@ -1644,6 +1649,7 @@ class WebInterface(object):
 
             watchlibrary = helpers.listLibrary()
             issueLibrary = helpers.listIssues(weekinfo['weeknumber'], weekinfo['year'])
+            oneofflist = helpers.listoneoffs(weekinfo['weeknumber'], weekinfo['year'])
 
             for weekly in w_results:
                 xfound = False
@@ -1662,7 +1668,12 @@ class WebInterface(object):
                             break
 
                 else:
-                    haveit = "No"
+                    xlist = [x['Status'] for x in oneofflist if x['IssueID'] == weekly['IssueID']]
+                    if xlist:
+                        haveit = 'OneOff'
+                        tmp_status = xlist[0]
+                    else:
+                        haveit = "No"
 
                 linkit = None
                 if all([weekly['ComicID'] is not None, weekly['ComicID'] != '']) and haveit == 'No':
@@ -1720,7 +1731,6 @@ class WebInterface(object):
             weeklyresults = sorted(weeklyresults, key=itemgetter('PUBLISHER', 'COMIC'), reverse=False)
         else:
             self.manualpull()
-
         if week:
             return serve_template(templatename="weeklypull.html", title="Weekly Pull", weeklyresults=weeklyresults, pullfilter=True, weekfold=weekinfo['week_folder'], wantedcount=wantedcount, weekinfo=weekinfo)
         else:
@@ -4818,35 +4828,40 @@ class WebInterface(object):
 
     configUpdate.exposed = True
 
-    def SABtest(self):
-        sab_host = mylar.SAB_HOST
-        sab_username = mylar.SAB_USERNAME
-        sab_password = mylar.SAB_PASSWORD
-        sab_apikey = mylar.SAB_APIKEY
+    def SABtest(self, sabhost=None, sabusername=None, sabpassword=None, sabapikey=None):
+        logger.info('here')
+        if sabhost is None:
+            sabhost = mylar.SAB_HOST
+        if sabusername is None:
+            sabusername = mylar.SAB_USERNAME
+        if sabpassword is None:
+            sabpassword = mylar.SAB_PASSWORD
+        if sabapikey is None:
+            sabapikey = mylar.SAB_APIKEY
         logger.fdebug('testing SABnzbd connection')
-        logger.fdebug('sabhost: ' + str(sab_host))
-        logger.fdebug('sab_username: ' + str(sab_username))
-        logger.fdebug('sab_password: ' + str(sab_password))
-        logger.fdebug('sab_apikey: ' + str(sab_apikey))
+        logger.fdebug('sabhost: ' + str(sabhost))
+        logger.fdebug('sabusername: ' + str(sabusername))
+        logger.fdebug('sabpassword: ' + str(sabpassword))
+        logger.fdebug('sabapikey: ' + str(sabapikey))
         if mylar.USE_SABNZBD:
             import requests
             from xml.dom.minidom import parseString, Element
 
             #if user/pass given, we can auto-fill the API ;)
-            if sab_username is None or sab_password is None:
+            if sabusername is None or sabpassword is None:
                 logger.error('No Username / Password provided for SABnzbd credentials. Unable to test API key')
                 return "Invalid Username/Password provided"
-            logger.fdebug('testing connection to SABnzbd @ ' + sab_host)
-            if sab_host.endswith('/'):
-                sabhost = sab_host
+            logger.fdebug('testing connection to SABnzbd @ ' + sabhost)
+            if sabhost.endswith('/'):
+                sabhost = sabhost
             else:
-                sabhost = sab_host + '/'
+                sabhost = sabhost + '/'
 
             querysab = sabhost + 'api'
             payload = {'mode':    'get_config',
                        'section': 'misc',
                        'output':  'xml',
-                       'apikey':   sab_apikey}
+                       'apikey':   sabapikey}
 
             if sabhost.startswith('https'):
                 verify = True
@@ -4856,7 +4871,7 @@ class WebInterface(object):
             try:
                 r = requests.get(querysab, params=payload, verify=verify)
             except Exception, e:
-                logger.warn('Error fetching data from %s: %s' % (sab_host, e))
+                logger.warn('Error fetching data from %s: %s' % (sabhost, e))
                 if requests.exceptions.SSLError:
                     logger.warn('Cannot verify ssl certificate. Attempting to authenticate with no ssl-certificate verification.')
                     try:
@@ -4870,7 +4885,7 @@ class WebInterface(object):
                     try:
                         r = requests.get(querysab, params=payload, verify=verify)
                     except Exception, e:
-                        logger.warn('Error fetching data from %s: %s' % (sab_host, e))
+                        logger.warn('Error fetching data from %s: %s' % (sabhost, e))
                         return 'Unable to retrieve data from SABnzbd'
                 else:
                     return 'Unable to retrieve data from SABnzbd'
@@ -4903,11 +4918,11 @@ class WebInterface(object):
                                'name':    'http://www.example.com/example.nzb',
                                'nzbname': 'NiceName',
                                'output':  'xml',
-                               'apikey':   sab_apikey}
+                               'apikey':   sabapikey}
                     try:
                         r = requests.get(querysab, params=payload, verify=verify)
                     except Exception, e:
-                        logger.warn('Error fetching data from %s: %s' % (sab_host, e))
+                        logger.warn('Error fetching data from %s: %s' % (sabhost, e))
                         return 'Unable to retrieve data from SABnzbd'
 
                     dom = parseString(r.content)
@@ -4925,8 +4940,8 @@ class WebInterface(object):
                 if qd == False: return "Invalid APIKey provided."
 
             #test which apikey provided
-            if q_nzbkey != sab_apikey:
-                if q_apikey != sab_apikey:
+            if q_nzbkey != sabapikey:
+                if q_apikey != sabapikey:
                     logger.error('APIKey provided does not match with SABnzbd')
                     return "Invalid APIKey provided"
                 else:
@@ -4981,9 +4996,9 @@ class WebInterface(object):
 
     getComicArtwork.exposed = True
 
-    def findsabAPI(self):
+    def findsabAPI(self, sabhost=None, sabusername=None, sabpassword=None):
         import sabparse
-        sabapi = sabparse.sabnzbd()
+        sabapi = sabparse.sabnzbd(sabhost, sabusername, sabpassword)
         logger.info('SAB NZBKey found as : ' + str(sabapi) + '. You still have to save the config to retain this setting.')
         mylar.SAB_APIKEY = sabapi
         return sabapi
@@ -5203,12 +5218,13 @@ class WebInterface(object):
             return "Error sending test message to Boxcar"
     testboxcar.exposed = True
 
-    def testpushover(self):
-        pushover = notifiers.PUSHOVER()
+    def testpushover(self, apikey, userkey):
+        pushover = notifiers.PUSHOVER(test_apikey=apikey, test_userkey=userkey)
         result = pushover.test_notify()
         if result == True:
             return "Successfully sent PushOver test -  check to make sure it worked"
         else:
+            logger.warn('Test variables used [APIKEY: %s][USERKEY: %s]' % (apikey, userkey))
             return "Error sending test message to Pushover"
     testpushover.exposed = True
 
@@ -5222,12 +5238,13 @@ class WebInterface(object):
             return result['message']
     testpushbullet.exposed = True
 
-    def testtelegram(self):
-        telegram = notifiers.TELEGRAM()
+    def testtelegram(self, userid, token):
+        telegram = notifiers.TELEGRAM(test_userid=userid, test_token=token)
         result = telegram.test_notify()
         if result == True:
             return "Successfully sent Telegram test -  check to make sure it worked"
         else:
+            logger.warn('Test variables used [USERID: %s][TOKEN: %s]' % (userid, token))
             return "Error sending test message to Telegram"
     testtelegram.exposed = True
 

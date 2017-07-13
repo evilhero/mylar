@@ -7,7 +7,7 @@ import requests
 import cfscrape
 import urlparse
 import ftpsshup
-import datetime
+from datetime import datetime, timedelta
 import gzip
 import time
 import random
@@ -232,29 +232,81 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
                     except AttributeError:
                         logger.warn('Unable to retrieve results - probably just hitting it too fast...')
                         continue
+                    id = urlparse.urlparse(feedme.entries[i].link).path.rpartition('/')[0]
+                    
                     torthetpse.append({
                                     'site':     picksite,
                                     'title':    feedme.entries[i].title,
-                                    'link':     re.sub('.torrent', '', str(urlparse.urlparse(tmpenc['url'])[2].rpartition('/')[2])).strip(),
+                                    'id':       re.sub('/', '', id).strip(),  #make sure to remove the leading '/'
+                                    'link':     tmpenc['url'],   #should change this to magnet
                                     'pubdate':  feedme.entries[i].updated,
                                     'size':     tmpenc['length']
                                     })
                 #DEMONOID / FEED
                 elif pickfeed == "6":
                     tmpsz = feedme.entries[i].description
-                    tmpsz_st = tmpsz.find('Size:') + 6
-                    if 'GB' in tmpsz[tmpsz_st:]:
+                    tmpsz_st = tmpsz.find('Size')
+                    if tmpsz_st != -1:
+                        tmpsize = tmpsz[tmpsz_st:tmpsz_st+14]
+                        if any(['GB' in tmpsize, 'MB' in tmpsize, 'KB' in tmpsize, 'TB' in tmpsize]):
+                            tmp1 = tmpsz.find('MB', tmpsz_st)
+                            if tmp1 == -1:
+                                tmp1 = tmpsz.find('GB', tmpsz_st)
+                                if tmp1 == -1:
+                                    tmp1 = tmpsz.find('TB', tmpsz_st)
+                                    if tmp1 == -1:
+                                        tmp1 = tmpsz.find('KB', tmpsz_st)
+                            tmpsz_end = tmp1 + 2
+                            tmpsz_st += 7
+                    else:
+                        tmpsz_st = tmpsz.rfind('|')
+                        if tmpsz_st != -1:
+                            tmpsize = tmpsz[tmpsz_st:tmpsz_st+14]
+                            if any(['GB' in tmpsize, 'MB' in tmpsize, 'KB' in tmpsize, 'TB' in tmpsize]):
+                                tmp1 = tmpsz.find('MB', tmpsz_st)
+                                if tmp1 == -1:
+                                    tmp1 = tmpsz.find('GB', tmpsz_st)
+                                    if tmp1 == -1:
+                                        tmp1 = tmpsz.find('TB', tmpsz_st)
+                                        if tmp1 == -1:
+                                            tmp1 = tmpsz.find('KB', tmpsz_st)
+
+                            tmpsz_end = tmp1 + 2
+                            tmpsz_st += 2
+
+                    if 'KB' in tmpsz[tmpsz_st:tmpsz_end]:
+                        szform = 'KB'
+                        sz = 'K'
+                    elif 'GB' in tmpsz[tmpsz_st:tmpsz_end]:
                         szform = 'GB'
                         sz = 'G'
-                    elif 'MB' in tmpsz[tmpsz_st:]:
+                    elif 'MB' in tmpsz[tmpsz_st:tmpsz_end]:
                         szform = 'MB'
                         sz = 'M'
+                    elif 'TB' in tmpsz[tmpsz_st:tmpsz_end]:
+                        szform = 'TB'
+                        sz = 'T'
+
+                    tsize = helpers.human2bytes(str(tmpsz[tmpsz_st:tmpsz.find(szform, tmpsz_st) -1]) + str(sz))
+
+                    #timestamp is in YYYY-MM-DDTHH:MM:SS+TZ :/
+                    dt = feedme.entries[i].updated
+                    try:
+                        pd = datetime.strptime(dt[0:19], '%Y-%m-%dT%H:%M:%S')
+                        pdate = pd.strftime('%a, %d %b %Y %H:%M:%S') + ' ' + re.sub(':', '', dt[19:]).strip()
+                        #if dt[19]=='+':
+                        #    pdate+=timedelta(hours=int(dt[20:22]), minutes=int(dt[23:]))
+                        #elif dt[19]=='-':
+                        #    pdate-=timedelta(hours=int(dt[20:22]), minutes=int(dt[23:]))
+                    except:
+                        pdate = feedme.entries[i].updated
+
                     feeddata.append({
                                     'site':     picksite,
                                     'title':    feedme.entries[i].title,
-                                    'link':     str(urlparse.urlparse(feedme.entries[i].link)[2].rpartition('/')[0].rsplit('/',2)[1]),
-                                    'pubdate':  feedme.entries[i].updated,
-                                    'size':     helpers.human2bytes(str(tmpsz[tmpsz_st:tmpsz.find(szform, tmpsz_st) -1]) + str(sz)),
+                                    'link':     str(urlparse.urlparse(feedme.entries[i].link)[2].rpartition('/')[0].rsplit('/',2)[2]),
+                                    'pubdate':  pdate,
+                                    'size':     tsize,
                                     })
 
                 #32p / FEEDS
@@ -280,6 +332,11 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
                         justdigits = '0'
 
                     seeddigits = 0
+
+                    #if '0-Day Comics Pack' in series:
+                    #    logger.info('Comic Pack detected : ' + series)
+                    #    itd = True
+
 
                     if int(mylar.MINSEEDS) >= int(seeddigits):
                         #new releases has it as '&id', notification feeds have it as %ampid (possibly even &amp;id
@@ -462,10 +519,10 @@ def rssdbupdate(feeddata, i, type):
     return
 
 
-def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None):
+def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None, oneoff=False):
     myDB = db.DBConnection()
     seriesname_alt = None
-    if comicid is None or comicid == 'None':
+    if any([comicid is None, comicid == 'None', oneoff is True]):
         pass
     else:
         logger.fdebug('ComicID: ' + str(comicid))
@@ -658,10 +715,10 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None):
 
     return torinfo
 
-def nzbdbsearch(seriesname, issue, comicid=None, nzbprov=None, searchYear=None, ComicVersion=None):
+def nzbdbsearch(seriesname, issue, comicid=None, nzbprov=None, searchYear=None, ComicVersion=None, oneoff=False):
     myDB = db.DBConnection()
     seriesname_alt = None
-    if comicid is None or comicid == 'None':
+    if any([comicid is None, comicid == 'None', oneoff is True]):
         pass
     else:
         snm = myDB.selectone("SELECT * FROM comics WHERE comicid=?", [comicid]).fetchone()
@@ -846,26 +903,30 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site):
                        # 'User-Agent':      str(mylar.USER_AGENT)}
 
     elif site == 'TPSE':
-        url = helpers.torrent_create('TPSE', linkit)
+        pass
+        #linkit should be the magnet link since it's TPSE
+        #url = linkit
 
-        if url.startswith('https'):
-            tpse_referrer = 'https://torrentproject.se/'
-        else:
-            tpse_referrer = 'http://torrentproject.se/'
+        #url = helpers.torrent_create('TPSE', linkit)
 
-        try:
-            scraper = cfscrape.create_scraper()
-            cf_cookievalue, cf_user_agent = scraper.get_tokens(url)
-            headers = {'Accept-encoding': 'gzip',
-                       'User-Agent':       cf_user_agent}
+        #if url.startswith('https'):
+        #    tpse_referrer = 'https://torrentproject.se/'
+        #else:
+        #    tpse_referrer = 'http://torrentproject.se/'
 
-        except Exception, e:
-            return "fail"
+        #try:
+        #    scraper = cfscrape.create_scraper()
+        #    cf_cookievalue, cf_user_agent = scraper.get_tokens(url)
+        #    headers = {'Accept-encoding': 'gzip',
+        #               'User-Agent':       cf_user_agent}
 
-        logger.fdebug('Grabbing torrent from url:' + str(url))
+        #except Exception, e:
+        #    return "fail"
 
-        payload = None
-        verify = False
+        #logger.fdebug('Grabbing torrent from url:' + str(url))
+
+        #payload = None
+        #verify = False
 
     elif site == 'DEM':
         url = helpers.torrent_create('DEM', linkit)
@@ -910,110 +971,121 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site):
         payload = None
         verify = False
 
-    if not verify:
-        #32P throws back an insecure warning because it can't validate against the CA. The below suppresses the message just for 32P instead of being displayed.
-        #disable SSL warnings - too many 'warning' messages about invalid certificates
-        try:
-            from requests.packages.urllib3 import disable_warnings
-            disable_warnings()
-        except ImportError:
-            #this is probably not necessary and redudant, but leaving in for the time being.
-            from requests.packages.urllib3.exceptions import InsecureRequestWarning
-            requests.packages.urllib3.disable_warnings()
+    if site != 'TPSE':
+        if not verify:
+            #32P throws back an insecure warning because it can't validate against the CA. The below suppresses the message just for 32P instead of being displayed.
+            #disable SSL warnings - too many 'warning' messages about invalid certificates
             try:
-                from urllib3.exceptions import InsecureRequestWarning
-                urllib3.disable_warnings()
+                from requests.packages.urllib3 import disable_warnings
+                disable_warnings()
             except ImportError:
-                logger.warn('[EPIC FAILURE] Cannot load the requests module')
-                return "fail"
-    try:
-        scraper = cfscrape.create_scraper()
-        if cf_cookievalue:
-            r = scraper.get(url, params=payload, cookies=cf_cookievalue, verify=verify, stream=True, headers=headers)
-        else:
-            r = scraper.get(url, params=payload, verify=verify, stream=True, headers=headers)
-        #r = requests.get(url, params=payload, verify=verify, stream=True, headers=headers)
-
-    except Exception, e:
-        logger.warn('Error fetching data from %s (%s): %s' % (site, url, e))
-        if site == '32P':
-            logger.info('[TOR2CLIENT-32P] Retrying with 32P')
-            if mylar.MODE_32P == 1:
-                
-                logger.info('[TOR2CLIENT-32P] Attempting to re-authenticate against 32P and poll new keys as required.')
-                feed32p = auth32p.info32p(reauthenticate=True)
-                feedinfo = feed32p.authenticate()
-
-                if feedinfo == "disable":
-                    mylar.ENABLE_32P = 0
-                    mylar.config_write()
-                    return "fail"
-                
-                logger.debug('[TOR2CLIENT-32P] Creating CF Scraper')
-                scraper = cfscrape.create_scraper()
-
-                logger.debug('[TOR2CLIENT-32P] payload: %s \n verify %s \n headers %s \n', payload, verify, headers)
-                
+                #this is probably not necessary and redudant, but leaving in for the time being.
+                from requests.packages.urllib3.exceptions import InsecureRequestWarning
+                requests.packages.urllib3.disable_warnings()
                 try:
-                    r = scraper.get(url, params=payload, verify=verify, allow_redirects=True)
-                except Exception, e:
-                    logger.warn('[TOR2CLIENT-32P] Unable to GET %s (%s): %s' % (site, url, e))
+                    from urllib3.exceptions import InsecureRequestWarning
+                    urllib3.disable_warnings()
+                except ImportError:
+                    logger.warn('[EPIC FAILURE] Cannot load the requests module')
+                    return "fail"
+        try:
+            scraper = cfscrape.create_scraper()
+            if cf_cookievalue:
+                r = scraper.get(url, params=payload, cookies=cf_cookievalue, verify=verify, stream=True, headers=headers)
+            else:
+                r = scraper.get(url, params=payload, verify=verify, stream=True, headers=headers)
+            #r = requests.get(url, params=payload, verify=verify, stream=True, headers=headers)
+
+        except Exception, e:
+            logger.warn('Error fetching data from %s (%s): %s' % (site, url, e))
+            if site == '32P':
+                logger.info('[TOR2CLIENT-32P] Retrying with 32P')
+                if mylar.MODE_32P == 1:
+                
+                    logger.info('[TOR2CLIENT-32P] Attempting to re-authenticate against 32P and poll new keys as required.')
+                    feed32p = auth32p.info32p(reauthenticate=True)
+                    feedinfo = feed32p.authenticate()
+
+                    if feedinfo == "disable":
+                        mylar.ENABLE_32P = 0
+                        mylar.config_write()
+                        return "fail"
+                
+                    logger.debug('[TOR2CLIENT-32P] Creating CF Scraper')
+                    scraper = cfscrape.create_scraper()
+
+                    logger.debug('[TOR2CLIENT-32P] payload: %s \n verify %s \n headers %s \n', payload, verify, headers)
+                
+                    try:
+                        r = scraper.get(url, params=payload, verify=verify, allow_redirects=True)
+                    except Exception, e:
+                        logger.warn('[TOR2CLIENT-32P] Unable to GET %s (%s): %s' % (site, url, e))
+                        return "fail"
+                else:
+                    logger.warn('[TOR2CLIENT-32P] Unable to authenticate using existing RSS Feed given. Make sure that you have provided a CURRENT feed from 32P')
                     return "fail"
             else:
-                logger.warn('[TOR2CLIENT-32P] Unable to authenticate using existing RSS Feed given. Make sure that you have provided a CURRENT feed from 32P')
+                logger.info('blah: ' + str(r.status_code))
                 return "fail"
-        else:
-            logger.info('blah: ' + str(r.status_code))
+
+        if any([site == 'TPSE', site == 'DEM', site == 'WWT']) and any([str(r.status_code) == '403', str(r.status_code) == '404', str(r.status_code) == '503']):
+            if str(r.status_code) != '503':
+                logger.warn('Unable to download from ' + site + ' [' + str(r.status_code) + ']')
+                #retry with the alternate torrent link.
+                url = helpers.torrent_create(site, linkit, True)
+                logger.fdebug('Trying alternate url: ' + str(url))
+                try:
+                    r = requests.get(url, params=payload, verify=verify, stream=True, headers=headers)
+
+                except Exception, e:
+                    return "fail"
+            else:
+                logger.warn('Cloudflare protection online for ' + site + '. Attempting to bypass...')
+                try:
+                    scraper = cfscrape.create_scraper()
+                    cf_cookievalue, cf_user_agent = cfscrape.get_cookie_string(url)
+                    headers = {'Accept-encoding': 'gzip',
+                               'User-Agent':       cf_user_agent}
+                
+                    r = scraper.get(url, verify=verify, cookies=cf_cookievalue, stream=True, headers=headers)
+                except Exception, e:
+                    return "fail"
+
+        if str(r.status_code) != '200':
+            logger.warn('Unable to download torrent from ' + site + ' [Status Code returned: ' + str(r.status_code) + ']')
             return "fail"
 
-    if any([site == 'TPSE', site == 'DEM', site == 'WWT']) and any([str(r.status_code) == '403', str(r.status_code) == '404', str(r.status_code) == '503']):
-        if str(r.status_code) != '503':
-            logger.warn('Unable to download from ' + site + ' [' + str(r.status_code) + ']')
-            #retry with the alternate torrent link.
-            url = helpers.torrent_create(site, linkit, True)
-            logger.fdebug('Trying alternate url: ' + str(url))
-            try:
-                r = requests.get(url, params=payload, verify=verify, stream=True, headers=headers)
+        if any([site == 'TPSE', site == 'DEM', site == 'WWT']):
+            if r.headers.get('Content-Encoding') == 'gzip':
+                buf = StringIO(r.content)
+                f = gzip.GzipFile(fileobj=buf)
 
-            except Exception, e:
-                return "fail"
-        else:
-            logger.warn('Cloudflare protection online for ' + site + '. Attempting to bypass...')
-            try:
-                scraper = cfscrape.create_scraper()
-                cf_cookievalue, cf_user_agent = cfscrape.get_cookie_string(url)
-                headers = {'Accept-encoding': 'gzip',
-                           'User-Agent':       cf_user_agent}
-                
-                r = scraper.get(url, verify=verify, cookies=cf_cookievalue, stream=True, headers=headers)
-            except Exception, e:
-                return "fail"
+        with open(filepath, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=1024):
+                if chunk: # filter out keep-alive new chunks
+                    f.write(chunk)
+                    f.flush()
 
-    if str(r.status_code) != '200':
-        logger.warn('Unable to download torrent from ' + site + ' [Status Code returned: ' + str(r.status_code) + ']')
-        return "fail"
+        logger.fdebug('[' + site + '] Saved torrent file to : ' + filepath)
+    else:
+       #tpse is magnet links only...
+       filepath = linkit
 
-    if any([site == 'TPSE', site == 'DEM', site == 'WWT']):
-        if r.headers.get('Content-Encoding') == 'gzip':
-            buf = StringIO(r.content)
-            f = gzip.GzipFile(fileobj=buf)
-
-    with open(filepath, 'wb') as f:
-        for chunk in r.iter_content(chunk_size=1024):
-            if chunk: # filter out keep-alive new chunks
-                f.write(chunk)
-                f.flush()
-
-    logger.fdebug('[' + site + '] Saved torrent file to : ' + filepath)
     if mylar.USE_UTORRENT:
         uTC = utorrent.utorrentclient()
-        torrent_info = uTC.addfile(filepath, filename)
-        if torrent_info:
+        if site == 'TPSE':
+            ti = uTC.addurl(linkit)
+        else:
+            ti = uTC.addfile(filepath, filename)
+        if ti == 'fail':
+            return ti
+        else:
+            #if ti is value, it will return the hash
+            torrent_info = []
+            torrent_info['hash'] = ti
             torrent_info['clientmode'] = 'utorrent'
             torrent_info['link'] = linkit
             return torrent_info
-        else:
-            return "fail"
 
     elif mylar.USE_RTORRENT:
         import test
