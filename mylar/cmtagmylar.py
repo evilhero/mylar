@@ -35,7 +35,7 @@ def run(dirName, nzbName=None, issueid=None, comversion=None, manual=None, filen
     logger.fdebug(module + ' Filename is : ' + filename)
 
     filepath = filename
-
+    og_filepath = filepath
     try:
         filename = os.path.split(filename)[1]   # just the filename itself
     except:
@@ -63,7 +63,7 @@ def run(dirName, nzbName=None, issueid=None, comversion=None, manual=None, filen
     except:
         logger.warn(module + ' Unexpected Error: %s' % sys.exc_info()[0])
         logger.warn(module + ' Unable to create temporary directory to perform meta-tagging. Processing without metatagging.')
-        tidyup(filepath, new_filepath, new_folder)
+        tidyup(og_filepath, new_filepath, new_folder, manualmeta)
         return "fail"
 
     ## Sets up other directories ##
@@ -107,7 +107,7 @@ def run(dirName, nzbName=None, issueid=None, comversion=None, manual=None, filen
     except subprocess.CalledProcessError as e:
         #logger.warn(module + "[WARNING] "command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
         logger.warn(module + '[WARNING] Make sure that you are using the comictagger included with Mylar.')
-        tidyup(filepath, new_filepath, new_folder)
+        tidyup(filepath, new_filepath, new_folder, manualmeta)
         return "fail"
 
     ctend = ctversion.find('\n')
@@ -139,7 +139,7 @@ def run(dirName, nzbName=None, issueid=None, comversion=None, manual=None, filen
 
     if tagcnt == 0:
         logger.warn(module + ' You have metatagging enabled, but you have not selected the type(s) of metadata to write. Please fix and re-run manually')
-        tidyup(filepath, new_filepath, new_folder)
+        tidyup(filepath, new_filepath, new_folder, manualmeta)
         return "fail"
 
     #if it's a cbz file - check if no-overwrite existing tags is enabled / disabled in config.
@@ -224,17 +224,26 @@ def run(dirName, nzbName=None, issueid=None, comversion=None, manual=None, filen
                 logger.fdebug(module + '[COMIC-TAGGER][CBR-TO-CBZ] New filename: ' + filepath)
                 initial_ctrun = False
             elif initial_ctrun and 'Archive is not a RAR' in out:
+                logger.fdebug('%s Output: %s' % (module,out))
+                logger.warn(module + '[COMIC-TAGGER] file is not in a RAR format: ' + filename)
                 initial_ctrun = False
             elif initial_ctrun:
-                logger.warn(module + '[COMIC-TAGGER][CBR-TO-CBZ] Failed to convert cbr to cbz - check permissions on folder : ' + mylar.CACHE_DIR + ' and/or the location where Mylar is trying to tag the files from.')
                 initial_ctrun = False
-                tidyup(filepath, new_filepath, new_folder)
-                return 'fail'
+                if 'file is not expected size' in out:
+                    logger.fdebug('%s Output: %s' % (module,out))
+                    tidyup(og_filepath, new_filepath, new_folder, manualmeta)
+                    return 'fail' #'corrupt'
+                else:
+                    logger.warn(module + '[COMIC-TAGGER][CBR-TO-CBZ] Failed to convert cbr to cbz - check permissions on folder : ' + mylar.CACHE_DIR + ' and/or the location where Mylar is trying to tag the files from.')
+                    tidyup(og_filepath, new_filepath, new_folder, manualmeta)
+                    return 'fail'
             elif 'Cannot find' in out:
+                logger.fdebug('%s Output: %s' % (module,out))
                 logger.warn(module + '[COMIC-TAGGER] Unable to locate file: ' + filename)
                 file_error = 'file not found||' + filename
                 return file_error
             elif 'not a comic archive!' in out:
+                logger.fdebug('%s Output: %s' % (module,out))
                 logger.warn(module + '[COMIC-TAGGER] Unable to locate file: ' + filename)
                 file_error = 'file not found||' + filename
                 return file_error
@@ -243,7 +252,7 @@ def run(dirName, nzbName=None, issueid=None, comversion=None, manual=None, filen
                 i+=1
         except OSError, e:
             logger.warn(module + '[COMIC-TAGGER] Unable to run comictagger with the options provided: ' + re.sub(f_tagoptions[f_tagoptions.index(mylar.COMICVINE_API)], 'REDACTED', str(script_cmd)))
-            tidyup(filepath, new_filepath, new_folder)
+            tidyup(filepath, new_filepath, new_folder, manualmeta)
             return "fail"
 
         if mylar.CBR2CBZ_ONLY and initial_ctrun == False:
@@ -252,10 +261,16 @@ def run(dirName, nzbName=None, issueid=None, comversion=None, manual=None, filen
     return filepath
 
 
-def tidyup(filepath, new_filepath, new_folder):
+def tidyup(filepath, new_filepath, new_folder, manualmeta):
    if all([new_filepath is not None, new_folder is not None]):
-        if all([os.path.exists(new_folder), os.path.isfile(filepath)]):
-            shutil.remove(new_folder)
-        elif os.path.exists(new_filepath) and not os.path.exists(filepath):
-            shutil.move(new_filepath, filepath)
+        if mylar.FILE_OPTS == 'copy' and manualmeta == False:
+            if all([os.path.exists(new_folder), os.path.isfile(filepath)]):
+                shutil.rmtree(new_folder)
+            elif os.path.exists(new_filepath) and not os.path.exists(filepath):
+                shutil.move(new_filepath, filepath + '.BAD')
+        else:
+            if os.path.exists(new_filepath) and not os.path.exists(filepath):
+                shutil.move(new_filepath, filepath + '.BAD')
+            if all([os.path.exists(new_folder), os.path.isfile(filepath)]):
+                shutil.rmtree(new_folder)
 
