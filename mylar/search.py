@@ -1838,7 +1838,7 @@ def searchIssueIDList(issuelist):
             issue = myDB.selectone('SELECT * from annuals WHERE IssueID=?', [issueid]).fetchone()
             mode = 'want_ann'
             if issue is None:
-                logger.warn('unable to determine IssueID - perhaps you need to delete/refresh series? Skipping this entry: ' + issue['IssueID'])
+                logger.warn('unable to determine IssueID - perhaps you need to delete/refresh series? Skipping this entry: ' + issueid)
                 continue
 
         if any([issue['Status'] == 'Downloaded', issue['Status'] == 'Snatched']):
@@ -2263,7 +2263,7 @@ def searcher(nzbprov, nzbname, comicinfo, link, IssueID, ComicID, tmpprov, direc
         logger.fdebug("link:" + link)
         logger.fdebug("Torrent Provider:" + nzbprov)
 
-        rcheck = rsscheck.torsend2client(ComicName, IssueNumber, comyear, link, nzbprov)
+        rcheck = rsscheck.torsend2client(ComicName, IssueNumber, comyear, link, nzbprov, nzbid)  #nzbid = hash for usage with public torrents
         if rcheck == "fail":
             if mylar.FAILED_DOWNLOAD_HANDLING:
                 logger.error('Unable to send torrent to client. Assuming incomplete link - sending to Failed Handler and continuing search.')

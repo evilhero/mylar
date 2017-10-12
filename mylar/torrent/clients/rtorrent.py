@@ -42,7 +42,7 @@ class TorrentClient(object):
         if parsed.scheme in ['http', 'https']:
             url += mylar.RTORRENT_RPC_URL
 
-        logger.info(url)
+        #logger.fdebug(url)
 
         if username and password:
             try:
@@ -51,12 +51,19 @@ class TorrentClient(object):
                     verify_server=True,
                     verify_ssl=self.getVerifySsl()
             )
-            except:
+            except Exception as err:
+                logger.error('Failed to connect to rTorrent: %s', err)
                 return False
         else:
+            logger.fdebug('NO username %s / NO password %s' % (username, password))
             try:
-                self.conn = RTorrent(host)
-            except:
+                self.conn = RTorrent(
+                    url, (auth, username, password),
+                    verify_server=True,
+                    verify_ssl=self.getVerifySsl()
+            )
+            except Exception as err:
+                logger.error('Failed to connect to rTorrent: %s', err)
                 return False
 
         return self.conn
@@ -99,7 +106,7 @@ class TorrentClient(object):
         start = bool(mylar.RTORRENT_STARTONLOAD)
 
         if filepath.startswith('magnet'):
-            logger.info('torrent magnet link set to : ' + filepath)
+            logger.fdebug('torrent magnet link set to : ' + filepath)
             torrent_hash = re.findall('urn:btih:([\w]{32,40})', filepath)[0].upper()
             # Send request to rTorrent
             try:
@@ -114,7 +121,7 @@ class TorrentClient(object):
             else:
                 logger.info('Torrent successfully loaded into rtorrent using magnet link as source.')
         else:
-            logger.info('filepath to torrent file set to : ' + filepath)
+            logger.fdebug('filepath to torrent file set to : ' + filepath)
             try:
                 torrent = self.conn.load_torrent(filepath, verify_load=True)
                 if not torrent:
@@ -134,12 +141,12 @@ class TorrentClient(object):
 
         if mylar.RTORRENT_LABEL:
             torrent.set_custom(1, mylar.RTORRENT_LABEL)
-            logger.info('Setting label for torrent to : ' + mylar.RTORRENT_LABEL)
+            logger.fdebug('Setting label for torrent to : ' + mylar.RTORRENT_LABEL)
 
         if mylar.RTORRENT_DIRECTORY:
             torrent.set_directory(mylar.RTORRENT_DIRECTORY)
-            logger.info('Setting directory for torrent to : ' + mylar.RTORRENT_DIRECTORY)
-      
+            logger.fdebug('Setting directory for torrent to : ' + mylar.RTORRENT_DIRECTORY)
+
         logger.info('Successfully loaded torrent.')
 
         #note that if set_directory is enabled, the torrent has to be started AFTER it's loaded or else it will give chunk errors and not seed

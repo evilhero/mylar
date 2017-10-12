@@ -10,6 +10,9 @@
 		<div id="subhead_menu">
                         <a href="#" id="menu_link_refresh" onclick="doAjaxCall('pullist?week=${weekinfo['weeknumber']}&year=${weekinfo['year']}',$(this),'table')" data-success="Refresh submitted.">Refresh Pull-list</a>
                         <a id="menu_link_retry" href="pullrecreate">Recreate Pull-list</a>
+<!--
+                    <a href="#" id="menu_link_retry" onclick="doAjaxCall('create_readlist?weeknumber=${weekinfo['weeknumber']}&year=${weekinfo['year']}',$(this),'table')" data-success="Submitted request for reading-list generation for this week">Generate Reading-List</a>
+-->
                         <a id="menu_link_scan" class="button">Download</a>
                         <a href="#" id="menu_link_refresh" onclick="doAjaxCall('pullSearch?week=${weekinfo['weeknumber']}&year=${weekinfo['year']}',$(this),'table')" data-success="Submitted background search request for new pull issues">Manually check for issues</a>
 		</div>
@@ -91,13 +94,11 @@
                                         <td class="publisher">${weekly['PUBLISHER']}</td>
                                         <td class="comicname">
                                         %if weekly['HAVEIT'] == 'No':
-                                             %if weekly['COMICID'] != '' and weekly['COMICID'] is not None:
+                                             %if all([weekly['COMICID'] != '', weekly['COMICID'] is not None]):
                                                  <a href="${weekly['LINK']}" target="_blank">${weekly['COMIC']}</a>
                                              %else:
                                                  ${weekly['COMIC']}
                                              %endif
-                                        %elif weekly['HAVEIT'] == 'OneOff':
-                                             <a href="#">${weekly['COMIC']}</a>
                                         %else:
                                              <a href="comicDetails?ComicID=${weekly['COMICID']}">${weekly['COMIC']}</a>
                                         %endif
@@ -134,6 +135,7 @@
 </%def>
 
 <%def name="headIncludes()">
+        <meta name="referrer" content="no-referrer" />
 	<link rel="stylesheet" href="interfaces/default/css/data_table.css">
 </%def>
 
