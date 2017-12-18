@@ -9,7 +9,7 @@
 	<div id="subhead_container">
 		<div id="subhead_menu">
                         <a href="#" id="menu_link_refresh" onclick="doAjaxCall('pullist?week=${weekinfo['weeknumber']}&year=${weekinfo['year']}',$(this),'table')" data-success="Refresh submitted.">Refresh Pull-list</a>
-                        <a id="menu_link_retry" href="pullrecreate">Recreate Pull-list</a>
+                        <a href="#" id="menu_link_retry" onclick="doAjaxCall('pullrecreate?weeknumber=${weekinfo['weeknumber']}&year=${weekinfo['year']}',$(this),'table')" data-success="Recreating Pullist for week ${weekinfo['weeknumber']}, ${weekinfo['year']}">Recreate Pull-list</a>
 <!--
                     <a href="#" id="menu_link_retry" onclick="doAjaxCall('create_readlist?weeknumber=${weekinfo['weeknumber']}&year=${weekinfo['year']}',$(this),'table')" data-success="Submitted request for reading-list generation for this week">Generate Reading-List</a>
 -->
@@ -43,7 +43,7 @@
              <fieldset>
                   <div class="row checkbox left clearfix">
                        </br>
-                       <input type="checkbox" name="weekfolder" id="weekfolder" value="1" ${checked(mylar.WEEKFOLDER)} /><label>Store in Weekly Directory (${weekfold})</label> 
+                       <input type="checkbox" name="weekfolder" id="weekfolder" value="1" ${checked(mylar.CONFIG.WEEKFOLDER)} /><label>Store in Weekly Directory (${weekfold})</label> 
                  </div>
 
                <input type="hidden" name="year" value="${weekinfo['year']}">
@@ -61,7 +61,7 @@
 			<tr>
                                 <th id="publisher">Publisher</th>
                                 <th id="comicname">Comic</th>
-				<th id="comicnumber">Number</th>
+				<th id="comicnumber">#</th>
 				<th id="status">Status</th>
 			</tr>
 		</thead>
@@ -76,8 +76,8 @@
 					grade = 'C'
                                 elif weekly['STATUS'] == 'Downloaded':
                                         grade = 'D'
-				else:
-					grade = 'A'
+                                elif weekly['STATUS'] == 'Paused':
+                                        grade = 'T'
                                 if weekly['AUTOWANT'] == True:
                                         grade = 'H'
 
@@ -102,6 +102,13 @@
                                         %else:
                                              <a href="comicDetails?ComicID=${weekly['COMICID']}">${weekly['COMIC']}</a>
                                         %endif
+                                        %if weekly['VOLUME'] is not None:
+                                            &nbspV${weekly['VOLUME']}
+                                        %endif
+
+                                        %if weekly['SERIESYEAR'] is not None:
+                                            &nbsp(${weekly['SERIESYEAR']})
+                                        %endif
                                         </td>
                                         <td class="comicnumber">${weekly['ISSUE']}</td>
                                         %if weekly['AUTOWANT']:
@@ -111,6 +118,9 @@
                                             %if weekly['HAVEIT'] == 'OneOff':
                                                 %if weekly['STATUS'] == 'Snatched' or weekly['STATUS'] == 'Downloaded':
                                                     <a href="#" onclick="doAjaxCall('queueit?ComicName=${weekly['COMIC'] | u}&ComicID=${weekly['COMICID']}&IssueID=${weekly['ISSUEID']}&ComicIssue=${weekly['ISSUE']}&mode=pullwant&Publisher=${weekly['PUBLISHER']}&pullinfo=${weekinfo['midweek']}&pullweek=${weekinfo['weeknumber']}&pullyear=${weekinfo['year']}',$(this),'table')" data-success="Successfully submitted search request for ${weekly['COMIC']} #${weekly['ISSUE']}" title="Snatch issue again as a One-Off"><span class="ui-icon ui-icon-plus"></span>Retry</a>
+                                                %endif
+                                                %if weekly['HASH'] is not None:
+                                                    <a href="#" onclick="doAjaxCall('torrentit?torrent_hash=${weekly['HASH']}&download=True',$(this),'table')" title="Auto-Snatch torrent file"><span class="ui-icon ui-icon-plus"></span>auto-snatch</a>
                                                 %endif
                                             %elif weekly['STATUS'] == 'Skipped':
                                                 %if weekly['COMICID'] != '' and weekly['COMICID'] is not None:
@@ -122,6 +132,8 @@
                                                     <a href="searchit?name=${weekly['COMIC'] | u}&issue=${weekly['ISSUE']}&mode=pullseries" title="Search for this series to add to your watchlist"><span class="ui-icon ui-icon-plus"></span>Search</a>
                                                 %endif
                                                 <a href="#" onclick="doAjaxCall('queueit?ComicName=${weekly['COMIC'] | u}&ComicID=${weekly['COMICID']}&IssueID=${weekly['ISSUEID']}&ComicIssue=${weekly['ISSUE']}&mode=pullwant&Publisher=${weekly['PUBLISHER']}&pullinfo=${weekinfo['midweek']}&pullweek=${weekinfo['weeknumber']}&pullyear=${weekinfo['year']}',$(this),'table')" data-success="Successfully submitted search request for ${weekly['COMIC']} #${weekly['ISSUE']}" title="Just grab it"><span class="ui-icon ui-icon-plus"></span>One-Off</a>
+                                            %elif weekly['HASH'] is not None:
+                                                <a href="#" onclick="doAjaxCall('torrentit?torrent_hash=${weekly['HASH']}&download=True',$(this),'table')" title="Auto-Snatch torrent file"><span class="ui-icon ui-icon-plus"></span>auto-snatch</a>
                                             %endif
                                         %endif
                                         </td>

@@ -36,7 +36,7 @@ from mylar import logger, helpers
 
 class FileChecker(object):
 
-    def __init__(self, dir=None, watchcomic=None, Publisher=None, AlternateSearch=None, manual=None, sarc=None, justparse=None, file=None):
+    def __init__(self, dir=None, watchcomic=None, Publisher=None, AlternateSearch=None, manual=None, sarc=None, justparse=None, file=None, pp_mode=False):
         #dir = full path to the series Comic Location (manual pp will just be psssing the already parsed filename)
         if dir:
             self.dir = dir
@@ -90,6 +90,10 @@ class FileChecker(object):
         else:
             self.file = None
 
+        if pp_mode:
+            self.pp_mode = True
+        else:
+            self.pp_mode = False
 
         self.failed_files = []
         self.dynamic_handlers = ['/','-',':','\'',',','&','?','!','+','(',')','\u2014']
@@ -116,6 +120,8 @@ class FileChecker(object):
                     'comiclocation':  runresults['comiclocation'],
                     'series_name':    runresults['series_name'],
                     'series_volume':  runresults['series_volume'],
+                    'alt_series':     runresults['alt_series'],
+                    'alt_issue':      runresults['alt_issue'],
                     'issue_year':     runresults['issue_year'],
                     'issue_number':   runresults['issue_number'],
                     'scangroup':      runresults['scangroup']
@@ -130,7 +136,7 @@ class FileChecker(object):
                 if filename.startswith('.'):
                     continue
 
-                logger.info('[FILENAME]: ' + filename)
+                #logger.info('[FILENAME]: ' + filename)
                 runresults = self.parseit(self.dir, filename, filedir)
                 if runresults:
                     try:
@@ -148,6 +154,8 @@ class FileChecker(object):
                                     'comiclocation':       runresults['comiclocation'],
                                     'series_name':         runresults['series_name'],
                                     'series_name_decoded': runresults['series_name_decoded'],
+                                    'alt_series':          runresults['alt_series'],
+                                    'alt_issue':           runresults['alt_issue'],
                                     'dynamic_name':        runresults['dynamic_name'],
                                     'series_volume':       runresults['series_volume'],
                                     'issue_year':          runresults['issue_year'],
@@ -177,6 +185,8 @@ class FileChecker(object):
                                                   'comiclocation':  runresults['comiclocation'],
                                                   'series_name':    runresults['series_name'],
                                                   'series_volume':  runresults['series_volume'],
+                                                  'alt_series':     runresults['alt_series'],
+                                                  'alt_issue':      runresults['alt_issue'],
                                                   'issue_year':     runresults['issue_year'],
                                                   'issue_number':   runresults['issue_number'],
                                                   'scangroup':      runresults['scangroup']
@@ -235,15 +245,15 @@ class FileChecker(object):
             reading_order = None
 
             #if it's a story-arc, make sure to remove any leading reading order #'s
-            if self.sarc and mylar.READ2FILENAME:
+            if self.sarc and mylar.CONFIG.READ2FILENAME:
                 removest = modfilename.find('-') # the - gets removed above so we test for the first blank space...
-                if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                    logger.fdebug('[SARC] Checking filename for Reading Order sequence - Reading Sequence Order found #: ' + str(modfilename[:removest]))
                 if modfilename[:removest].isdigit() and removest <= 3:
                     reading_order = {'reading_sequence': str(modfilename[:removest]),
                                      'filename':         filename[removest+1:]}
                     modfilename = modfilename[removest+1:]
-                    if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                    if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                         logger.fdebug('[SARC] Removed Reading Order sequence from subname. Now set to : ' + modfilename)
 
 
@@ -627,7 +637,13 @@ class FileChecker(object):
                         issue_year = ab
                         logger.fdebug('date verified as: ' + str(issue_year))
 
-                    if highest_series_pos > dc['position']: highest_series_pos = dc['position']
+                if highest_series_pos > dc['position']: highest_series_pos = dc['position']
+
+                if len(possible_years) == 1:
+                    issueyear = possible_years[0]['year']
+                    yearposition = possible_years[0]['yearposition']
+                    yearmodposition = possible_years[0]['yearmodposition']
+                else:
                     yearposition = dc['position']
                     yearmodposition = dc['mod_position']
             else:
@@ -639,8 +655,8 @@ class FileChecker(object):
             logger.fdebug('highest_series_position: ' + str(highest_series_pos))
 
             issue_number = None
-            issue_number_position = 0
             dash_numbers = []
+            issue_number_position = len(split_file)
             if len(possible_issuenumbers) > 0:
                 logger.fdebug('possible_issuenumbers: ' + str(possible_issuenumbers))
                 if len(possible_issuenumbers) > 1:
@@ -660,10 +676,11 @@ class FileChecker(object):
                         lenn = pis['mod_position'] + len(pis['number'])
                         if lenn == len(a):
                             logger.fdebug('Numeric detected as the last digit after a hyphen. Typically this is the issue number.')
-                            issue_number = pis['number']
-                            issue_number_position = pis['position']
-                            logger.fdebug('Issue set to: ' + issue_number)
-                            if highest_series_pos > pis['position']: highest_series_pos = pis['position']
+                            if pis['position'] != yearposition:
+                                issue_number = pis['number']
+                                logger.info('Issue set to: ' + str(issue_number))
+                                issue_number_position = pis['position']
+                                if highest_series_pos > pis['position']: highest_series_pos = pis['position']
                             #break
                         if pis['validcountchk'] == True:
                             issue_number = pis['number']
@@ -728,7 +745,7 @@ class FileChecker(object):
             issue_volume = None
             if len(volume_found) > 0:
                 issue_volume = 'v' + str(volume_found['volume'])
-                if highest_series_pos != volume_found['position'] + 1 and sep_volume == False:
+                if all([highest_series_pos + 1 != volume_found['position'], highest_series_pos != volume_found['position'] + 1, sep_volume == False]):
                     logger.fdebug('Extra item(s) are present between the volume label and the issue number. Checking..')
                     split_file.insert(int(issue_number_position), split_file.pop(volume_found['position'])) #highest_series_pos-1, split_file.pop(volume_found['position']))
                     logger.fdebug('new split: ' + str(split_file))
@@ -754,7 +771,10 @@ class FileChecker(object):
                         if split_file[issue_number_position -1].lower() == 'annual':
                             highest_series_pos = issue_number_position
                         else:
-                            highest_series_pos = issue_number_position - 1
+                            if volume_found['position'] < issue_number_position:
+                                highest_series_pos = issue_number_position - 1
+                            else:
+                                highest_series_pos = issue_number_position
 
             #make sure if we have multiple years detected, that the right one gets picked for the actual year vs. series title
             if len(possible_years) > 1:
@@ -764,7 +784,8 @@ class FileChecker(object):
                     else:
                         logger.fdebug('year ' + str(x['year']) + ' is outside of series title range. Accepting of year.')
                         issue_year = x['year']
-
+                        highest_series_pos = x['yearposition']
+                        break
             else:
                 try:
                     if possible_years[0]['yearposition'] <= highest_series_pos:
@@ -775,6 +796,77 @@ class FileChecker(object):
             match_type = None  #folder/file based on how it was matched.
 
             #logger.fdebug('highest_series_pos is : ' + str(highest_series_pos)
+            splitvalue = None
+            alt_series = None
+            alt_issue = None
+            try:
+                if yearposition is not None:
+                    tmpval = yearposition - issue_number_position
+                else:
+                    tmpval = 1
+                #logger.fdebug('TMPVAL: %s' % tmpval)
+            except:
+                pass
+            else:
+                if tmpval > 2:
+                    logger.fdebug('There are %s extra words between the issue # and the year position. Deciphering if issue title or part of series title.' % tmpval)
+                    tmpval1 = ' '.join(split_file[issue_number_position+1:yearposition])
+                    #logger.info('%s' % tmpval)
+                    if split_file[issue_number_position+1] == '-':
+                        #logger.info('dash detected')
+                        usevalue = ' '.join(split_file[issue_number_position+2:yearposition])
+                        splitv = split_file[issue_number_position+2:yearposition]
+                    else:
+                        splitv = split_file[issue_number_position+1:yearposition]
+                    splitvalue = ' '.join(splitv)
+                else:
+                    #store alternate naming of title just in case
+                    if '-' not in split_file[0]:
+                        c_pos = 1
+                        #logger.info('split_file: %s' % split_file)
+                        while True:
+                            try:
+                                fdash = split_file.index("-", c_pos)
+                            except:
+                                #logger.info('dash not located/finished searching for dashes.')
+                                break
+                            else:
+                                #logger.info('hyphen located at position: ' + str(fdash))
+                                c_pos = 2
+                                #c_pos = fdash +1
+                                break
+                        if c_pos > 1:
+                            #logger.info('Issue_number_position: %s / fdash: %s' % (issue_number_position, fdash))
+                            try:
+                                if volume_found['position'] < issue_number_position:
+                                    alt_issue = ' '.join(split_file[fdash+1:volume_found['position']])
+                                else:
+                                    alt_issue = ' '.join(split_file[fdash+1:issue_number_position])
+                            except:
+                                    alt_issue = ' '.join(split_file[fdash+1:issue_number_position])
+
+                            if alt_issue.endswith('-'): alt_issue = alt_issue[:-1].strip()
+                            if len(alt_issue) == 0:
+                                alt_issue = None
+                            alt_series = ' '.join(split_file[:fdash])
+                            logger.fdebug('ALT-SERIES NAME [ISSUE TITLE]: %s [%s]' % (alt_series, alt_issue))
+
+            #logger.info('highest_series_position: ' + str(highest_series_pos))
+            #logger.info('issue_number_position: ' + str(issue_number_position))
+            #logger.info('volume_found: ' + str(volume_found))
+
+       #2017-10-21
+            if highest_series_pos > issue_number_position:
+                highest_series_pos = issue_number_position
+                #if volume_found['position'] >= issue_number_position:
+                #    highest_series_pos = issue_number_position
+                #else:
+                #    print 'nuhuh'
+       #---
+            match_type = None  #folder/file based on how it was matched.
+
+            logger.fdebug('sf_highest_series_pos: %s' % split_file[:highest_series_pos])
+
             #here we should account for some characters that get stripped out due to the regex's
             #namely, unique characters - known so far: +
             #c1 = '+'
@@ -786,27 +878,41 @@ class FileChecker(object):
                         series_name = re.sub('XCV', x, series_name,1)
                     elif 'XCV' in issue_number:
                         issue_number = re.sub('XCV', x, issue_number,1)
+                    if alt_series is not None:
+                        if 'XCV' in alt_series:
+                            alt_series = re.sub('XCV', x, alt_series,1)
+                        elif 'XCV' in alt_issue:
+                            alt_issue = re.sub('XCV', x, alt_issue,1)
 
             series_name = re.sub('c11', '+', series_name)
             series_name = re.sub('f11', '&', series_name)
             series_name = re.sub('g11', '\'', series_name)
+            if alt_series is not None:
+                alt_series = re.sub('c11', '+', alt_series)
+                alt_series = re.sub('f11', '&', alt_series)
+                alt_series = re.sub('g11', '\'', alt_series)
+
             if series_name.endswith('-'): 
                 series_name = series_name[:-1].strip()
             if '\?' in series_name:
                 series_name = re.sub('\?', '', series_name).strip()
 
             logger.fdebug('series title possibly: ' + series_name)
+            if splitvalue is not None:
+                logger.fdebug('[SPLITVALUE] possible issue title: %s' % splitvalue)
+                alt_series = '%s %s' % (series_name, splitvalue)
+                alt_issue = splitvalue
+            if alt_series is not None:
+                logger.fdebug('Alternate series / issue title: %s [%s]' % (alt_series, alt_issue))
 
             #if the filename is unicoded, it won't match due to the unicode translation. Keep the unicode as well as the decoded.
             series_name_decoded= unicodedata.normalize('NFKD', helpers.conversion(series_name)).encode('ASCII', 'ignore')
-
             #check for annual in title(s) here.
-            if mylar.ANNUALS_ON:
+            if not self.justparse and mylar.CONFIG.ANNUALS_ON and 'annual' not in self.watchcomic.lower():
                 if 'annual' in series_name.lower():
                     issue_number = 'Annual ' + str(issue_number)
                     series_name = re.sub('annual', '', series_name, flags=re.I).strip()
                     series_name_decoded = re.sub('annual', '', series_name_decoded, flags=re.I).strip()
-                   
 
             if issue_number is None or series_name is None:
                 logger.fdebug('Cannot parse the filename properly. I\'m going to make note of this filename so that my evil ruler can make it work.')
@@ -816,6 +922,8 @@ class FileChecker(object):
                         'comiclocation':       self.dir,
                         'series_name':         series_name,
                         'series_name_decoded': series_name_decoded,
+                        'alt_series':          alt_series,
+                        'alt_issue':           alt_issue,
                         'issue_number':        issue_number,
                         'justthedigits':       issue_number, #redundant but it's needed atm
                         'series_volume':       issue_volume,
@@ -831,6 +939,8 @@ class FileChecker(object):
                         'comiclocation':          self.dir,
                         'series_name':            series_name,
                         'series_name_decoded':    series_name_decoded,
+                        'alt_series':             alt_series,
+                        'alt_issue':              alt_issue,
                         'dynamic_name':           self.dynamic_replace(series_name)['mod_seriesname'],
                         'series_volume':          issue_volume,
                         'issue_year':             issue_year,
@@ -844,6 +954,8 @@ class FileChecker(object):
                           'comiclocation':          self.dir,
                           'series_name':            series_name,
                           'series_name_decoded':    series_name_decoded,
+                          'alt_series':             alt_series,
+                          'alt_issue':              alt_issue,
                           'series_volume':          issue_volume,
                           'issue_year':             issue_year,
                           'issue_number':           issue_number,
@@ -853,38 +965,61 @@ class FileChecker(object):
 
     def matchIT(self, series_info):
             series_name = series_info['series_name']
+            alt_series = series_info['alt_series']
             filename = series_info['comicfilename']
             #compare here - match comparison against u_watchcomic.
-            logger.info('Series_Name: ' + series_name + ' --- WatchComic: ' + self.watchcomic)
+            #logger.fdebug('Series_Name: ' + series_name + ' --- WatchComic: ' + self.watchcomic)
             #check for dynamic handles here.
             mod_dynamicinfo = self.dynamic_replace(series_name)
-            mod_seriesname = mod_dynamicinfo['mod_seriesname'] 
-            mod_watchcomic = mod_dynamicinfo['mod_watchcomic'] 
-
+            mod_seriesname = mod_dynamicinfo['mod_seriesname']
+            mod_watchcomic = mod_dynamicinfo['mod_watchcomic']
+            mod_altseriesname = None
+            mod_altseriesname_decoded = None
+            #logger.fdebug('series_info: %s' % series_info)
+            if series_info['alt_series'] is not None:
+                mod_dynamicalt = self.dynamic_replace(alt_series)
+                mod_altseriesname = mod_dynamicalt['mod_seriesname']
+                mod_alt_decoded = self.dynamic_replace(alt_series)
+                mod_altseriesname_decoded = mod_alt_decoded['mod_seriesname']
+            #logger.fdebug('mod_altseriesname: %s' % mod_altseriesname)
             mod_series_decoded = self.dynamic_replace(series_info['series_name_decoded'])
-            mod_seriesname_decoded = mod_dynamicinfo['mod_seriesname']
+            mod_seriesname_decoded = mod_series_decoded['mod_seriesname']
             mod_watch_decoded = self.dynamic_replace(self.og_watchcomic)
-            mod_watchname_decoded = mod_dynamicinfo['mod_watchcomic']
+            mod_watchname_decoded = mod_watch_decoded['mod_watchcomic']
 
             #remove the spaces...
             nspace_seriesname = re.sub(' ', '', mod_seriesname)
             nspace_watchcomic = re.sub(' ', '', mod_watchcomic)
+            nspace_altseriesname = None
+            if mod_altseriesname is not None:
+                nspace_altseriesname = re.sub(' ', '', mod_altseriesname)
+                nspace_altseriesname_decoded = re.sub(' ', '', mod_altseriesname_decoded)
             nspace_seriesname_decoded = re.sub(' ', '', mod_seriesname_decoded)
             nspace_watchname_decoded = re.sub(' ', '', mod_watchname_decoded)
 
-            if '127372873872871091383' not in self.AS_Alt:
-                logger.fdebug('Possible Alternate Names to match against (if necessary): ' + str(self.AS_Alt))
+            try:
+                if self.AS_ALT[0] != '127372873872871091383 abdkhjhskjhkjdhakajhf':
+                    logger.fdebug('Possible Alternate Names to match against (if necessary): ' + str(self.AS_Alt))
+            except:
+                pass
 
             justthedigits = series_info['issue_number']
 
-            if mylar.ANNUALS_ON:
+            if mylar.CONFIG.ANNUALS_ON and 'annual' not in nspace_watchcomic.lower():
                 if 'annual' in series_name.lower():
                     justthedigits = 'Annual ' + series_info['issue_number']
-                nspace_seriesname = re.sub('annual', '', nspace_seriesname.lower()).strip()
-                nspace_seriesname_decoded = re.sub('annual', '', nspace_seriesname_decoded.lower()).strip()
+                    nspace_seriesname = re.sub('annual', '', nspace_seriesname.lower()).strip()
+                    nspace_seriesname_decoded = re.sub('annual', '', nspace_seriesname_decoded.lower()).strip()
+                if alt_series is not None and 'annual' in alt_series.lower():
+                    nspace_altseriesname = re.sub('annual', '', nspace_altseriesname.lower()).strip()
+                    nspace_altseriesname_decoded = re.sub('annual', '', nspace_altseriesname_decoded.lower()).strip()
+            seriesalt = False
 
+            if nspace_altseriesname is not None:
+                if re.sub('\|','', nspace_altseriesname.lower()).strip() == re.sub('\|', '', nspace_watchcomic.lower()).strip():
+                    seriesalt = True
 
-            if any([re.sub('\|','', nspace_seriesname.lower()).strip() == re.sub('\|', '', nspace_watchcomic.lower()).strip(), re.sub('\|','', nspace_seriesname_decoded.lower()).strip() == re.sub('\|', '', nspace_watchname_decoded.lower()).strip()]) or any(re.sub('[\|\s]','', x.lower()).strip() == re.sub('[\|\s]','', nspace_seriesname.lower()).strip() for x in self.AS_Alt):
+            if any([seriesalt is True, re.sub('\|','', nspace_seriesname.lower()).strip() == re.sub('\|', '', nspace_watchcomic.lower()).strip(), re.sub('\|','', nspace_seriesname_decoded.lower()).strip() == re.sub('\|', '', nspace_watchname_decoded.lower()).strip()]) or any(re.sub('[\|\s]','', x.lower()).strip() == re.sub('[\|\s]','', nspace_seriesname.lower()).strip() for x in self.AS_Alt):
                 logger.fdebug('[MATCH: ' + series_info['series_name'] + '] ' + filename)
                 enable_annual = False
                 annual_comicid = None
@@ -894,10 +1029,10 @@ class FileChecker(object):
                     #loop through the Alternates picking out the ones that match and then do an overall loop.
                     loopchk = [x for x in self.AS_Alt if re.sub('[\|\s]','', x.lower()).strip() == re.sub('[\|\s]','', nspace_seriesname.lower()).strip()]
                     if len(loopchk) > 0 and loopchk[0] != '':
-                        if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                        if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                             logger.fdebug('[FILECHECKER] This should be an alternate: ' + str(loopchk))
                         if 'annual' in series_name.lower():
-                            if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                            if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                                 logger.fdebug('[FILECHECKER] Annual detected - proceeding')
                             enable_annual = True
 
@@ -910,29 +1045,29 @@ class FileChecker(object):
                         loopchk.append(nspace_watchcomic)
                         if 'annual' in nspace_seriesname.lower():
                             if 'biannual' in nspace_seriesname.lower():
-                                if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                                if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                                     logger.fdebug('[FILECHECKER] BiAnnual detected - wouldn\'t Deadpool be proud?')
                                 nspace_seriesname = re.sub('biannual', '', nspace_seriesname).strip()
                                 enable_annual = True
                             else:
-                                if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                                if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                                     logger.fdebug('[FILECHECKER] Annual detected - proceeding cautiously.')
                                 nspace_seriesname = re.sub('annual', '', nspace_seriesname).strip()
                                 enable_annual = False
 
-                    if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                    if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                         logger.fdebug('[FILECHECKER] Complete matching list of names to this file [' + str(len(loopchk)) + '] : ' + str(loopchk))
 
                     for loopit in loopchk:
                         #now that we have the list of all possible matches for the watchcomic + alternate search names, we go through the list until we find a match.
                         modseries_name = loopit
-                        if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                        if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                             logger.fdebug('[FILECHECKER] AS_Tuple : ' + str(self.AS_Tuple))
                             for ATS in self.AS_Tuple:
-                                if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                                if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                                     logger.fdebug('[FILECHECKER] ' + str(ATS['AS_Alternate']) + ' comparing to ' + nspace_seriesname)
                                 if re.sub('\|','', ATS['AS_Alternate'].lower()).strip() == re.sub('\|','', nspace_seriesname.lower()).strip():
-                                    if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                                    if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                                         logger.fdebug('[FILECHECKER] Associating ComiciD : ' + str(ATS['ComicID']))
                                     annual_comicid = str(ATS['ComicID'])
                                     modseries_name = ATS['AS_Alternate']
@@ -942,15 +1077,15 @@ class FileChecker(object):
 
                 if enable_annual:
                     if annual_comicid is not None:
-                       if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                       if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                            logger.fdebug('enable annual is on')
                            logger.fdebug('annual comicid is ' + str(annual_comicid))
                        if 'biannual' in nspace_watchcomic.lower():
-                           if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                           if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                                logger.fdebug('bi annual detected')
                            justthedigits = 'BiAnnual ' + justthedigits
                        else:
-                           if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                           if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                                logger.fdebug('annual detected')
                            justthedigits = 'Annual ' + justthedigits
 
@@ -962,6 +1097,8 @@ class FileChecker(object):
                         'comiclocation':   series_info['comiclocation'],
                         'series_name':     series_info['series_name'],
                         'series_volume':   series_info['series_volume'],
+                        'alt_series':      series_info['alt_series'],
+                        'alt_issue':       series_info['alt_issue'],
                         'issue_year':      series_info['issue_year'],
                         'justthedigits':   justthedigits,
                         'annual_comicid':  annual_comicid,
@@ -974,6 +1111,8 @@ class FileChecker(object):
                         'sub':            series_info['sub'],
                         'comiclocation':  series_info['comiclocation'],
                         'series_name':    series_info['series_name'],
+                        'alt_series':      series_info['alt_series'],
+                        'alt_issue':       series_info['alt_issue'],
                         'issue_number':   series_info['issue_number'],
                         'series_volume':  series_info['series_volume'],
                         'issue_year':     series_info['issue_year'],
@@ -989,6 +1128,15 @@ class FileChecker(object):
 
         dir = dir.encode(mylar.SYS_ENCODING)
 
+        if all([mylar.CONFIG.ENABLE_TORRENTS is True, self.pp_mode is True]):
+            import db
+            myDB = db.DBConnection()
+            pp_crclist =[]
+            pp_crc = myDB.select("SELECT a.crc, b.IssueID FROM Snatched as a INNER JOIN issues as b ON a.IssueID=b.IssueID WHERE (a.Status='Post-Processed' or a.status='Snatched' or a.provider='32P' or a.provider='WWT' or a.provider='DEM') and a.crc is not NULL and (b.Status='Downloaded' or b.status='Archived') GROUP BY a.crc ORDER BY a.DateAdded")
+            for pp in pp_crc:
+                pp_crclist.append({'IssueID':   pp['IssueID'],
+                                   'crc':       pp['crc']})
+
         for (dirname, subs, files) in os.walk(dir):
 
             for fname in files:
@@ -998,6 +1146,13 @@ class FileChecker(object):
                     direc = dirname
                     if '.AppleDouble' in direc:
                         #Ignoring MAC OS Finder directory of cached files (/.AppleDouble/<name of file(s)>)
+                        continue
+
+                if all([mylar.CONFIG.ENABLE_TORRENTS is True, self.pp_mode is True]):
+                    tcrc = helpers.crc(os.path.join(dirname, fname).decode(mylar.SYS_ENCODING))
+                    crcchk = [x for x in pp_crclist if tcrc == x['crc']]
+                    if crcchk:
+                        #logger.fdebug('%s Already post-processed this item %s - Ignoring' % fname)
                         continue
 
                 if os.path.splitext(fname)[1].lower().endswith(comic_ext):
@@ -1035,7 +1190,7 @@ class FileChecker(object):
                             spacer = ''
                             for i in range(0, len(wdhm)):
                                 spacer+='|'
-                            mod_watchcomic = mod_watchcomic[:mf] + spacer + mod_watchcomic[mf+1:]
+                            mod_watchcomic = mod_watchcomic[:mf] + spacer + mod_watchcomic[mf+len(wdhm):]
 
                 for wdrm in watchdynamic_replacements_match:
                     wdrm_find.extend([m.start() for m in re.finditer(wdrm.lower(), mod_watchcomic.lower())])
@@ -1051,7 +1206,8 @@ class FileChecker(object):
         #logger.fdebug('series dynamic handlers recognized : ' + str(seriesdynamic_handlers_match))
         seriesdynamic_replacements_match = [x for x in self.dynamic_replacements if x.lower() in series_name.lower()]
         #logger.fdebug('series dynamic replacements recognized : ' + str(seriesdynamic_replacements_match))
-        mod_seriesname = re.sub('[\s\_\.\s+\#]', '', series_name)
+        mod_seriesname = re.sub('[\s\s+\_\.]', '%$', series_name)
+        mod_seriesname = re.sub('[\#]', '', mod_seriesname)
         ser_find = []
         sdrm_find = []
         if any([seriesdynamic_handlers_match, seriesdynamic_replacements_match]):
@@ -1078,13 +1234,15 @@ class FileChecker(object):
             mod_watchcomic = re.sub('\|+', '|', mod_watchcomic)
             if mod_watchcomic.endswith('|'):
                 mod_watchcomic = mod_watchcomic[:-1]
+            mod_watchcomic = re.sub('[\%\$]+', '', mod_watchcomic)
 
         mod_seriesname = re.sub('\|+', '|', mod_seriesname)
         if mod_seriesname.endswith('|'):
             mod_seriesname = mod_seriesname[:-1]
+        mod_seriesname = re.sub('[\%\$]+', '', mod_seriesname)
 
-        return {'mod_watchcomic': mod_watchcomic,
-                'mod_seriesname': mod_seriesname}
+        return {'mod_watchcomic':  mod_watchcomic,
+                'mod_seriesname':  mod_seriesname}
 
     def altcheck(self):
        #iniitate the alternate list here so we can add in the different alternate search names (if present)
@@ -1106,15 +1264,15 @@ class FileChecker(object):
                     # if it's !! present, it's the comicid associated with the series as an added annual.
                     # extract the !!, store it and then remove it so things will continue.
                     as_start = AS_Alternate.find('!!')
-                    if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                    if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                         logger.fdebug('as_start: ' + str(as_start) + ' --- ' + str(AS_Alternate[as_start:]))
                     as_end = AS_Alternate.find('##', as_start)
                     if as_end == -1:
                         as_end = len(AS_Alternate)
-                    if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                    if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                         logger.fdebug('as_start: ' + str(as_end) + ' --- ' + str(AS_Alternate[as_start:as_end]))
                     AS_ComicID =  AS_Alternate[as_start +2:as_end]
-                    if mylar.FOLDER_SCAN_LOG_VERBOSE:
+                    if mylar.CONFIG.FOLDER_SCAN_LOG_VERBOSE:
                         logger.fdebug('[FILECHECKER] Extracted comicid for given annual : ' + str(AS_ComicID))
                     AS_Alternate = re.sub('!!' + str(AS_ComicID), '', AS_Alternate)
                     AS_tupled = True
@@ -1184,11 +1342,11 @@ def validateAndCreateDirectory(dir, create=False, module=None):
             logger.warn(module + ' Could not find comic directory: ' + dir)
             if create:
                 if dir.strip():
-                    logger.info(module + ' Creating comic directory (' + str(mylar.CHMOD_DIR) + ') : ' + dir)
+                    logger.info(module + ' Creating comic directory (' + str(mylar.CONFIG.CHMOD_DIR) + ') : ' + dir)
                     try:
                         os.umask(0) # this is probably redudant, but it doesn't hurt to clear the umask here.
-                        if mylar.ENFORCE_PERMS:
-                            permission = int(mylar.CHMOD_DIR, 8)
+                        if mylar.CONFIG.ENFORCE_PERMS:
+                            permission = int(mylar.CONFIG.CHMOD_DIR, 8)
                             os.makedirs(dir.rstrip(), permission)
                             setperms(dir.rstrip(), True)
                         else:
@@ -1212,50 +1370,50 @@ def setperms(path, dir=False):
 
         try:
             os.umask(0) # this is probably redudant, but it doesn't hurt to clear the umask here.
-            if mylar.CHGROUP:
-                if mylar.CHOWNER is None or mylar.CHOWNER == 'None' or mylar.CHOWNER == '':
+            if mylar.CONFIG.CHGROUP:
+                if mylar.CONFIG.CHOWNER is None or mylar.CONFIG.CHOWNER == 'None' or mylar.CONFIG.CHOWNER == '':
                     import getpass
-                    mylar.CHOWNER = getpass.getuser()
+                    mylar.CONFIG.CHOWNER = getpass.getuser()
 
-                if not mylar.CHOWNER.isdigit():
+                if not mylar.CONFIG.CHOWNER.isdigit():
                     from pwd import getpwnam
-                    chowner = getpwnam(mylar.CHOWNER)[2]
+                    chowner = getpwnam(mylar.CONFIG.CHOWNER)[2]
                 else:
-                    chowner = int(mylar.CHOWNER)
+                    chowner = int(mylar.CONFIG.CHOWNER)
 
-                if not mylar.CHGROUP.isdigit():
+                if not mylar.CONFIG.CHGROUP.isdigit():
                     from grp import getgrnam
-                    chgroup = getgrnam(mylar.CHGROUP)[2]
+                    chgroup = getgrnam(mylar.CONFIG.CHGROUP)[2]
                 else:
-                    chgroup = int(mylar.CHGROUP)
+                    chgroup = int(mylar.CONFIG.CHGROUP)
 
                 if dir:
-                    permission = int(mylar.CHMOD_DIR, 8)
+                    permission = int(mylar.CONFIG.CHMOD_DIR, 8)
                     os.chmod(path, permission)
                     os.chown(path, chowner, chgroup)
                 else:
                     for root, dirs, files in os.walk(path):
                         for momo in dirs:
-                            permission = int(mylar.CHMOD_DIR, 8)
+                            permission = int(mylar.CONFIG.CHMOD_DIR, 8)
                             os.chown(os.path.join(root, momo), chowner, chgroup)
                             os.chmod(os.path.join(root, momo), permission)
                         for momo in files:
-                            permission = int(mylar.CHMOD_FILE, 8)
+                            permission = int(mylar.CONFIG.CHMOD_FILE, 8)
                             os.chown(os.path.join(root, momo), chowner, chgroup)
                             os.chmod(os.path.join(root, momo), permission)
 
-                logger.fdebug('Successfully changed ownership and permissions [' + str(mylar.CHOWNER) + ':' + str(mylar.CHGROUP) + '] / [' + str(mylar.CHMOD_DIR) + ' / ' + str(mylar.CHMOD_FILE) + ']')
+                logger.fdebug('Successfully changed ownership and permissions [' + str(mylar.CONFIG.CHOWNER) + ':' + str(mylar.CONFIG.CHGROUP) + '] / [' + str(mylar.CONFIG.CHMOD_DIR) + ' / ' + str(mylar.CONFIG.CHMOD_FILE) + ']')
 
             else:
                 for root, dirs, files in os.walk(path):
                     for momo in dirs:
-                        permission = int(mylar.CHMOD_DIR, 8)
+                        permission = int(mylar.CONFIG.CHMOD_DIR, 8)
                         os.chmod(os.path.join(root, momo), permission)
                     for momo in files:
-                        permission = int(mylar.CHMOD_FILE, 8)
+                        permission = int(mylar.CONFIG.CHMOD_FILE, 8)
                         os.chmod(os.path.join(root, momo), permission)
 
-                logger.fdebug('Successfully changed permissions [' + str(mylar.CHMOD_DIR) + ' / ' + str(mylar.CHMOD_FILE) + ']')
+                logger.fdebug('Successfully changed permissions [' + str(mylar.CONFIG.CHMOD_DIR) + ' / ' + str(mylar.CONFIG.CHMOD_FILE) + ']')
 
         except OSError:
             logger.error('Could not change permissions : ' + path + '. Exiting...')

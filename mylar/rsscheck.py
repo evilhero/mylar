@@ -46,11 +46,11 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
     if issue:
         srchterm += '%20' + str(issue)
 
-    if mylar.TPSE_PROXY:
-        if mylar.TPSE_PROXY.endswith('/'):
-            tpse_url = mylar.TPSE_PROXY
+    if mylar.CONFIG.TPSE_PROXY:
+        if mylar.CONFIG.TPSE_PROXY.endswith('/'):
+            tpse_url = mylar.CONFIG.TPSE_PROXY
         else:
-            tpse_url = mylar.TPSE_PROXY + '/'
+            tpse_url = mylar.CONFIG.TPSE_PROXY + '/'
     else:
         #switched to https.
         tpse_url = mylar.TPSEURL
@@ -90,34 +90,38 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
 
         feedtype = None
 
-        if pickfeed == "1" and mylar.ENABLE_32P:  # 32pages new releases feed.
+        if pickfeed == "1" and mylar.CONFIG.ENABLE_32P:  # 32pages new releases feed.
             feed = 'https://32pag.es/feeds.php?feed=torrents_all&user=' + feedinfo['user'] + '&auth=' + feedinfo['auth'] + '&passkey=' + feedinfo['passkey'] + '&authkey=' + feedinfo['authkey']
             feedtype = ' from the New Releases RSS Feed for comics'
-            verify = bool(mylar.VERIFY_32P)
+            verify = bool(mylar.CONFIG.VERIFY_32P)
         elif pickfeed == "2" and srchterm is not None:    # TP.SE search / RSS
-            feed = tpse_url + 'rss/' + str(srchterm) + '/'
-            verify = bool(mylar.TPSE_VERIFY)
+            lp+=1
+            continue
+            #feed = tpse_url + 'rss/' + str(srchterm) + '/'
+            #verify = bool(mylar.CONFIG.TPSE_VERIFY)
         elif pickfeed == "3":    # TP.SE rss feed (3101 = comics category) / non-RSS
-            feed = tpse_url + '?hl=en&safe=off&num=50&start=0&orderby=best&s=&filter=3101'
-            feedtype = ' from the New Releases RSS Feed for comics from TP.SE'
-            verify = bool(mylar.TPSE_VERIFY)
+            lp+=1
+            continue
+            #feed = tpse_url + '?hl=en&safe=off&num=50&start=0&orderby=best&s=&filter=3101'
+            #feedtype = ' from the New Releases RSS Feed for comics from TP.SE'
+            #verify = bool(mylar.CONFIG.TPSE_VERIFY)
         elif pickfeed == "4":    #32p search
-            if any([mylar.USERNAME_32P is None, mylar.USERNAME_32P == '', mylar.PASSWORD_32P is None, mylar.PASSWORD_32P == '']):
+            if any([mylar.CONFIG.USERNAME_32P is None, mylar.CONFIG.USERNAME_32P == '', mylar.CONFIG.PASSWORD_32P is None, mylar.CONFIG.PASSWORD_32P == '']):
                 logger.error('[RSS] Warning - you NEED to enter in your 32P Username and Password to use this option.')
                 lp=+1
                 continue
-            if mylar.MODE_32P == 0:
+            if mylar.CONFIG.MODE_32P == 0:
                 logger.warn('[32P] Searching is not available in 32p Legacy mode. Switch to Auth mode to use the search functionality.')
                 lp=+1
                 continue
             return
         elif pickfeed == "5" and srchterm is not None:  # demonoid search / non-RSS
             feed = mylar.DEMURL + "files/?category=10&subcategory=All&language=0&seeded=2&external=2&query=" + str(srchterm) + "&uid=0&out=rss"
-            verify = bool(mylar.TPSE_VERIFY)
+            verify = bool(mylar.CONFIG.TPSE_VERIFY)
         elif pickfeed == "6":    # demonoid rss feed 
             feed = mylar.DEMURL + 'rss/10.xml'
             feedtype = ' from the New Releases RSS Feed from Demonoid'
-            verify = bool(mylar.TPSE_VERIFY)
+            verify = bool(mylar.CONFIG.TPSE_VERIFY)
         elif pickfeed == "999":    #WWT rss feed
             feed = mylar.WWTURL + 'rss.php?cat=132,50'
             feedtype = ' from the New Releases RSS Feed from WorldWideTorrents'
@@ -126,7 +130,7 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
             #get the info here
             feed = 'https://32pag.es/feeds.php?feed=' + feedinfo['feed'] + '&user=' + feedinfo['user'] + '&auth=' + feedinfo['auth'] + '&passkey=' + feedinfo['passkey'] + '&authkey=' + feedinfo['authkey'] + '&name=' + feedinfo['feedname']
             feedtype = ' from your Personal Notification Feed : ' + feedinfo['feedname']
-            verify = bool(mylar.VERIFY_32P)
+            verify = bool(mylar.CONFIG.VERIFY_32P)
         else:
             logger.error('invalid pickfeed denoted...')
             return
@@ -177,7 +181,7 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
                 justdigits = entry['file_size'] #size not available in follow-list rss feed
                 seeddigits = entry['seeders']  #number of seeders not available in follow-list rss feed
 
-                if int(seeddigits) >= int(mylar.MINSEEDS):
+                if int(seeddigits) >= int(mylar.CONFIG.MINSEEDS):
                     torthe32p.append({
                                     'site':     picksite,
                                     'title':    entry['torrent_seriesname'].lstrip() + ' ' + entry['torrent_seriesvol'] + ' #' + entry['torrent_seriesiss'],
@@ -338,7 +342,7 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
                     #    itd = True
 
 
-                    if int(mylar.MINSEEDS) >= int(seeddigits):
+                    if int(mylar.CONFIG.MINSEEDS) >= int(seeddigits):
                         #new releases has it as '&id', notification feeds have it as %ampid (possibly even &amp;id
                         link = feedme.entries[i].link
                         link = re.sub('&amp','&', link)
@@ -385,9 +389,8 @@ def nzbs(provider=None, forcerss=False):
 
     feedthis = []
 
-    def _parse_feed(site, url, verify):
+    def _parse_feed(site, url, verify, payload=None):
         logger.fdebug('[RSS] Fetching items from ' + site)
-        payload = None
         headers = {'User-Agent':      str(mylar.USER_AGENT)}
 
         try:
@@ -396,6 +399,18 @@ def nzbs(provider=None, forcerss=False):
             logger.warn('Error fetching RSS Feed Data from %s: %s' % (site, e))
             return
 
+        if r.status_code != 200:
+            #typically 403 will not return results, but just catch anything other than a 200
+            if r.status_code == 403:
+                return False
+            else:
+                logger.warn('[%s] Status code returned: %s' % (site, r.status_code))
+                if r.status_code == 503:
+                    logger.warn('[%s] Site appears unresponsive/down. Disabling...' % (site))
+                    return 'disable'
+                else:
+                    return
+
         feedme = feedparser.parse(r.content)
 
         feedthis.append({"site": site,
@@ -403,88 +418,124 @@ def nzbs(provider=None, forcerss=False):
 
     newznab_hosts = []
 
-    if mylar.NEWZNAB == 1:
-        for newznab_host in mylar.EXTRA_NEWZNABS:
-            logger.fdebug('[RSS] newznab name: ' + str(newznab_host[0]) + ' - enabled: ' + str(newznab_host[5]))
+    if mylar.CONFIG.NEWZNAB is True:
+        for newznab_host in mylar.CONFIG.EXTRA_NEWZNABS:
             if str(newznab_host[5]) == '1':
                 newznab_hosts.append(newznab_host)
 
-    providercount = len(newznab_hosts) + int(mylar.EXPERIMENTAL == 1) + int(mylar.NZBSU == 1) + int(mylar.DOGNZB == 1)
+    providercount = len(newznab_hosts) + int(mylar.CONFIG.EXPERIMENTAL is True) + int(mylar.CONFIG.NZBSU is True) + int(mylar.CONFIG.DOGNZB is True)
     logger.fdebug('[RSS] You have enabled ' + str(providercount) + ' NZB RSS search providers.')
 
-    if mylar.EXPERIMENTAL == 1:
-        max_entries = "250" if forcerss else "50"
-        _parse_feed('experimental', 'http://nzbindex.nl/rss/alt.binaries.comics.dcp/?sort=agedesc&max=' + max_entries + '&more=1', False)
+    if providercount > 0:
+        if mylar.CONFIG.EXPERIMENTAL == 1:
+            max_entries = "250" if forcerss else "50"
+            params = {'sort': 'agedesc',
+                      'max':   max_entries,
+                      'more':  '1'}
+            check = _parse_feed('experimental', 'http://nzbindex.nl/rss/alt.binaries.comics.dcp', False, params)
+            if check == 'disable':
+                helpers.disable_provider(site)
 
-    if mylar.NZBSU == 1:
-        num_items = "&num=100" if forcerss else ""  # default is 25
-        _parse_feed('nzb.su', 'http://api.nzb.su/rss?t=7030&dl=1&i=' + (mylar.NZBSU_UID or '1') + '&r=' + mylar.NZBSU_APIKEY + num_items, bool(mylar.NZBSU_VERIFY))
+        if mylar.CONFIG.NZBSU == 1:
+            num_items = "&num=100" if forcerss else ""  # default is 25
+            params = {'t':        '7030',
+                      'dl':        '1', 
+                      'i':         mylar.CONFIG.NZBSU_UID,
+                      'r':         mylar.CONFIG.NZBSU_APIKEY,
+                      'num_items': num_items}
+            check = _parse_feed('nzb.su', 'https://api.nzb.su/rss', mylar.CONFIG.NZBSU_VERIFY, params)
+            if check == 'disable':
+                helpers.disable_provider(site)
 
-    if mylar.DOGNZB == 1:
-        num_items = "&num=100" if forcerss else ""  # default is 25
-        _parse_feed('dognzb', 'https://dognzb.cr/rss.cfm?r=' + mylar.DOGNZB_APIKEY + '&t=7030' + num_items, bool(mylar.DOGNZB_VERIFY))
+        if mylar.CONFIG.DOGNZB == 1:
+            num_items = "&num=100" if forcerss else ""  # default is 25
+            params = {'t':        '7030',
+                      'r':         mylar.CONFIG.DOGNZB_APIKEY,
+                      'num_items': num_items}
 
-    for newznab_host in newznab_hosts:
-        site = newznab_host[0].rstrip()
-        (newznabuid, _, newznabcat) = (newznab_host[4] or '').partition('#')
-        newznabuid = newznabuid or '1'
-        newznabcat = newznabcat or '7030'
+            check = _parse_feed('dognzb', 'https://dognzb.cr/rss.cfm', mylar.CONFIG.DOGNZB_VERIFY, params)
+            if check == 'disable':
+                helpers.disable_provider(site)
 
-        if site[-10:] == '[nzbhydra]':
-            #to allow nzbhydra to do category search by most recent (ie. rss)
-            _parse_feed(site, newznab_host[1].rstrip() + '/api?t=search&cat=' + str(newznabcat) + '&dl=1&i=' + str(newznabuid) + '&num=100&apikey=' + newznab_host[3].rstrip(), bool(newznab_host[2]))
-        else:
-            # 11-21-2014: added &num=100 to return 100 results (or maximum) - unsure of cross-reliablity
-            _parse_feed(site, newznab_host[1].rstrip() + '/rss?t=' + str(newznabcat) + '&dl=1&i=' + str(newznabuid) + '&num=100&r=' + newznab_host[3].rstrip(), bool(newznab_host[2]))
+        for newznab_host in newznab_hosts:
+            site = newznab_host[0].rstrip()
+            (newznabuid, _, newznabcat) = (newznab_host[4] or '').partition('#')
+            newznabuid = newznabuid or '1'
+            newznabcat = newznabcat or '7030'
 
-    feeddata = []
-
-    for ft in feedthis:
-        site = ft['site']
-        logger.fdebug('[RSS] (' + site + ') now being updated...')
-
-        for entry in ft['feed'].entries:
-
-            if site == 'dognzb':
-                #because the rss of dog doesn't carry the enclosure item, we'll use the newznab size value
-                size = 0
-                if 'newznab' in entry and 'size' in entry['newznab']:
-                    size = entry['newznab']['size']
+            if site[-10:] == '[nzbhydra]':
+                #to allow nzbhydra to do category search by most recent (ie. rss)
+                url = newznab_host[1].rstrip() + '/api'
+                params = {'t':         'search',
+                          'cat':       str(newznabcat),
+                          'dl':        '1',
+                          'apikey':    newznab_host[3].rstrip(),
+                          'num':       '100'}
+                check = _parse_feed(site, url, bool(newznab_host[2]), params)
             else:
-                # experimental, nzb.su, newznab
-                size = entry.enclosures[0]['length']
+                url = newznab_host[1].rstrip() + '/rss'
+                params = {'t':         str(newznabcat),
+                          'dl':        '1',
+                          'i':         str(newznabuid),
+                          'r':         newznab_host[3].rstrip(),
+                          'num':       '100'}
 
-            # Link
-            if site == 'experimental':
-                link = entry.enclosures[0]['url']
-            else:
-                # dognzb, nzb.su, newznab
-                link = entry.link
+                check = _parse_feed(site, url, bool(newznab_host[2]), params)
+                if check is False and 'rss' in url[-3:]:
+                    logger.fdebug('RSS url returning 403 error. Attempting to use API to get most recent items in lieu of RSS feed')
+                    url = newznab_host[1].rstrip() + '/api'
+                    params = {'t':         'search',
+                              'cat':       str(newznabcat),
+                              'dl':        '1',
+                              'apikey':    newznab_host[3].rstrip(),
+                              'num':       '100'}
+                    check = _parse_feed(site, url, bool(newznab_host[2]), params)
+                if check == 'disable':
+                    helpers.disable_provider(site, newznab=True)
 
-                #Remove the API keys from the url to allow for possible api key changes
+        feeddata = []
+
+        for ft in feedthis:
+            site = ft['site']
+            logger.fdebug('[RSS] (' + site + ') now being updated...')
+
+            for entry in ft['feed'].entries:
+
                 if site == 'dognzb':
-                    link = re.sub(mylar.DOGNZB_APIKEY, '', link).strip()
+                    #because the rss of dog doesn't carry the enclosure item, we'll use the newznab size value
+                    size = 0
+                    if 'newznab' in entry and 'size' in entry['newznab']:
+                        size = entry['newznab']['size']
                 else:
-                    link = link[:link.find('&i=')].strip()
+                    # experimental, nzb.su, newznab
+                    size = entry.enclosures[0]['length']
 
-            feeddata.append({'Site': site,
-                             'Title': entry.title,
-                             'Link': link,
-                             'Pubdate': entry.updated,
-                             'Size': size})
+                # Link
+                if site == 'experimental':
+                    link = entry.enclosures[0]['url']
+                else:
+                    # dognzb, nzb.su, newznab
+                    link = entry.link
 
-            # logger.fdebug("    Site: " + site)
-            # logger.fdebug("    Title: " + entry.title)
-            # logger.fdebug("    Link: " + link)
-            # logger.fdebug("    pubdate: " + entry.updated)
-            # logger.fdebug("    size: " + size)
+                   #Remove the API keys from the url to allow for possible api key changes
+                    if site == 'dognzb':
+                        link = re.sub(mylar.CONFIG.DOGNZB_APIKEY, '', link).strip()
+                    else:
+                        link = link[:link.find('&i=')].strip()
 
-        logger.info('[RSS] (' + site + ') ' + str(len(ft['feed'].entries)) + ' entries indexed.')
+                feeddata.append({'Site': site,
+                                 'Title': entry.title,
+                                 'Link': link,
+                                 'Pubdate': entry.updated,
+                                 'Size': size})
 
-    i = len(feeddata)
-    if i:
-        logger.info('[RSS] ' + str(i) + ' entries have been indexed and are now going to be stored for caching.')
-        rssdbupdate(feeddata, i, 'usenet')
+            logger.info('[RSS] (' + site + ') ' + str(len(ft['feed'].entries)) + ' entries indexed.')
+
+        i = len(feeddata)
+        if i:
+            logger.info('[RSS] ' + str(i) + ' entries have been indexed and are now going to be stored for caching.')
+            rssdbupdate(feeddata, i, 'usenet')
+
     return
 
 def rssdbupdate(feeddata, i, type):
@@ -515,7 +566,7 @@ def rssdbupdate(feeddata, i, type):
 
         myDB.upsert("rssdb", newVal, ctrlVal)
 
-    logger.fdebug('Completed adding new data to RSS DB. Next add in ' + str(mylar.RSS_CHECKINTERVAL) + ' minutes')
+    logger.fdebug('Completed adding new data to RSS DB. Next add in ' + str(mylar.CONFIG.RSS_CHECKINTERVAL) + ' minutes')
     return
 
 
@@ -539,11 +590,11 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None, oneoff=False)
     tsearch_rem2 = re.sub("\\bthe\\b", "%", tsearch_rem1.lower())
     tsearch_removed = re.sub('\s+', ' ', tsearch_rem2)
     tsearch_seriesname = re.sub('[\'\!\@\#\$\%\:\-\;\/\\=\?\&\.\s\,]', '%', tsearch_removed)
-    if mylar.PREFERRED_QUALITY == 0:
+    if mylar.CONFIG.PREFERRED_QUALITY == 0:
         tsearch = tsearch_seriesname + "%"
-    elif mylar.PREFERRED_QUALITY == 1:
+    elif mylar.CONFIG.PREFERRED_QUALITY == 1:
         tsearch = tsearch_seriesname + "%cbr%"
-    elif mylar.PREFERRED_QUALITY == 2:
+    elif mylar.CONFIG.PREFERRED_QUALITY == 2:
         tsearch = tsearch_seriesname + "%cbz%"
     else:
         tsearch = tsearch_seriesname + "%"
@@ -553,9 +604,9 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None, oneoff=False)
     tresults = []
     tsearch = '%' + tsearch
 
-    if mylar.ENABLE_32P and nzbprov == '32P':
+    if mylar.CONFIG.ENABLE_32P and nzbprov == '32P':
         tresults = myDB.select("SELECT * FROM rssdb WHERE Title like ? AND Site='32P'", [tsearch])
-    if mylar.ENABLE_TPSE and nzbprov == 'TPSE':
+    if mylar.CONFIG.ENABLE_TPSE and nzbprov == 'TPSE':
         tresults += myDB.select("SELECT * FROM rssdb WHERE Title like ? AND (Site='DEM' OR Site='WWT')", [tsearch])
 
     logger.fdebug('seriesname_alt:' + str(seriesname_alt))
@@ -582,19 +633,19 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None, oneoff=False)
             if AS_formatrem_seriesname[:1] == ' ': AS_formatrem_seriesname = AS_formatrem_seriesname[1:]
             AS_Alt.append(AS_formatrem_seriesname)
 
-            if mylar.PREFERRED_QUALITY == 0:
+            if mylar.CONFIG.PREFERRED_QUALITY == 0:
                  AS_Alternate += "%"
-            elif mylar.PREFERRED_QUALITY == 1:
+            elif mylar.CONFIG.PREFERRED_QUALITY == 1:
                  AS_Alternate += "%cbr%"
-            elif mylar.PREFERRED_QUALITY == 2:
+            elif mylar.CONFIG.PREFERRED_QUALITY == 2:
                  AS_Alternate += "%cbz%"
             else:
                  AS_Alternate += "%"
 
             AS_Alternate = '%' + AS_Alternate
-            if mylar.ENABLE_32P and nzbprov == '32P':
+            if mylar.CONFIG.ENABLE_32P and nzbprov == '32P':
                 tresults += myDB.select("SELECT * FROM rssdb WHERE Title like ? AND Site='32P'", [AS_Alternate])
-            if mylar.ENABLE_TPSE and nzbprov == 'TPSE':
+            if mylar.CONFIG.ENABLE_TPSE and nzbprov == 'TPSE':
                 tresults += myDB.select("SELECT * FROM rssdb WHERE Title like ? AND (Site='DEM' OR Site='WWT')", [AS_Alternate])
 
     if tresults is None:
@@ -611,13 +662,13 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None, oneoff=False)
         torTITLE = re.sub('&amp;', '&', tor['Title']).strip()
 
         #torsplit = torTITLE.split(' ')
-        if mylar.PREFERRED_QUALITY == 1:
+        if mylar.CONFIG.PREFERRED_QUALITY == 1:
             if 'cbr' in torTITLE:
                 logger.fdebug('Quality restriction enforced [ cbr only ]. Accepting result.')
             else:
                 logger.fdebug('Quality restriction enforced [ cbr only ]. Rejecting result.')
                 continue
-        elif mylar.PREFERRED_QUALITY == 2:
+        elif mylar.CONFIG.PREFERRED_QUALITY == 2:
             if 'cbz' in torTITLE:
                 logger.fdebug('Quality restriction enforced [ cbz only ]. Accepting result.')
             else:
@@ -627,7 +678,7 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None, oneoff=False)
         #logger.fdebug('there are ' + str(len(torsplit)) + ' sections in this title')
         i=0
         if nzbprov is not None:
-            if nzbprov != tor['Site'] and not any([mylar.ENABLE_TPSE, tor['Site'] != 'WWT', tor['Site'] != 'DEM']):
+            if nzbprov != tor['Site'] and not any([mylar.CONFIG.ENABLE_TPSE, tor['Site'] != 'WWT', tor['Site'] != 'DEM']):
                 logger.fdebug('this is a result from ' + str(tor['Site']) + ', not the site I am looking for of ' + str(nzbprov))
                 continue
         #0 holds the title/issue and format-type.
@@ -768,8 +819,8 @@ def nzbdbsearch(seriesname, issue, comicid=None, nzbprov=None, searchYear=None, 
             ComVersChk = 0
 
         filetype = None
-        if mylar.PREFERRED_QUALITY == 1: filetype = 'cbr'
-        elif mylar.PREFERRED_QUALITY == 2: filetype = 'cbz'
+        if mylar.CONFIG.PREFERRED_QUALITY == 1: filetype = 'cbr'
+        elif mylar.CONFIG.PREFERRED_QUALITY == 2: filetype = 'cbz'
 
         for results in nresults:
             title = results['Title']
@@ -840,15 +891,15 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
     if linkit[-7:] != "torrent":
         filename += ".torrent"
     if any([mylar.USE_UTORRENT, mylar.USE_RTORRENT, mylar.USE_TRANSMISSION, mylar.USE_DELUGE, mylar.USE_QBITTORRENT]):
-        filepath = os.path.join(mylar.CACHE_DIR, filename)
+        filepath = os.path.join(mylar.CONFIG.CACHE_DIR, filename)
         logger.fdebug('filename for torrent set to : ' + filepath)
 
     elif mylar.USE_WATCHDIR:
-        if mylar.TORRENT_LOCAL and mylar.LOCAL_WATCHDIR is not None:
-            filepath = os.path.join(mylar.LOCAL_WATCHDIR, filename)
+        if mylar.CONFIG.TORRENT_LOCAL and mylar.CONFIG.LOCAL_WATCHDIR is not None:
+            filepath = os.path.join(mylar.CONFIG.LOCAL_WATCHDIR, filename)
             logger.fdebug('filename for torrent set to : ' + filepath)
-        elif mylar.TORRENT_SEEDBOX and mylar.SEEDBOX_WATCHDIR is not None:
-            filepath = os.path.join(mylar.CACHE_DIR, filename)
+        elif mylar.CONFIG.TORRENT_SEEDBOX and mylar.CONFIG.SEEDBOX_WATCHDIR is not None:
+            filepath = os.path.join(mylar.CONFIG.CACHE_DIR, filename)
             logger.fdebug('filename for torrent set to : ' + filepath)
         else:
             logger.error('No Local Watch Directory or Seedbox Watch Directory specified. Set it and try again.')
@@ -858,14 +909,14 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
     if site == '32P':
         url = 'https://32pag.es/torrents.php'
 
-        if mylar.VERIFY_32P == 1 or mylar.VERIFY_32P == True:
+        if mylar.CONFIG.VERIFY_32P == 1 or mylar.CONFIG.VERIFY_32P == True:
             verify = True
         else:
             verify = False
 
         logger.fdebug('[32P] Verify SSL set to : ' + str(verify))
-        if mylar.MODE_32P == 0:
-            if mylar.KEYS_32P is None or mylar.PASSKEY_32P is None:
+        if mylar.CONFIG.MODE_32P == 0:
+            if mylar.KEYS_32P is None or mylar.CONFIG.PASSKEY_32P is None:
                 logger.warn('[32P] Unable to retrieve keys from provided RSS Feed. Make sure you have provided a CURRENT RSS Feed from 32P')
                 mylar.KEYS_32P = helpers.parse_32pfeed(mylar.FEED_32P)
                 if mylar.KEYS_32P is None or mylar.KEYS_32P == '':
@@ -877,31 +928,30 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
                 logger.fdebug('[32P-AUTHENTICATION] 32P (Legacy) Authentication already done. Attempting to use existing keys.')
                 mylar.AUTHKEY_32P = mylar.KEYS_32P['authkey']
         else:
-            if any([mylar.USERNAME_32P is None, mylar.USERNAME_32P == '', mylar.PASSWORD_32P is None, mylar.PASSWORD_32P == '']):
+            if any([mylar.CONFIG.USERNAME_32P is None, mylar.CONFIG.USERNAME_32P == '', mylar.CONFIG.PASSWORD_32P is None, mylar.CONFIG.PASSWORD_32P == '']):
                 logger.error('[RSS] Unable to sign-on to 32P to validate settings and initiate download sequence. Please enter/check your username password in the configuration.')
                 return "fail"
-            elif mylar.PASSKEY_32P is None or mylar.AUTHKEY_32P is None or mylar.KEYS_32P is None:
+            elif mylar.CONFIG.PASSKEY_32P is None or mylar.AUTHKEY_32P is None or mylar.KEYS_32P is None:
                 logger.fdebug('[32P-AUTHENTICATION] 32P (Auth Mode) Authentication enabled. Keys have not been established yet, attempting to gather.')
                 feed32p = auth32p.info32p(reauthenticate=True)
                 feedinfo = feed32p.authenticate()
                 if feedinfo == "disable":
-                    mylar.ENABLE_32P = 0
-                    mylar.config_write()
+                    mylar.CONFIG.ENABLE_32P = 0
+                    #mylar.config_write()
                     return "fail"
-                if mylar.PASSKEY_32P is None or mylar.AUTHKEY_32P is None or mylar.KEYS_32P is None:
+                if mylar.CONFIG.PASSKEY_32P is None or mylar.AUTHKEY_32P is None or mylar.KEYS_32P is None:
                     logger.error('[RSS] Unable to sign-on to 32P to validate settings and initiate download sequence. Please enter/check your username password in the configuration.')
                     return "fail"
             else:
                 logger.fdebug('[32P-AUTHENTICATION] 32P (Auth Mode) Authentication already done. Attempting to use existing keys.')
 
         payload = {'action':       'download',
-                   'torrent_pass': mylar.PASSKEY_32P,
+                   'torrent_pass': mylar.CONFIG.PASSKEY_32P,
                    'authkey':      mylar.AUTHKEY_32P,
                    'id':           linkit}
 
         headers = None #{'Accept-encoding': 'gzip',
                        # 'User-Agent':      str(mylar.USER_AGENT)}
-
     elif site == 'TPSE':
         pass
         #linkit should be the magnet link since it's TPSE
@@ -995,26 +1045,23 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
             else:
                 r = scraper.get(url, params=payload, verify=verify, stream=True, headers=headers)
             #r = requests.get(url, params=payload, verify=verify, stream=True, headers=headers)
-
         except Exception, e:
             logger.warn('Error fetching data from %s (%s): %s' % (site, url, e))
             if site == '32P':
                 logger.info('[TOR2CLIENT-32P] Retrying with 32P')
-                if mylar.MODE_32P == 1:
+                if mylar.CONFIG.MODE_32P == 1:
 
                     logger.info('[TOR2CLIENT-32P] Attempting to re-authenticate against 32P and poll new keys as required.')
                     feed32p = auth32p.info32p(reauthenticate=True)
                     feedinfo = feed32p.authenticate()
 
                     if feedinfo == "disable":
-                        mylar.ENABLE_32P = 0
-                        mylar.config_write()
+                        mylar.CONFIG.ENABLE_32P = 0
+                        #mylar.config_write()
                         return "fail"
 
                     logger.debug('[TOR2CLIENT-32P] Creating CF Scraper')
                     scraper = cfscrape.create_scraper()
-
-                    logger.debug('[TOR2CLIENT-32P] payload: %s \n verify %s \n headers %s \n', payload, verify, headers)
 
                     try:
                         r = scraper.get(url, params=payload, verify=verify, allow_redirects=True)
@@ -1025,7 +1072,6 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
                     logger.warn('[TOR2CLIENT-32P] Unable to authenticate using existing RSS Feed given. Make sure that you have provided a CURRENT feed from 32P')
                     return "fail"
             else:
-                logger.info('blah: ' + str(r.status_code))
                 return "fail"
 
         if any([site == 'TPSE', site == 'DEM', site == 'WWT']) and any([str(r.status_code) == '403', str(r.status_code) == '404', str(r.status_code) == '503']):
@@ -1053,6 +1099,7 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
 
         if str(r.status_code) != '200':
             logger.warn('Unable to download torrent from ' + site + ' [Status Code returned: ' + str(r.status_code) + ']')
+            logger.info('content: %s' % r.content)
             return "fail"
 
         if any([site == 'TPSE', site == 'DEM', site == 'WWT']):
@@ -1102,7 +1149,7 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
     elif mylar.USE_TRANSMISSION:
         try:
             rpc = transmission.TorrentClient()
-            if not rpc.connect(mylar.TRANSMISSION_HOST, mylar.TRANSMISSION_USERNAME, mylar.TRANSMISSION_PASSWORD):
+            if not rpc.connect(mylar.CONFIG.TRANSMISSION_HOST, mylar.CONFIG.TRANSMISSION_USERNAME, mylar.CONFIG.TRANSMISSION_PASSWORD):
                 return "fail"
             torrent_info = rpc.load_torrent(filepath)
             if torrent_info:
@@ -1118,7 +1165,7 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
     elif mylar.USE_DELUGE:
         try:
             dc = deluge.TorrentClient()
-            if not dc.connect(mylar.DELUGE_HOST, mylar.DELUGE_USERNAME, mylar.DELUGE_PASSWORD):
+            if not dc.connect(mylar.CONFIG.DELUGE_HOST, mylar.CONFIG.DELUGE_USERNAME, mylar.CONFIG.DELUGE_PASSWORD):
                 logger.info('Not connected to Deluge!')
                 return "fail"
             else:
@@ -1139,7 +1186,7 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
     elif mylar.USE_QBITTORRENT:
         try:
             qc = qbittorrent.TorrentClient()
-            if not qc.connect(mylar.QBITTORRENT_HOST, mylar.QBITTORRENT_USERNAME, mylar.QBITTORRENT_PASSWORD):
+            if not qc.connect(mylar.CONFIG.QBITTORRENT_HOST, mylar.CONFIG.QBITTORRENT_USERNAME, mylar.CONFIG.QBITTORRENT_PASSWORD):
                 logger.info('Not connected to qBittorrent - Make sure the Web UI is enabled and the port is correct!')
                 return "fail"
             else:
@@ -1158,7 +1205,7 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
             return "fail"
 
     elif mylar.USE_WATCHDIR:
-        if mylar.TORRENT_LOCAL:
+        if mylar.CONFIG.TORRENT_LOCAL:
             if site == 'TPSE':
                 torrent_info = {'hash': pubhash}
             else:

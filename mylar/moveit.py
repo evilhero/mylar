@@ -1,5 +1,5 @@
 import mylar
-from mylar import db, logger, helpers, updater
+from mylar import db, logger, helpers, updater, filechecker
 import os
 import shutil
 import ast
@@ -21,12 +21,18 @@ def movefiles(comicid, comlocation, imported):
     impres = imported['filelisting']
 
     if impres is not None:
+        if all([mylar.CONFIG.CREATE_FOLDERS is False, not os.path.isdir(comlocation)]):
+            checkdirectory = filechecker.validateAndCreateDirectory(comlocation, True)
+            if not checkdirectory:
+                logger.warn('Error trying to validate/create directory. Aborting this process at this time.')
+                return
+
         for impr in impres:
             srcimp = impr['comiclocation']
             orig_filename = impr['comicfilename']
             #before moving check to see if Rename to Mylar structure is enabled.
-            if mylar.IMP_RENAME and mylar.FILE_FORMAT != '':
-                logger.fdebug("Renaming files according to configuration details : " + str(mylar.FILE_FORMAT))
+            if mylar.CONFIG.IMP_RENAME and mylar.CONFIG.FILE_FORMAT != '':
+                logger.fdebug("Renaming files according to configuration details : " + str(mylar.CONFIG.FILE_FORMAT))
                 renameit = helpers.rename_param(comicid, imported['ComicName'], impr['issuenumber'], orig_filename)
                 nfilename = renameit['nfilename']
                 dstimp = os.path.join(comlocation, nfilename)

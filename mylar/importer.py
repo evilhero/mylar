@@ -51,13 +51,7 @@ def is_exists(comicid):
 
 
 def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=None, calledfrom=None, annload=None, chkwant=None, issuechk=None, issuetype=None, latestissueinfo=None, csyear=None):
-    # Putting this here to get around the circular import. Will try to use this to update images at later date.
-#    from mylar import cache
-
     myDB = db.DBConnection()
-
-    # We need the current minimal info in the database instantly
-    # so we don't throw a 500 error when we redirect to the artistPage
 
     controlValueDict = {"ComicID":     comicid}
 
@@ -86,10 +80,11 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
             latestissueinfo.append({"latestiss": dbcomic['LatestIssue'],
                                     "latestdate":  dbcomic['LatestDate']})
 
-        checkdirectory = filechecker.validateAndCreateDirectory(comlocation, True)
-        if not checkdirectory:
-            logger.warn('Error trying to validate/create directory. Aborting this process at this time.')
-            return
+        if mylar.CONFIG.CREATE_FOLDERS is True:
+            checkdirectory = filechecker.validateAndCreateDirectory(comlocation, True)
+            if not checkdirectory:
+               logger.warn('Error trying to validate/create directory. Aborting this process at this time.')
+               return
         oldcomversion = dbcomic['ComicVersion'] #store the comicversion and chk if it exists before hammering.
     myDB.upsert("comics", newValueDict, controlValueDict)
 
@@ -121,7 +116,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     #--Now that we know ComicName, let's try some scraping
     #--Start
     # gcd will return issue details (most importantly publishing date)
-    if not mylar.CV_ONLY:
+    if not mylar.CONFIG.CV_ONLY:
         if mismatch == "no" or mismatch is None:
             gcdinfo=parseit.GCDScraper(comic['ComicName'], comic['ComicYear'], comic['ComicIssues'], comicid)
             #print ("gcdinfo: " + str(gcdinfo))
@@ -152,7 +147,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     CV_NoYearGiven = "no"
     #if the SeriesYear returned by CV is blank or none (0000), let's use the gcd one.
     if any([comic['ComicYear'] is None, comic['ComicYear'] == '0000', comic['ComicYear'][-1:] == '-']):
-        if mylar.CV_ONLY:
+        if mylar.CONFIG.CV_ONLY:
             #we'll defer this until later when we grab all the issues and then figure it out
             logger.info('Uh-oh. I cannot find a Series Year for this series. I am going to try analyzing deeper.')
             SeriesYear = cv.getComic(comicid, 'firstissue', comic['FirstIssueID'])
@@ -180,16 +175,16 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
         if comic['ComicVersion'].isdigit():
             comicVol = 'v' + comic['ComicVersion']
             logger.info('Updated version to :' + str(comicVol))
-            if all([mylar.SETDEFAULTVOLUME is False, comicVol == 'v1']):
+            if all([mylar.CONFIG.SETDEFAULTVOLUME is False, comicVol == 'v1']):
                 comicVol = None
         else:
-            if mylar.SETDEFAULTVOLUME is True:
+            if mylar.CONFIG.SETDEFAULTVOLUME is True:
                 comicVol = 'v1'
             else:
                 comicVol = None
     else:
         comicVol = oldcomversion
-        if all([mylar.SETDEFAULTVOLUME is True, comicVol is None]):
+        if all([mylar.CONFIG.SETDEFAULTVOLUME is True, comicVol is None]):
             comicVol = 'v1'
 
 
@@ -212,13 +207,13 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
             comicVol = 'None'
         #if comversion is None, remove it so it doesn't populate with 'None'
         if comicVol == 'None':
-            chunk_f_f = re.sub('\$VolumeN', '', mylar.FOLDER_FORMAT)
+            chunk_f_f = re.sub('\$VolumeN', '', mylar.CONFIG.FOLDER_FORMAT)
             chunk_f = re.compile(r'\s+')
             chunk_folder_format = chunk_f.sub(' ', chunk_f_f)
             logger.fdebug('No version # found for series, removing from folder format')
             logger.fdebug("new folder format: " + str(chunk_folder_format))
         else:
-            chunk_folder_format = mylar.FOLDER_FORMAT
+            chunk_folder_format = mylar.CONFIG.FOLDER_FORMAT
 
         #do work to generate folder path
 
@@ -232,69 +227,64 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
                   '$Annual':        'Annual'
                   }
 
-        if mylar.FOLDER_FORMAT == '':
-            comlocation = os.path.join(mylar.DESTINATION_DIR, comicdir, " (" + SeriesYear + ")")
+        if mylar.CONFIG.FOLDER_FORMAT == '':
+            comlocation = os.path.join(mylar.CONFIG.DESTINATION_DIR, comicdir, " (" + SeriesYear + ")")
         else:
-            comlocation = os.path.join(mylar.DESTINATION_DIR, helpers.replace_all(chunk_folder_format, values))
+            comlocation = os.path.join(mylar.CONFIG.DESTINATION_DIR, helpers.replace_all(chunk_folder_format, values))
 
 
-        #comlocation = mylar.DESTINATION_DIR + "/" + comicdir + " (" + comic['ComicYear'] + ")"
-        if mylar.DESTINATION_DIR == "":
+        #comlocation = mylar.CONFIG.DESTINATION_DIR + "/" + comicdir + " (" + comic['ComicYear'] + ")"
+        if mylar.CONFIG.DESTINATION_DIR == "":
             logger.error('There is no Comic Location Path specified - please specify one in Config/Web Interface.')
             return
-        if mylar.REPLACE_SPACES:
-            #mylar.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
-            comlocation = comlocation.replace(' ', mylar.REPLACE_CHAR)
+        if mylar.CONFIG.REPLACE_SPACES:
+            #mylar.CONFIG.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
+            comlocation = comlocation.replace(' ', mylar.CONFIG.REPLACE_CHAR)
 
     #moved this out of the above loop so it will chk for existance of comlocation in case moved
     #if it doesn't exist - create it (otherwise will bugger up later on)
     if os.path.isdir(comlocation):
         logger.info('Directory (' + comlocation + ') already exists! Continuing...')
     else:
-        #print ("Directory doesn't exist!")
-        #try:
-        #    os.makedirs(str(comlocation))
-        #    logger.info(u"Directory successfully created at: " + str(comlocation))
-        #except OSError:
-        #    logger.error(u"Could not create comicdir : " + str(comlocation))
-        checkdirectory = filechecker.validateAndCreateDirectory(comlocation, True)
-        if not checkdirectory:
-            logger.warn('Error trying to validate/create directory. Aborting this process at this time.')
-            return
+        if mylar.CONFIG.CREATE_FOLDERS is True:
+            checkdirectory = filechecker.validateAndCreateDirectory(comlocation, True)
+            if not checkdirectory:
+                logger.warn('Error trying to validate/create directory. Aborting this process at this time.')
+                return
 
     #try to account for CV not updating new issues as fast as GCD
     #seems CV doesn't update total counts
     #comicIssues = gcdinfo['totalissues']
     comicIssues = comic['ComicIssues']
 
-    if not mylar.CV_ONLY:
+    if not mylar.CONFIG.CV_ONLY:
         if gcdinfo['gcdvariation'] == "cv":
             comicIssues = str(int(comic['ComicIssues']) + 1)
 
     #let's download the image...
-    if os.path.exists(mylar.CACHE_DIR): pass
+    if os.path.exists(mylar.CONFIG.CACHE_DIR): pass
     else:
         #let's make the dir.
         try:
-            os.makedirs(str(mylar.CACHE_DIR))
-            logger.info('Cache Directory successfully created at: ' + str(mylar.CACHE_DIR))
+            os.makedirs(str(mylar.CONFIG.CACHE_DIR))
+            logger.info('Cache Directory successfully created at: ' + str(mylar.CONFIG.CACHE_DIR))
 
         except OSError:
-            logger.error('Could not create cache dir. Check permissions of cache dir: ' + str(mylar.CACHE_DIR))
+            logger.error('Could not create cache dir. Check permissions of cache dir: ' + str(mylar.CONFIG.CACHE_DIR))
 
-    coverfile = os.path.join(mylar.CACHE_DIR,  str(comicid) + ".jpg")
+    coverfile = os.path.join(mylar.CONFIG.CACHE_DIR,  str(comicid) + ".jpg")
 
     #if cover has '+' in url it's malformed, we need to replace '+' with '%20' to retreive properly.
 
     #new CV API restriction - one api request / second.(probably unecessary here, but it doesn't hurt)
-    if mylar.CVAPI_RATE is None or mylar.CVAPI_RATE < 2:
+    if mylar.CONFIG.CVAPI_RATE is None or mylar.CONFIG.CVAPI_RATE < 2:
         time.sleep(2)
     else:
-        time.sleep(mylar.CVAPI_RATE)
+        time.sleep(mylar.CONFIG.CVAPI_RATE)
 
     logger.info('Attempting to retrieve the comic image for series')
     try:
-        r = requests.get(comic['ComicImage'], params=None, stream=True, verify=mylar.CV_VERIFY, headers=mylar.CV_HEADERS)
+        r = requests.get(comic['ComicImage'], params=None, stream=True, verify=mylar.CONFIG.CV_VERIFY, headers=mylar.CV_HEADERS)
     except Exception, e:
         logger.warn('Unable to download image from CV URL link: ' + comic['ComicImage'] + ' [Status Code returned: ' + str(r.status_code) + ']')
 
@@ -330,7 +320,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
 
         logger.info('Attempting to retrieve alternate comic image for the series.')
         try:
-            r = requests.get(comic['ComicImageALT'], params=None, stream=True, verify=mylar.CV_VERIFY, headers=mylar.CV_HEADERS)
+            r = requests.get(comic['ComicImageALT'], params=None, stream=True, verify=mylar.CONFIG.CV_VERIFY, headers=mylar.CV_HEADERS)
         except Exception, e:
             logger.warn('Unable to download image from CV URL link: ' + comic['ComicImageALT'] + ' [Status Code returned: ' + str(r.status_code) + ']')
 
@@ -355,14 +345,14 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
 
             #this is for Firefox when outside the LAN...it works, but I don't know how to implement it
             #without breaking the normal flow for inside the LAN (above)
-            #ComicImage = "http://" + str(mylar.HTTP_HOST) + ":" + str(mylar.HTTP_PORT) + "/cache/" + str(comicid) + ".jpg"
+            #ComicImage = "http://" + str(mylar.CONFIG.HTTP_HOST) + ":" + str(mylar.CONFIG.HTTP_PORT) + "/cache/" + str(comicid) + ".jpg"
 
     #if the comic cover local is checked, save a cover.jpg to the series folder.
-    if mylar.COMIC_COVER_LOCAL:
+    if mylar.CONFIG.COMIC_COVER_LOCAL and os.path.isdir(comlocation):
         try:
             comiclocal = os.path.join(comlocation, 'cover.jpg')
             shutil.copyfile(coverfile, comiclocal)
-            if mylar.ENFORCE_PERMS:
+            if mylar.CONFIG.ENFORCE_PERMS:
                 filechecker.setperms(comiclocal)
         except IOError as e:
             logger.error('Unable to save cover (' + str(coverfile) + ') into series directory (' + str(comiclocal) + ') at this time.')
@@ -433,8 +423,8 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
         if anndata:
             manualAnnual(annchk=anndata)
 
-    if mylar.CVINFO or (mylar.CV_ONLY and mylar.CVINFO):
-        if not os.path.exists(os.path.join(comlocation, "cvinfo")) or mylar.CV_ONETIMER:
+    if (mylar.CONFIG.CVINFO or (mylar.CONFIG.CV_ONLY and mylar.CONFIG.CVINFO)) and os.path.isdir(comlocation):
+        if not os.path.exists(os.path.join(comlocation, "cvinfo")) or mylar.CONFIG.CV_ONETIMER:
             with open(os.path.join(comlocation, "cvinfo"), "w") as text_file:
                 text_file.write(str(comic['ComicURL']))
 
@@ -455,6 +445,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
         logger.info('Successfully refreshed ' + comic['ComicName'] + ' (' + str(SeriesYear) + '). Returning to Weekly issue update.')
         return  #no need to return any data here.
 
+
     logger.info('Updating complete for: ' + comic['ComicName'])
 
     #if it made it here, then the issuedata contains dates, let's pull the data now.
@@ -467,7 +458,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     if imported is None or imported == 'None' or imported == 'futurecheck':
         pass
     else:
-        if mylar.IMP_MOVE:
+        if mylar.CONFIG.IMP_MOVE:
             logger.info('Mass import - Move files')
             moveit.movefiles(comicid, comlocation, imported)
         else:
@@ -487,11 +478,11 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     if pullupd is None:
     # lets' check the pullist for anything at this time as well since we're here.
     # do this for only Present comics....
-        if mylar.AUTOWANT_UPCOMING and lastpubdate == 'Present' and series_status == 'Active': #and 'Present' in gcdinfo['resultPublished']:
+        if mylar.CONFIG.AUTOWANT_UPCOMING and lastpubdate == 'Present' and series_status == 'Active': #and 'Present' in gcdinfo['resultPublished']:
             logger.fdebug('latestissue: #' + str(latestiss))
             chkstats = myDB.selectone("SELECT * FROM issues WHERE ComicID=? AND Int_IssueNumber=?", [comicid, helpers.issuedigits(latestiss)]).fetchone()
             if chkstats is None:
-                if mylar.ANNUALS_ON:
+                if mylar.CONFIG.ANNUALS_ON:
                     chkstats = myDB.selectone("SELECT * FROM annuals WHERE ComicID=? AND Int_IssueNumber=?", [comicid, helpers.issuedigits(latestiss)]).fetchone()
 
             if chkstats:
@@ -513,7 +504,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
                                             'Issue_Number':  issr['Issue_Number'],
                                             'Status':        issr['Status']
                                            })
-                    if mylar.ANNUALS_ON:
+                    if mylar.CONFIG.ANNUALS_ON:
                         an_results = myDB.select("SELECT * FROM annuals WHERE ComicID=? AND Status='Wanted'", [comicid])
                         if an_results:
                             for ar in an_results:
@@ -684,54 +675,49 @@ def GCDimport(gcomicid, pullupd=None, imported=None, ogcname=None):
                   '$Volume':        year
                   }
 
-        if mylar.FOLDER_FORMAT == '':
-            comlocation = mylar.DESTINATION_DIR + "/" + comicdir + " (" + comic['ComicYear'] + ")"
+        if mylar.CONFIG.FOLDER_FORMAT == '':
+            comlocation = mylar.CONFIG.DESTINATION_DIR + "/" + comicdir + " (" + comic['ComicYear'] + ")"
         else:
-            comlocation = mylar.DESTINATION_DIR + "/" + helpers.replace_all(mylar.FOLDER_FORMAT, values)
+            comlocation = mylar.CONFIG.DESTINATION_DIR + "/" + helpers.replace_all(mylar.CONFIG.FOLDER_FORMAT, values)
 
-        #comlocation = mylar.DESTINATION_DIR + "/" + comicdir + " (" + ComicYear + ")"
-        if mylar.DESTINATION_DIR == "":
+        #comlocation = mylar.CONFIG.DESTINATION_DIR + "/" + comicdir + " (" + ComicYear + ")"
+        if mylar.CONFIG.DESTINATION_DIR == "":
             logger.error(u"There is no general directory specified - please specify in Config/Post-Processing.")
             return
-        if mylar.REPLACE_SPACES:
-            #mylar.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
-            comlocation = comlocation.replace(' ', mylar.REPLACE_CHAR)
+        if mylar.CONFIG.REPLACE_SPACES:
+            #mylar.CONFIG.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
+            comlocation = comlocation.replace(' ', mylar.CONFIG.REPLACE_CHAR)
 
     #if it doesn't exist - create it (otherwise will bugger up later on)
     if os.path.isdir(comlocation):
         logger.info(u"Directory (" + comlocation + ") already exists! Continuing...")
     else:
-        #print ("Directory doesn't exist!")
-        #try:
-        #    os.makedirs(str(comlocation))
-        #    logger.info(u"Directory successfully created at: " + str(comlocation))
-        #except OSError:
-        #    logger.error(u"Could not create comicdir : " + str(comlocation))
-        checkdirectory = filechecker.validateAndCreateDirectory(comlocation, True)
-        if not checkdirectory:
-            logger.warn('Error trying to validate/create directory. Aborting this process at this time.')
-            return
+        if mylar.CONFIG.CREATE_FOLDERS is True:
+            checkdirectory = filechecker.validateAndCreateDirectory(comlocation, True)
+            if not checkdirectory:
+                logger.warn('Error trying to validate/create directory. Aborting this process at this time.')
+                return
 
     comicIssues = gcdinfo['totalissues']
 
     #let's download the image...
-    if os.path.exists(mylar.CACHE_DIR): pass
+    if os.path.exists(mylar.CONFIG.CACHE_DIR): pass
     else:
         #let's make the dir.
         try:
-            os.makedirs(str(mylar.CACHE_DIR))
-            logger.info(u"Cache Directory successfully created at: " + str(mylar.CACHE_DIR))
+            os.makedirs(str(mylar.CONFIG.CACHE_DIR))
+            logger.info(u"Cache Directory successfully created at: " + str(mylar.CONFIG.CACHE_DIR))
 
         except OSError:
-            logger.error(u"Could not create cache dir : " + str(mylar.CACHE_DIR))
+            logger.error(u"Could not create cache dir : " + str(mylar.CONFIG.CACHE_DIR))
 
-    coverfile = os.path.join(mylar.CACHE_DIR, str(gcomicid) + ".jpg")
+    coverfile = os.path.join(mylar.CONFIG.CACHE_DIR, str(gcomicid) + ".jpg")
 
     #new CV API restriction - one api request / second.
-    if mylar.CVAPI_RATE is None or mylar.CVAPI_RATE < 2:
+    if mylar.CONFIG.CVAPI_RATE is None or mylar.CONFIG.CVAPI_RATE < 2:
         time.sleep(2)
     else:
-        time.sleep(mylar.CVAPI_RATE)
+        time.sleep(mylar.CONFIG.CVAPI_RATE)
 
     urllib.urlretrieve(str(ComicImage), str(coverfile))
     try:
@@ -740,11 +726,11 @@ def GCDimport(gcomicid, pullupd=None, imported=None, ogcname=None):
 
             #this is for Firefox when outside the LAN...it works, but I don't know how to implement it
             #without breaking the normal flow for inside the LAN (above)
-            #ComicImage = "http://" + str(mylar.HTTP_HOST) + ":" + str(mylar.HTTP_PORT) + "/cache/" + str(comi$
+            #ComicImage = "http://" + str(mylar.CONFIG.HTTP_HOST) + ":" + str(mylar.CONFIG.HTTP_PORT) + "/cache/" + str(comi$
 
             logger.info(u"Sucessfully retrieved cover for " + ComicName)
             #if the comic cover local is checked, save a cover.jpg to the series folder.
-            if mylar.COMIC_COVER_LOCAL:
+            if mylar.CONFIG.COMIC_COVER_LOCAL and os.path.isdir(comlocation):
                 comiclocal = os.path.join(comlocation + "/cover.jpg")
                 shutil.copy(ComicImage, comiclocal)
     except IOError as e:
@@ -859,9 +845,9 @@ def GCDimport(gcomicid, pullupd=None, imported=None, ogcname=None):
         #print ("issueid:" + str(controlValueDict))
         #print ("values:" + str(newValueDict))
 
-        if mylar.AUTOWANT_ALL:
+        if mylar.CONFIG.AUTOWANT_ALL:
             newValueDict['Status'] = "Wanted"
-        elif issdate > helpers.today() and mylar.AUTOWANT_UPCOMING:
+        elif issdate > helpers.today() and mylar.CONFIG.AUTOWANT_UPCOMING:
             newValueDict['Status'] = "Wanted"
         else:
             newValueDict['Status'] = "Skipped"
@@ -890,7 +876,7 @@ def GCDimport(gcomicid, pullupd=None, imported=None, ogcname=None):
 
     myDB.upsert("comics", newValueStat, controlValueStat)
 
-    if mylar.CVINFO:
+    if mylar.CONFIG.CVINFO and os.path.isdir(comlocation):
         if not os.path.exists(comlocation + "/cvinfo"):
             with open(comlocation + "/cvinfo", "w") as text_file:
                 text_file.write("http://comicvine.gamespot.com/volume/49-" + str(comicid))
@@ -901,7 +887,7 @@ def GCDimport(gcomicid, pullupd=None, imported=None, ogcname=None):
     if imported is None or imported == 'None':
         pass
     else:
-        if mylar.IMP_MOVE:
+        if mylar.CONFIG.IMP_MOVE:
             logger.info("Mass import - Move files")
             moveit.movefiles(gcomicid, comlocation, ogcname)
         else:
@@ -914,7 +900,7 @@ def GCDimport(gcomicid, pullupd=None, imported=None, ogcname=None):
 
     if pullupd is None:
         # lets' check the pullist for anyting at this time as well since we're here.
-        if mylar.AUTOWANT_UPCOMING and 'Present' in ComicPublished:
+        if mylar.CONFIG.AUTOWANT_UPCOMING and 'Present' in ComicPublished:
             logger.info(u"Checking this week's pullist for new issues of " + ComicName)
             updater.newpullcheck(comic['ComicName'], gcomicid)
 
@@ -926,7 +912,7 @@ def GCDimport(gcomicid, pullupd=None, imported=None, ogcname=None):
 
             for result in results:
                 foundNZB = "none"
-                if (mylar.NZBSU or mylar.DOGNZB or mylar.EXPERIMENTAL or mylar.NEWZNAB or mylar.NZBX) and (mylar.SAB_HOST):
+                if (mylar.CONFIG.NZBSU or mylar.CONFIG.DOGNZB or mylar.CONFIG.EXPERIMENTAL or mylar.CONFIG.NEWZNAB) and (mylar.CONFIG.SAB_HOST):
                     foundNZB = search.searchforissue(result['IssueID'])
                     if foundNZB == "yes":
                         updater.foundsearch(result['ComicID'], result['IssueID'])
@@ -971,7 +957,7 @@ def issue_collection(issuedata, nostatus):
                 # Only change the status & add DateAdded if the issue is already in the database
                 if iss_exists is None:
                     newValueDict['DateAdded'] = helpers.today()
-                    if issue['ReleaseDate'] == '00000000':
+                    if issue['ReleaseDate'] == '0000-00-00':
                         dk = re.sub('-', '', issue['IssueDate']).strip()
                     else:
                         dk = re.sub('-', '', issue['ReleaseDate']).strip() # converts date to 20140718 format
@@ -981,17 +967,17 @@ def issue_collection(issuedata, nostatus):
                     else:
                         datechk = datetime.datetime.strptime(dk, "%Y%m%d")
                         issue_week = datetime.datetime.strftime(datechk, "%Y%U")
-                        if mylar.AUTOWANT_ALL:
+                        if mylar.CONFIG.AUTOWANT_ALL:
                             newValueDict['Status'] = "Wanted"
                             #logger.fdebug('autowant all')
-                        elif issue_week >= now_week and mylar.AUTOWANT_UPCOMING:
+                        elif issue_week >= now_week and mylar.CONFIG.AUTOWANT_UPCOMING:
                             #logger.fdebug(str(datechk) + ' >= ' + str(nowtime))
                             newValueDict['Status'] = "Wanted"
                         else:
                             newValueDict['Status'] = "Skipped"
                         #logger.fdebug('status is : ' + str(newValueDict))
                 else:
-                    logger.fdebug('Existing status for issue #%s : %s' % (issue['Issue_Number'], iss_exists['Status']))
+                    #logger.fdebug('Existing status for issue #%s : %s' % (issue['Issue_Number'], iss_exists['Status']))
                     if any([iss_exists['Status'] is None, iss_exists['Status'] == 'None']):
                         is_status = 'Skipped'
                     else:
@@ -1014,7 +1000,10 @@ def issue_collection(issuedata, nostatus):
 def manualAnnual(manual_comicid=None, comicname=None, comicyear=None, comicid=None, annchk=None, manualupd=False):
         #called when importing/refreshing an annual that was manually added.
         myDB = db.DBConnection()
+
         if annchk is None:
+            nowdate = datetime.datetime.now()
+            now_week = datetime.datetime.strftime(nowdate, "%Y%U")
             annchk = []
             issueid = manual_comicid
             logger.fdebug(str(issueid) + ' added to series list as an Annual')
@@ -1040,6 +1029,24 @@ def manualAnnual(manual_comicid=None, comicname=None, comicyear=None, comicid=No
                         cleanname = helpers.cleanName(firstval['Issue_Name'])
                     except:
                         cleanname = 'None'
+
+                    if firstval['Store_Date'] == '0000-00-00':
+                        dk = re.sub('-', '', firstval['Issue_Date']).strip()
+                    else:
+                        dk = re.sub('-', '', firstval['Store_Date']).strip() # converts date to 20140718 format
+                    if dk == '00000000':
+                        logger.warn('Issue Data is invalid for Issue Number %s. Marking this issue as Skipped' % firstval['Issue_Number'])
+                        astatus = "Skipped"
+                    else:
+                        datechk = datetime.datetime.strptime(dk, "%Y%m%d")
+                        issue_week = datetime.datetime.strftime(datechk, "%Y%U")
+                        if mylar.CONFIG.AUTOWANT_ALL:
+                            astatus = "Wanted"
+                        elif issue_week >= now_week and mylar.CONFIG.AUTOWANT_UPCOMING is True:
+                            astatus = "Wanted"
+                        else:
+                            astatus = "Skipped"
+
                     annchk.append({'IssueID':          str(firstval['Issue_ID']),
                                    'ComicID':          comicid,
                                    'ReleaseComicID':   re.sub('4050-', '', manual_comicid).strip(),
@@ -1048,7 +1055,7 @@ def manualAnnual(manual_comicid=None, comicname=None, comicyear=None, comicid=No
                                    'IssueName':        cleanname,
                                    'IssueDate':        str(firstval['Issue_Date']),
                                    'ReleaseDate':      str(firstval['Store_Date']),
-                                   'Status':           'Skipped',
+                                   'Status':           astatus,
                                    'ReleaseComicName': sr['ComicName']})
                     n+=1
 
@@ -1438,7 +1445,7 @@ def annual_check(ComicName, SeriesYear, comicid, issuetype, issuechk, annualslis
 
         annualyear = SeriesYear  # no matter what, the year won't be less than this.
         logger.fdebug('[IMPORTER-ANNUAL] - Annual Year:' + str(annualyear))
-        sresults, explicit = mb.findComic(annComicName, mode, issue=None, explicit='all')#,explicit=True)
+        sresults = mb.findComic(annComicName, mode, issue=None)
         type='comic'
 
         annual_types_ignore = {'paperback', 'collecting', 'reprints', 'collected edition', 'print edition', 'tpb', 'available in print', 'collects'}
@@ -1498,7 +1505,7 @@ def annual_check(ComicName, SeriesYear, comicid, issuetype, issuechk, annualslis
 
                             iss_exists = myDB.selectone('SELECT * from annuals WHERE IssueID=?', [issid]).fetchone()
                             if iss_exists is None:
-                                if stdate == '00000000':
+                                if stdate == '0000-00-00':
                                     dk = re.sub('-', '', issdate).strip()
                                 else:
                                     dk = re.sub('-', '', stdate).strip() # converts date to 20140718 format
@@ -1508,10 +1515,9 @@ def annual_check(ComicName, SeriesYear, comicid, issuetype, issuechk, annualslis
                                 else:
                                     datechk = datetime.datetime.strptime(dk, "%Y%m%d")
                                     issue_week = datetime.datetime.strftime(datechk, "%Y%U")
-
-                                    if mylar.AUTOWANT_ALL:
+                                    if mylar.CONFIG.AUTOWANT_ALL:
                                         astatus = "Wanted"
-                                    elif issue_week >= now_week and mylar.AUTOWANT_UPCOMING:
+                                    elif issue_week >= now_week and mylar.CONFIG.AUTOWANT_UPCOMING is True:
                                         astatus = "Wanted"
                                     else:
                                         astatus = "Skipped"
@@ -1543,11 +1549,12 @@ def annual_check(ComicName, SeriesYear, comicid, issuetype, issuechk, annualslis
 
                             n+=1
                 num_res+=1
+            manualAnnual(annchk=annualslist)
             return annualslist
 
         elif len(sresults) == 0 or len(sresults) is None:
             logger.fdebug('[IMPORTER-ANNUAL] - No results, removing the year from the agenda and re-querying.')
-            sresults, explicit = mb.findComic(annComicName, mode, issue=None)#, explicit=True)
+            sresults = mb.findComic(annComicName, mode, issue=None)
             if len(sresults) == 1:
                 sr = sresults[0]
                 logger.fdebug('[IMPORTER-ANNUAL] - ' + str(comicid) + ' found. Assuming it is part of the greater collection.')

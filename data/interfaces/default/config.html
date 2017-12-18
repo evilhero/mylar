@@ -1,6 +1,7 @@
 <%inherit file="base.html"/>
 <%!
 	import mylar
+        from operator import itemgetter
 %>
 
 <%def name="headerIncludes()">
@@ -44,7 +45,7 @@
                             <label><strong>Mylar Data Directory :</strong>  ${config['data_dir']}</label></br>
                             <label><strong>Mylar Program Directory :</strong> ${config['prog_dir']}</label></br>
                             <label><strong>Mylar Cache Directory :</strong> ${config['cache_dir']}</label></br>
-                            <label><strong>Mylar Config File :</strong>${config['config_file']}</label></br>
+                            <a href="config_dump"><label><strong>Mylar Config File :</strong>${config['config_file']}</label></a></br>
 
                        </div>                       
                    </fieldset>
@@ -83,7 +84,7 @@
                         </div>
                         <div class="row">
                           <label><strong>Forums</strong></label>
-                            <div><a href="http://forum.mylarcomics.com/" target="_blank">http://forum.mylarcomics.com</a></div>
+                            <div><a href="https://forum.mylarcomics.com/" target="_blank">https://forum.mylarcomics.com</a></div>
                         </div>
                         <div class="row">
                           <label><strong>Source</strong></label>
@@ -189,23 +190,57 @@
                                    <small>specify your own CV API key here </small>
                                 </div>
 
-                                <div class="row checkbox">
-                                    <input id="api_enabled" type="checkbox" onclick="initConfigCheckbox($(this));" name="api_enabled" value="1" ${config['api_enabled']} /><label>Enable API</label>
-                                </div>
-                                <div class="apioptions">
-                                  <div class="row">
-                                    <label>Mylar API key</label>
-                                    <input type="text" name="api_key" id="api_key" value="${config['api_key']}" size="20">
-                                    <input type="button" value="Generate" id="generate_api">
-                                    <small>Current API key: <strong>${config['api_key']}</strong></small>
-                                  </div>
+                                <div class="row">
+                                    <div class="row checkbox">
+                                        <input id="api_enabled" type="checkbox" name="api_enabled" value="1" ${config['api_enabled']} /><label>Enable API</label>
+                                    </div>
+                                    <div id="apioptions">
+                                       <div class="row">
+                                          <label>Mylar API key</label>
+                                          <input type="text" name="api_key" id="api_key" value="${config['api_key']}" size="20">
+                                          <input type="button" value="Generate" id="generate_api">
+                                          <small>Current API key: <strong>${config['api_key']}</strong></small>
+                                      </div>
+                                    </div>
                                 </div>
                          </fieldset>
+                        <fieldset>
+                                <legend>OPDS</legend>
+                                <div class="row">
+                                    <div class="row_checkbox">
+                                        <input id="opds_enable" type="checkbox" name="opds_enable" value="1" ${config['opds_enable']} /><label>Enable OPDS</label>
+                                    </div>
+                                    <div id="opdsoptions">
+                                        <div class="row_checkbox">
+                                            <input id="opds_authentication" type="checkbox" name="opds_authentication" value="1" ${config['opds_authentication']} /><label>OPDS Requires Credentials</label>
+                                            <%
+                                                 opds_notes = "Require authentication for OPDS.  If checked\nyou will need to provide a username/password.\nThe service user name will work (if set).  Additionally,\nyou can provide a user with only OPDS access below.\nNOTE: If this is not checked, OPDS will be available\nwithout a password."
+                                            %>
+                                            <a href="#" title="${opds_notes}"><img src="interfaces/default/images/info32.png" height="16" alt="" /></a>
+                                            <div id="opdscredentials">
+                                                 <div class="row">
+                                                     <label>OPDS Username</label>
+                                                     <input type="text" name="opds_username" value="${config['opds_username']}" size="30">
+                                                 </div>
+
+                                                 <div class="row">
+                                                   <label>OPDS Password</label>
+                                                   <input type="password" name="opds_password" value="${config['opds_password']| h}" size="30">
+                                                 </div>
+                                            </div>
+                                        </div>
+                                        <div class="row_checkbox">
+                                            <input id="opds_metainfo" type="checkbox" name="opds_metainfo" value="1" ${config['opds_metainfo']} /><label>OPDS Fetch MetaInfo</label>
+                                            </br><small>Warning: Enabling this will slow down issue listing significantly, but will give writer info and book summary</small>
+                                        </div>
+                                    </div>
+                                </div>
+                        </fieldset>
                         <fieldset>
                     	<legend>Interval</legend>
 	                    <div class="row">
 	                    	<label>NZB Search Interval</label>
-	                    	<input type="text" name="nzb_search_interval" value="${config['nzb_search_interval']}" size="4">mins
+	                    	<input type="text" name="search_interval" value="${config['search_interval']}" size="4">mins
                                   <div class="row checkbox">
                                     <input type="checkbox" name="nzb_startup_search" value="1" ${config['nzb_startup_search']} /><label>NZB Search on startup</label>
                                   </div>
@@ -327,6 +362,11 @@
                                     </div>
                                 </div>
 
+                                <div class="row checkbox left clearfix">
+                                    <input type="checkbox" id="sab_client_post_processing" onclick="initConfigCheckbox($this));" name="sab_client_post_processing" value="1" ${config['sab_client_post_processing']} /><label>Enable Completed Download Handling<label>
+                                    <small>The category label above is used to when completed download handling is enabled</small>
+                                </div>
+
                                 <div align="center" class="row">
                                      <input type="button" value="Test SABnzbd" id="test_sab" style="float:center" /></br>
                                      <input type="text" name="sabstatus" style="text-align:center; font-size:11px;" id="sabstatus" size="50" DISABLED />
@@ -374,6 +414,11 @@
                                                 %endfor
                                                 </select>
                                               </div>
+
+                            <div class="row checkbox left clearfix">
+                                <input type="checkbox" id="nzbget_client_post_processing" onclick="initConfigCheckbox($this));" name="nzbget_client_post_processing" value="1" ${config['nzbget_client_post_processing']} /><label>Enable Completed Download Handling<label>
+                                <small>The category label above is used to when completed download handling is enabled</small>
+                            </div>
                          
                          </fieldset>
                          <fieldset id="blackhole_options">
@@ -470,7 +515,7 @@
                         <fieldset id="rtorrent_options">
                                 <div class="row">
                                         <label>rTorrent Host:port(optional)</label>
-                                        <input type="text" name="rtorrent_host" value="${config['rtorrent_host']}" size="30">
+                                        <input type="text" id="rtorrent_host" name="rtorrent_host" value="${config['rtorrent_host']}" size="30">
 					<small>ie. my.rtorrent:80, 192.168.1.1, scgi://localhost:5000</small>
                                 </div>
                                 <div class="row checkbox left clearfix">
@@ -483,7 +528,7 @@
                                 </div>
                                 <div class="row">
                                     <label>rTorrent Authentication</label>
-                                    <select name="rtorrent_authentication">
+                                    <select name="rtorrent_authentication" id="rtorrent_authentication">
                                     %for x in ['basic', 'digest']:
                                         <%
                                             if config['rtorrent_authentication'] == x:
@@ -497,16 +542,16 @@
                                 </div>
                                 <div class="row">
                                         <label>rTorrent RPC</label>
-                                        <input type="text" name="rtorrent_rpc_url" value="${config['rtorrent_rpc_url']}" size="30">
+                                        <input type="text" id="rtorrent_rpc_url" name="rtorrent_rpc_url" value="${config['rtorrent_rpc_url']}" size="30">
 					<small>ie. httprpc plugin = rutorrent/plugins/httprpc/action.php<br>rpc plugin = user/RPC2</small>
                                 </div>
                                 <div class="row">
                                         <label>rTorrent Username</label>
-                                        <input type="text" name="rtorrent_username" value="${config['rtorrent_username']}" size="30">
+                                        <input type="text" id="rtorrent_username" name="rtorrent_username" value="${config['rtorrent_username']}" size="30">
                                 </div>
                                 <div class="row">
                                         <label>rTorrent Password</label>
-                                        <input type="password" name="rtorrent_password" value="${config['rtorrent_password']| h}" size="30">
+                                        <input type="password" id="rtorrent_password" name="rtorrent_password" value="${config['rtorrent_password']| h}" size="30">
                                 </div>
                                 <div class="row">
                                         <label>rTorrent Directory</label>
@@ -521,6 +566,9 @@
                                 <div class="row checkbox left clearfix">
                                         <input id="rtorrent_startonload" type="checkbox" name="rtorrent_startonload" value="1" ${config['rtorrent_startonload']} /><label>Start Torrent on Successful Load</label>
                                         <small>Automatically start torrent on successful loading within rtorrent client</small>
+                                </div>
+                                <div class="row">
+                                        <input type="button" value="Test Connection" id="rtorrent_test" />
                                 </div>
                         </fieldset>
 			<fieldset id="transmission_options">
@@ -594,7 +642,6 @@
                      </div>
                 </td>
             </tr>
-
 	    </table>
 	</div>
 	<div id="tabs-4">
@@ -614,7 +661,7 @@
                         </fieldset>
                 	<fieldset>
                 		<div class="row checkbox left clearfix">
-                                    <input id="usenzbsu" type="checkbox" onclick="initConfigCheckbox($(this));" name="nzbsu" value="1" ${config['use_nzbsu']} /><legend>NZB.SU</legend>
+                                    <input id="usenzbsu" type="checkbox" onclick="initConfigCheckbox($(this));" name="nzbsu" value="1" ${config['nzbsu']} /><legend>NZB.SU</legend>
                 		</div>
                 		<div class="config">
                                         <div class="row checkbox">
@@ -634,7 +681,7 @@
 
                         <fieldset>
                                 <div class="row checkbox left clearfix">
-                                     <input id="usedognzb" type="checkbox" onclick="initConfigCheckbox($(this));" name="dognzb" value="1" ${config['use_dognzb']} /><legend>DOGNZB</legend>
+                                     <input id="usedognzb" type="checkbox" onclick="initConfigCheckbox($(this));" name="dognzb" value="1" ${config['dognzb']} /><legend>DOGNZB</legend>
                                 </div>
                                 <div class="config">
                                         <div class="row checkbox">
@@ -649,7 +696,7 @@
 
                         <fieldset>
                                 <div class="row checkbox left clearfix">
-                                   <input id="useexperimental" type="checkbox" onclick="initConfigCheckbox($(this));" name="experimental" value="1" ${config['use_experimental']} /><legend>Use Experimental Search</legend>
+                                   <input id="useexperimental" type="checkbox" onclick="initConfigCheckbox($(this));" name="experimental" value="1" ${config['experimental']} /><legend>Use Experimental Search</legend>
                                 </div>
                                 <div>
                                    <small class="heading"><span style="float: left; margin-right: .3em; margin-top: 4px;" class="ui-icon ui-icon-info"></span>Note: this is an experimental search - results may be better/worse.</small>
@@ -750,7 +797,7 @@
                         <fieldset>
                                 <legend>Newznab</legend>
                                 <div class="row checkbox">
-                                    <input id="usenewznab" type="checkbox" name="newznab" onclick="initConfigCheckbox($(this));" value="1" ${config['use_newznab']} /><label>Use Newznab</label>
+                                    <input id="usenewznab" type="checkbox" name="newznab" onclick="initConfigCheckbox($(this));" value="1" ${config['newznab']} /><label>Use Newznab</label>
                                 </div>
                                 <div id="newznab_providers">
                                     <%
@@ -791,6 +838,10 @@
                                             </div>
                                             <div class="row checkbox">
                                                 <input id="newznab_enabled" type="checkbox" name="newznab_enabled${newznab_number}" value="1" ${newznab_enabled} /><label>Enabled</label>
+<!--
+                                                <input type="button" value="Test ${newznab[0]}" id="newznab_test(newznab${newznab_number})" style="float:center" /></br>
+                                                <img name="newznabstatus${newznab_number}" id="newznabstatus${newznab_number}" src="interfaces/default/images/newznab_success.png" style="vertical-align: middle; margin: 3px; margin-top: -1px;" height="10" width="10" DISABLED />
+-->
                                             </div>
                                             <div class="row">
                                                 <input type="button" class="remove" id="newznab${newznab_number}" value="Remove ${newznab[0]}">
@@ -804,31 +855,19 @@
                                 </div>
                         </fieldset>
 
-<!--
-                        <fieldset>
-                                 <div id="newznab providers">
-                                    <%
-                                        order_number = 1
-                                    %>
-
-                                     %for p_order in config['provider_order']:
-                                        <div class="config" id="p_order${order_number}">
-                                            <div class="row">
-                                               <label>${p_order[0]}</label>
-                                               <label>${p_order[1]}</label>
-                                            </div>
-                                        <div>                                        
-                                       <%
-                                            order_number += 1
-                                       %>
-    
-                                     %endfor
-                               </div>
-                        </fieldset>
--->
                 </td>
 
             </tr>
+             <tr>
+                      <%
+                           porder = []
+                           for k,v in sorted(mylar.CONFIG.PROVIDER_ORDER.iteritems(), key=itemgetter(0), reverse=False):
+                               porder.append(v)
+                           porder = ', '.join(porder)
+                       %>
+                       <legend><center>Search Order: ${porder}</center></legend>
+             </tr>
+
         </table>
 	</div>
 	<div id="tabs-5">
@@ -886,7 +925,7 @@
                         <fieldset>
                             <legend>Duplicate Dump Folder</legend>
                              <div class="row checkbox left clearfix">
-                                 <input type="checkbox" id="enable_ddump" onclick="initConfigCheckbox($this));" name="ddump" value="1" ${config['ddump']} /><label>Enable Duplicate Dump Folder</label>
+                                 <input type="checkbox" id="ddump" onclick="initConfigCheckbox($this));" name="ddump" value="1" ${config['ddump']} /><label>Enable Duplicate Dump Folder</label>
                              </div>
                                 <div class="config">
                                     <div class="row"">
@@ -1102,7 +1141,7 @@
                                                    <input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="autowant_all" value="1" ${config['autowant_all']} /><label>Automatically Mark All Issues as Wanted</label>
                                                    <input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="comic_cover_local" value="1" ${config['comic_cover_local']} /><label>Place cover.jpg into Comic Directory for each comic</label>
                                                    <input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="cvinfo" value="1" ${config['cvinfo']} /><label>Write cvinfo into each comic directory</label>
-                                                   %if mylar.ENABLE_TORRENTS:
+                                                   %if mylar.CONFIG.ENABLE_TORRENTS:
                                                        <input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="snatchedtorrent_notify" value="1" ${config['snatchedtorrent_notify']} /><label>Manual Post-Processing - Notify on Completed Torrents</label>
                                                    %endif
 
@@ -1115,7 +1154,7 @@
 							<select name="interface"><h3>
 							%for interface in config['interface_list']:
 								<%
-									if interface == mylar.INTERFACE:
+									if interface == mylar.CONFIG.INTERFACE:
 										selected = 'selected="selected"'
 									else:
 										selected = ''
@@ -1376,7 +1415,45 @@
                                 $("#apioptions").slideUp();
                         }
                 });
+                if ($("#opds_enable").is(":checked"))
+                        {
+                                $("#opdsoptions").show();
+                        }
+                        else
+                        {
+                                $("#opdsoptions").hide();
+                        }
 
+                $("#opds_enable").click(function(){
+                        if ($("#opds_enable").is(":checked"))
+                        {
+                                $("#opdsoptions").slideDown();
+                        }
+                        else
+                        {
+                                $("#opdsoptions").slideUp();
+                        }
+                });
+
+                if ($("#opds_authentication").is(":checked"))
+                        {
+                                $("#opdscredentials").show();
+                        }
+                        else
+                        {
+                                $("#opdscredentials").hide();
+                        }
+
+                $("#opds_authentication").click(function(){
+                        if ($("#opds_authentication").is(":checked"))
+                        {
+                                $("#opdscredentials").slideDown();
+                        }
+                        else
+                        {
+                                $("#opdscredentials").slideUp();
+                        }
+                });
 
                 if ($("#cbr2cbz").is(":checked"))
                         {
@@ -1737,6 +1814,7 @@
                                 return;
                             }
                             $('#sabstatus').val(data);
+                            // $('#sab_apikey').val(data);
                             $('#ajaxMsg').html("<div class='msg'><span class='ui-icon ui-icon-check'></span>"+data+"</div>");
                     });
                     $('#ajaxMsg').addClass('success').fadeIn().delay(3000).fadeOut();
@@ -1810,6 +1888,44 @@
                 function addAction() {
                         $('#autoadd').append('<input type="hidden" name="tsab" value=1 />');
                 };
+
+                $('#rtorrent_test').click(function () {
+                    var host = document.getElementById('rtorrent_host').value;
+                    var username = document.getElementById('rtorrent_username').value;
+                    var password = document.getElementById('rtorrent_password').value;
+                    var auth = document.getElementById('rtorrent_authentication').value;
+                    var verify = document.getElementById('rtorrent_verify').value;
+                    var ssl = document.getElementById('rtorrent_ssl').value;
+                    var rpc_url = document.getElementById('rtorrent_rpc_url').value;
+                    alert(host);
+                    $.get("testrtorrent",
+                        { host: host, username: username, password: password, auth: auth, verify: verify, ssl: ssl, rpc_url: rpc_url },
+                        function(data){
+                            if (data.error != undefined) {
+                                alert(data.error);
+                                return;
+                            }
+                            //$('#rtorrentstatus').val(data);
+                            $('#ajaxMsg').html("<div class='msg'><span class='ui-icon ui-icon-check'></span>"+data+"</div>");
+                    });
+                    $('#ajaxMsg').addClass('success').fadeIn().delay(3000).fadeOut();
+                });
+
+                $('#newznab_test').click(function (x) {
+                    // var name = document.getElementById("newznab_name").value;
+                    alert(x);
+                    $.get("testnewznab",
+                        { name: name, host: host, ssl: ssl, apikey: apikey },
+                        function(data){
+                            if (data.error != undefined) {
+                                alert(data.error);
+                                return;
+                            }
+                            $('#newznabstatus').show();
+                            $('#ajaxMsg').html("Successfully connected to newnzab");
+                    });
+                    $('#ajaxMsg').addClass('success').fadeIn().delay(3000).fadeOut();
+                });
 
                 $('#nma_test').click(function () {
                     var apikey = document.getElementById('nma_apikey').value;
@@ -1924,7 +2040,7 @@
                 initConfigCheckbox("#replace_spaces");
                 initConfigCheckbox("#use_minsize");
                 initConfigCheckbox("#use_maxsize");
-                initConfigCheckbox("#enable_ddump");
+                initConfigCheckbox("#ddump");
                 initConfigCheckbox("#enable_failed");
                 initConfigCheckbox("#enable_meta");
                 initConfigCheckbox("#zero_level");

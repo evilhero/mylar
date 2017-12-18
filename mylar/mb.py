@@ -44,33 +44,32 @@ if platform.python_version() == '2.7.6':
     httplib.HTTPConnection._http_vsn = 10
     httplib.HTTPConnection._http_vsn_str = 'HTTP/1.0'
 
-def pullsearch(comicapi, comicquery, offset, explicit, type):
-    u_comicquery = urllib.quote(comicquery.encode('utf-8').strip())
-    u_comicquery = u_comicquery.replace(" ", "%20")
+def pullsearch(comicapi, comicquery, offset, type):
 
-    if explicit == 'all' or explicit == 'loose':
-        PULLURL = mylar.CVURL + 'search?api_key=' + str(comicapi) + '&resources=' + str(type) + '&query=' + u_comicquery + '&field_list=id,name,start_year,first_issue,site_detail_url,count_of_issues,image,publisher,deck,description,last_issue&format=xml&limit=100&page=' + str(offset)
+    cnt = 1
+    for x in comicquery:
+       if cnt == 1:
+           filterline = '%s' % x
+       else:
+           filterline+= ',name:%s' % x
+       cnt+=1
 
-    else:
-        # 02/22/2014 use the volume filter label to get the right results.
-        # add the 's' to the end of type to pluralize the caption (it's needed)
-        if type == 'story_arc':
-            u_comicquery = re.sub("%20AND%20", "%20", u_comicquery)
-        PULLURL = mylar.CVURL + str(type) + 's?api_key=' + str(comicapi) + '&filter=name:' + u_comicquery + '&field_list=id,name,start_year,site_detail_url,count_of_issues,image,publisher,deck,description&format=xml&offset=' + str(offset) # 2012/22/02 - CVAPI flipped back to offset instead of page
+    PULLURL = mylar.CVURL + str(type) + 's?api_key=' + str(comicapi) + '&filter=name:' + filterline + '&field_list=id,name,start_year,site_detail_url,count_of_issues,image,publisher,deck,description,first_issue,last_issue&format=xml&offset=' + str(offset) # 2012/22/02 - CVAPI flipped back to offset instead of page
+
     #all these imports are standard on most modern python implementations
     #logger.info('MB.PULLURL:' + PULLURL)
 
     #new CV API restriction - one api request / second.
-    if mylar.CVAPI_RATE is None or mylar.CVAPI_RATE < 2:
+    if mylar.CONFIG.CVAPI_RATE is None or mylar.CONFIG.CVAPI_RATE < 2:
         time.sleep(2)
     else:
-        time.sleep(mylar.CVAPI_RATE)
+        time.sleep(mylar.CONFIG.CVAPI_RATE)
 
     #download the file:
     payload = None
 
     try:
-        r = requests.get(PULLURL, params=payload, verify=mylar.CV_VERIFY, headers=mylar.CV_HEADERS)
+        r = requests.get(PULLURL, params=payload, verify=mylar.CONFIG.CV_VERIFY, headers=mylar.CV_HEADERS)
     except Exception, e:
         logger.warn('Error fetching data from ComicVine: %s' % (e))
         return
@@ -78,60 +77,45 @@ def pullsearch(comicapi, comicquery, offset, explicit, type):
     dom = parseString(r.content) #(data)
     return dom
 
-def findComic(name, mode, issue, limityear=None, explicit=None, type=None):
+def findComic(name, mode, issue, limityear=None, type=None):
 
-    #with mb_lock:       
+    #with mb_lock:
     comicResults = None
     comicLibrary = listLibrary()
     comiclist = []
     arcinfolist = []
-    
-    if type == 'story_arc':
-        chars = set('!?*&')
-    else:
-        chars = set('!?*&-')
-    if any((c in chars) for c in name) or 'annual' in name:
-            name = '"' +name +'"'
 
-    #print ("limityear: " + str(limityear))
+    commons = ['and', 'the', '&', '-']
+    for x in commons:
+        cnt = 0
+        for m in re.finditer(x, name.lower()):
+            cnt +=1
+            tehstart = m.start()
+            tehend = m.end()
+            if any([x == 'the', x == 'and']):
+                if not all([tehstart == 0, name[tehend] == ' ']) or not all([tehstart != 0, name[tehstart-1] == ' ', name[tehend] == ' ']):
+                    continue
+            else:
+                name = name.replace(x, ' ', cnt)
+
+    pattern = re.compile(ur'\w+', re.UNICODE)
+    name = pattern.findall(name)
+
     if limityear is None: limityear = 'None'
 
     comicquery = name
-    #comicquery=name.replace(" ", "%20")
 
-    if explicit is None:
-        #logger.fdebug('explicit is None. Setting to Default mode of ALL search words.')
-        #comicquery=name.replace(" ", " AND ")
-        explicit = 'all'
-
-    #OR
-    if ' and ' in comicquery.lower():
-        logger.fdebug('Enforcing exact naming match due to operator in title (and)')
-        explicit = 'all'
-
-    if explicit == 'loose':
-        logger.fdebug('Changing to loose mode - this will match ANY of the search words')
-        comicquery = name.replace(" ", " OR ")
-    elif explicit == 'explicit':
-        logger.fdebug('Changing to explicit mode - this will match explicitly on the EXACT words')
-        comicquery=name.replace(" ", " AND ")
+    if mylar.CONFIG.COMICVINE_API == 'None' or mylar.CONFIG.COMICVINE_API is None:
+        logger.warn('You have not specified your own ComicVine API key - this is a requirement. Get your own @ http://api.comicvine.com.')
+        return
     else:
-        logger.fdebug('Default search mode - this will match on ALL search words')
-        #comicquery = name.replace(" ", " AND ")
-        explicit = 'all'
-
-
-    if mylar.COMICVINE_API == 'None' or mylar.COMICVINE_API is None or mylar.COMICVINE_API == mylar.DEFAULT_CVAPI:
-        logger.warn('You have not specified your own ComicVine API key - alot of things will be limited. Get your own @ http://api.comicvine.com.')
-        comicapi = mylar.DEFAULT_CVAPI
-    else:
-        comicapi = mylar.COMICVINE_API
+        comicapi = mylar.CONFIG.COMICVINE_API
 
     if type is None:
         type = 'volume'
 
     #let's find out how many results we get from the query...
-    searched = pullsearch(comicapi, comicquery, 0, explicit, type)
+    searched = pullsearch(comicapi, comicquery, 0, type)
     if searched is None:
         return False
     totalResults = searched.getElementsByTagName('number_of_total_results')[0].firstChild.wholeText
@@ -145,16 +129,10 @@ def findComic(name, mode, issue, limityear=None, explicit=None, type=None):
     while (countResults < int(totalResults)):
         #logger.fdebug("querying " + str(countResults))
         if countResults > 0:
-            #2012/22/02 - CV API flipped back to offset usage instead of page
-            if explicit == 'all' or explicit == 'loose':
-                #all / loose uses page for offset
-                offsetcount = (countResults /100) + 1
-            else:
-                #explicit uses offset
-                offsetcount = countResults
+            offsetcount = countResults
 
-            searched = pullsearch(comicapi, comicquery, offsetcount, explicit, type)
-        comicResults = searched.getElementsByTagName(type) #('volume')
+            searched = pullsearch(comicapi, comicquery, offsetcount, type)
+        comicResults = searched.getElementsByTagName(type)
         body = ''
         n = 0
         if not comicResults:
@@ -250,12 +228,27 @@ def findComic(name, mode, issue, limityear=None, explicit=None, type=None):
                         limiter = int(issue) - 1
                     else: limiter = 0
                     #get the first issue # (for auto-magick calcs)
+
+                    iss_len = len(result.getElementsByTagName('name'))
+                    i=0
+                    xmlfirst = '1'
+                    xmllast = None
                     try:
-                        xmlfirst = result.getElementsByTagName('issue_number')[0].firstChild.wholeText
-                        if '\xbd' in xmlfirst:
-                            xmlfirst = "1"  #if the first issue is 1/2, just assume 1 for logistics
+                        while (i < iss_len):
+                            if result.getElementsByTagName('name')[i].parentNode.nodeName == 'first_issue':
+                                xmlfirst = result.getElementsByTagName('issue_number')[i].firstChild.wholeText
+                                if '\xbd' in xmlfirst:
+                                    xmlfirst = '1'  #if the first issue is 1/2, just assume 1 for logistics
+                            elif result.getElementsByTagName('name')[i].parentNode.nodeName == 'last_issue':
+                                xmllast = result.getElementsByTagName('issue_number')[i].firstChild.wholeText
+                            if all([xmllast is not None, xmlfirst is not None]):
+                                break
+                            i+=1
                     except:
                         xmlfirst = '1'
+
+                    if all([xmlfirst == xmllast, xmlfirst.isdigit(), xmlcnt == '0']):
+                        xmlcnt = '1'
 
                     #logger.info('There are : ' + str(xmlcnt) + ' issues in this series.')
                     #logger.info('The first issue started at # ' + str(xmlfirst))
@@ -279,7 +272,6 @@ def findComic(name, mode, issue, limityear=None, explicit=None, type=None):
 
                             if result.getElementsByTagName('name')[cl].parentNode.nodeName == 'last_issue':
                                 xml_lastissueid = result.getElementsByTagName('id')[cl].firstChild.wholeText
-
                             cl+=1
 
                         if (result.getElementsByTagName('start_year')[0].firstChild) is not None:
@@ -303,7 +295,7 @@ def findComic(name, mode, issue, limityear=None, explicit=None, type=None):
                         logger.fdebug('[RESULT][' + str(limityear) + '] ComicName:' + xmlTag + ' -- ' + str(xmlYr) + ' [Series years: ' + str(yearRange) + ']')
                         if tmpYr != xmlYr:
                             xmlYr = tmpYr
-                       
+
                         if any(map(lambda v: v in limityear, yearRange)) or limityear == 'None':
                             xmlurl = result.getElementsByTagName('site_detail_url')[0].firstChild.wholeText
                             idl = len (result.getElementsByTagName('id'))
@@ -330,8 +322,7 @@ def findComic(name, mode, issue, limityear=None, explicit=None, type=None):
                                 xmlpub = "Unknown"
 
                             #ignore specific publishers on a global scale here.
-                            if mylar.BLACKLISTED_PUBLISHERS is not None and any([x for x in mylar.BLACKLISTED_PUBLISHERS if x.lower() == xmlpub.lower()]):
-                            #    #'panini' in xmlpub.lower() or 'deagostini' in xmlpub.lower() or 'Editorial Televisa' in xmlpub.lower():
+                            if mylar.CONFIG.BLACKLISTED_PUBLISHERS is not None and any([x for x in mylar.CONFIG.BLACKLISTED_PUBLISHERS if x.lower() == xmlpub.lower()]):
                                 logger.fdebug('Blacklisted publisher [' + xmlpub + ']. Ignoring this result.')
                                 continue
 
@@ -348,16 +339,24 @@ def findComic(name, mode, issue, limityear=None, explicit=None, type=None):
 
                             xmltype = None
                             if xmldeck != 'None':
-                                if any(['print' in xmldeck.lower(), 'digital' in xmldeck.lower()]):
+                                if any(['print' in xmldeck.lower(), 'digital' in xmldeck.lower(), 'paperback' in xmldeck.lower(), 'hardcover' in xmldeck.lower()]):
                                     if 'print' in xmldeck.lower():
                                         xmltype = 'Print'
                                     elif 'digital' in xmldeck.lower():
                                         xmltype = 'Digital'
+                                    elif 'paperback' in xmldeck.lower():
+                                        xmltype = 'TPB'
+                                    elif 'hardcover' in xmldeck.lower():
+                                        xmltype = 'HC'
                             if xmldesc != 'None' and xmltype is None:
                                 if 'print' in xmldesc[:60].lower() and 'print edition can be found' not in xmldesc.lower():
                                     xmltype = 'Print'
                                 elif 'digital' in xmldesc[:60].lower() and 'digital edition can be found' not in xmldesc.lower():
                                     xmltype = 'Digital'
+                                elif 'paperback' in xmldesc[:60].lower() and 'paperback can be found' not in xmldesc.lower():
+                                    xmltype = 'TPB'
+                                elif 'hardcover' in xmldesc[:60].lower() and 'hardcover can be found' not in xmldesc.lower():
+                                    xmltype = 'HC'
                                 else:
                                     xmltype = 'Print'
 
@@ -380,15 +379,15 @@ def findComic(name, mode, issue, limityear=None, explicit=None, type=None):
                                     'lastissueid':          xml_lastissueid,
                                     'seriesrange':          yearRange  # returning additional information about series run polled from CV
                                     })
-                            #logger.fdebug('year: ' + str(xmlYr) + ' - constraint met: ' + str(xmlTag) + '[' + str(xmlYr) + '] --- 4050-' + str(xmlid))
+                            #logger.fdebug('year: %s - constraint met: %s [%s] --- 4050-%s' % (xmlYr,xmlTag,xmlYr,xmlid))
                         else:
-                            pass
                             #logger.fdebug('year: ' + str(xmlYr) + ' -  contraint not met. Has to be within ' + str(limityear))
+                            pass
                 n+=1
         #search results are limited to 100 and by pagination now...let's account for this.
         countResults = countResults + 100
 
-    return comiclist, explicit
+    return comiclist
 
 def storyarcinfo(xmlid):
 
@@ -396,27 +395,27 @@ def storyarcinfo(xmlid):
 
     arcinfo = {}
 
-    if mylar.COMICVINE_API == 'None' or mylar.COMICVINE_API is None or mylar.COMICVINE_API == mylar.DEFAULT_CVAPI:
-        logger.warn('You have not specified your own ComicVine API key - alot of things will be limited. Get your own @ http://api.comicvine.com.')
-        comicapi = mylar.DEFAULT_CVAPI
+    if mylar.CONFIG.COMICVINE_API == 'None' or mylar.CONFIG.COMICVINE_API is None:
+        logger.warn('You have not specified your own ComicVine API key - this is a requirement. Get your own @ http://api.comicvine.com.')
+        return
     else:
-        comicapi = mylar.COMICVINE_API
+        comicapi = mylar.CONFIG.COMICVINE_API
 
     #respawn to the exact id for the story arc and count the # of issues present.
     ARCPULL_URL = mylar.CVURL + 'story_arc/4045-' + str(xmlid) + '/?api_key=' + str(comicapi) + '&field_list=issues,publisher,name,first_appeared_in_issue,deck,image&format=xml&offset=0'
     #logger.fdebug('arcpull_url:' + str(ARCPULL_URL))
 
     #new CV API restriction - one api request / second.
-    if mylar.CVAPI_RATE is None or mylar.CVAPI_RATE < 2:
+    if mylar.CONFIG.CVAPI_RATE is None or mylar.CONFIG.CVAPI_RATE < 2:
         time.sleep(2)
     else:
-        time.sleep(mylar.CVAPI_RATE)
+        time.sleep(mylar.CONFIG.CVAPI_RATE)
 
     #download the file:
     payload = None
 
     try:
-        r = requests.get(ARCPULL_URL, params=payload, verify=mylar.CV_VERIFY, headers=mylar.CV_HEADERS)
+        r = requests.get(ARCPULL_URL, params=payload, verify=mylar.CONFIG.CV_VERIFY, headers=mylar.CV_HEADERS)
     except Exception, e:
         logger.warn('Error fetching data from ComicVine: %s' % (e))
         return
