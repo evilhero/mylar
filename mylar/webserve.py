@@ -39,6 +39,7 @@ import shutil
 import mylar
 
 from mylar import logger, db, importer, mb, search, filechecker, helpers, updater, parseit, weeklypull, PostProcessor, librarysync, moveit, Failed, readinglist, notifiers, sabparse, config
+from mylar.auth import AuthController, require
 
 import simplejson as simplejson
 
@@ -50,7 +51,7 @@ def serve_template(templatename, **kwargs):
     _hplookup = TemplateLookup(directories=[template_dir])
     try:
         template = _hplookup.get_template(templatename)
-        return template.render(**kwargs)
+        return template.render(http_root=mylar.CONFIG.HTTP_ROOT, **kwargs)
     except:
         return exceptions.html_error_template().render()
 
@@ -65,6 +66,9 @@ class WebInterface(object):
 #    cherrypy.tools.filter_request = cherrypy.Tool('before_request_body', filter_request)
 
 #    _cp_config = { 'tools.filter_reqeust_on': True }
+
+    # login and logout methods at /auth/login and /auth/logout
+    auth = AuthController()
 
     def index(self):
         if mylar.SAFESTART:
@@ -4233,6 +4237,7 @@ class WebInterface(object):
                     "enable_https": helpers.checked(mylar.CONFIG.ENABLE_HTTPS),
                     "https_cert": mylar.CONFIG.HTTPS_CERT,
                     "https_key": mylar.CONFIG.HTTPS_KEY,
+                    "authentication": int(mylar.CONFIG.AUTHENTICATION),
                     "api_enabled": helpers.checked(mylar.CONFIG.API_ENABLED),
                     "api_key": mylar.CONFIG.API_KEY,
                     "launch_browser": helpers.checked(mylar.CONFIG.LAUNCH_BROWSER),

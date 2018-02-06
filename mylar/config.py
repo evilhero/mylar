@@ -95,6 +95,8 @@ _CONFIG_DEFINITIONS = OrderedDict({
     'HTTPS_CHAIN' : (str, 'Interface', None),
     'HTTPS_FORCE_ON' : (bool, 'Interface', False),
     'HOST_RETURN' : (str, 'Interface', None),
+    'AUTHENTICATION' : (int, 'Interface', 0),
+    'LOGIN_TIMEOUT': (int, 'Interface', 43800),
 
     'API_ENABLED' : (bool, 'API', False),
     'API_KEY' : (str, 'API', None),
@@ -335,15 +337,14 @@ _CONFIG_DEFINITIONS = OrderedDict({
     'OPDS_PASSWORD': (str, 'OPDS', None),
     'OPDS_METAINFO': (bool, 'OPDS', False),
 
-    'TEST_VALUE': (bool, 'TEST', True),
 })
 
 _BAD_DEFINITIONS = OrderedDict({
      #for those items that were in wrong sections previously, or sections that are no longer present...
      #using this method, old values are able to be transfered to the new config items properly.
      #keyname, section, oldkeyname
+     #ie. 'TEST_VALUE': ('TEST', 'TESTVALUE')
     'SAB_CLIENT_POST_PROCESSING': ('SABnbzd', None),
-    'TEST_VALUE': ('TEST', 'TESTVALUE'),
 })
 
 class Config(object):
@@ -665,6 +666,12 @@ class Config(object):
         except:
             pass
 
+        if any([self.HTTP_ROOT is None, self.HTTP_ROOT == '/']):
+            self.HTTP_ROOT = '/'
+        else:
+            if not self.HTTP_ROOT.endswith('/'):
+                self.HTTP_ROOT += '/'
+
         if not update:
            logger.fdebug('Log dir: %s' % self.LOG_DIR)
 
@@ -728,6 +735,12 @@ class Config(object):
         if self.BLACKLISTED_PUBLISHERS is not None and type(self.BLACKLISTED_PUBLISHERS) == unicode:
             setattr(self, 'BLACKLISTED_PUBLISHERS', self.BLACKLISTED_PUBLISHERS.split(', '))
 
+        if all([self.AUTHENTICATION == 0, self.HTTP_USERNAME is not None, self.HTTP_PASSWORD is not None]):
+            #set it to the default login prompt if nothing selected.
+            self.AUTHENTICATION = 1
+        elif all([self.HTTP_USERNAME is None, self.HTTP_PASSWORD is None]):
+            self.AUTHENTICATION = 0
+
         #comictagger - force to use included version if option is enabled.
         if self.ENABLE_META:
             mylar.CMTAGGER_PATH = mylar.PROG_DIR
@@ -745,6 +758,8 @@ class Config(object):
                 else:
                     logger.fdebug('Successfully created ComicTagger Settings location.')
 
+        if self.MODE_32P is False and self.RSSFEED_32P is not None:
+            mylar.KEYS_32P = self.parse_32pfeed(self.RSSFEED_32P)
 
         if self.AUTO_SNATCH is True and self.AUTO_SNATCH_SCRIPT is None:
             setattr(self, 'AUTO_SNATCH_SCRIPT', os.path.join(mylar.PROG_DIR, 'post-processing', 'torrent-auto-snatch', 'getlftp.sh'))
@@ -794,6 +809,37 @@ class Config(object):
             self.TORRENT_DOWNLOADER = 0
             mylar.USE_WATCHDIR = True
 
+    def parse_32pfeed(self, rssfeedline):
+        KEYS_32P = {}
+        if self.ENABLE_32P and len(rssfeedline) > 1:
+            userid_st = rssfeedline.find('&user')
+            userid_en = rssfeedline.find('&', userid_st +1)
+            if userid_en == -1:
+                userid_32p = rssfeedline[userid_st +6:]
+            else:
+                userid_32p = rssfeedline[userid_st +6:userid_en]
+
+            auth_st = rssfeedline.find('&auth')
+            auth_en = rssfeedline.find('&', auth_st +1)
+            if auth_en == -1:
+                auth_32p = rssfeedline[auth_st +6:]
+            else:
+                auth_32p = rssfeedline[auth_st +6:auth_en]
+
+            authkey_st = rssfeedline.find('&authkey')
+            authkey_en = rssfeedline.find('&', authkey_st +1)
+            if authkey_en == -1:
+                authkey_32p = rssfeedline[authkey_st +9:]
+            else:
+                authkey_32p = rssfeedline[authkey_st +9:authkey_en]
+
+            KEYS_32P = {"user":    userid_32p,
+                        "auth":    auth_32p,
+                        "authkey": authkey_32p,
+                        "passkey": self.PASSKEY_32P}
+
+        return KEYS_32P
+
     def get_extra_newznabs(self):
         extra_newznabs = zip(*[iter(self.EXTRA_NEWZNABS.split(', '))]*6)
         return extra_newznabs
@@ -821,7 +867,7 @@ class Config(object):
             PR.append('Torznab')
             PR_NUM +=1
 
-        PPR = ['32p', 'tpse', 'nzb.su', 'dognzb', 'Experimental', 'Torzanb']
+        PPR = ['32p', 'tpse', 'nzb.su', 'dognzb', 'Experimental', 'Torznab']
         if self.NEWZNAB:
             for ens in self.EXTRA_NEWZNABS:
                 if str(ens[5]) == '1': # if newznabs are enabled
