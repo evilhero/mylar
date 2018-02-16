@@ -1621,7 +1621,12 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                             continue
                         #generate the send-to and actually send the nzb / torrent.
                         #logger.info('entry: %s' % entry)
-                        searchresult = searcher(nzbprov, nzbname, comicinfo, entry['link'], IssueID, ComicID, tmpprov, newznab=newznab_host)
+                        try:
+                            links = {'id': entry['id'],
+                                     'link': entry['link']}
+                        except:
+                            links = entry['link']
+                        searchresult = searcher(nzbprov, nzbname, comicinfo, links, IssueID, ComicID, tmpprov, newznab=newznab_host)
 
                         if searchresult == 'downloadchk-fail':
                             foundc['status'] = False
@@ -2015,7 +2020,15 @@ def searcher(nzbprov, nzbname, comicinfo, link, IssueID, ComicID, tmpprov, direc
         #if sab priority isn't selected, default to Normal (0)
         nzbgetpriority = "0"
 
-    nzbid = generate_id(nzbprov, link)
+    if nzbprov == 'Torznab':
+        nzbid = generate_id(nzbprov, link['id'])
+        link = link['link']
+    else:
+        try:
+            id = link['link']
+        except:
+            link = link
+        nzbid = generate_id(nzbprov, link)
 
     logger.fdebug('issues match!')
     if 'TPSE' in tmpprov and any([nzbprov == 'WWT', nzbprov == 'DEM']):
@@ -2779,12 +2792,14 @@ def generate_id(nzbprov, link):
                     end = len(tmpid)
                 nzbid = re.sub('&id=', '', tmpid[st:end]).strip()
     elif nzbprov == 'Torznab':
-        if mylar.CONFIG.TORZNAB_HOST.endswith('/'):
-            tmphost = mylar.CONFIG.TORZNAB_HOST + 'download/'
-        else:
-            tmphost = mylar.CONFIG.TORZNAB_HOST + '/download/'
-        tmpline = re.sub(tmphost, '', tmphost).strip()
-        tmpidend = tmpline.find('/')
-        nzbid = tmpline[:tmpidend]
-
+        #if mylar.CONFIG.TORZNAB_HOST.endswith('/'):
+        #    tmphost = mylar.CONFIG.TORZNAB_HOST + 'download/'
+        #else:
+        #    tmphost = mylar.CONFIG.TORZNAB_HOST + '/download/'
+        #tmpline = re.sub(tmphost, '', tmphost).strip()
+        #tmpidend = tmpline.find('/')
+        #nzbid = tmpline[:tmpidend]
+        idtmp = urlparse.urlparse(link)[4]
+        idpos = idtmp.find('&')
+        nzbid = re.sub('id=', '', idtmp[:idpos]).strip()
     return nzbid

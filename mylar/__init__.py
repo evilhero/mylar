@@ -1043,7 +1043,7 @@ def dbcheck():
     c.execute("DELETE from annuals WHERE ComicName='None' OR ComicName is NULL or Issue_Number is NULL")
     c.execute("DELETE from upcoming WHERE ComicName='None' OR ComicName is NULL or IssueNumber is NULL")
     c.execute("DELETE from importresults WHERE ComicName='None' OR ComicName is NULL")
-    c.execute("DELETE from Failed WHERE ComicName='None' OR ComicName is NULL")
+    c.execute("DELETE from Failed WHERE ComicName='None' OR ComicName is NULL OR ID is NULL")
     logger.info('Ensuring DB integrity - Removing all Erroneous Comics (ie. named None)')
 
     logger.info('Correcting Null entries that make the main page break on startup.')
