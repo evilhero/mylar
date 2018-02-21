@@ -2025,7 +2025,7 @@ def searcher(nzbprov, nzbname, comicinfo, link, IssueID, ComicID, tmpprov, direc
         link = link['link']
     else:
         try:
-            id = link['link']
+            link = link['link']
         except:
             link = link
         nzbid = generate_id(nzbprov, link)
