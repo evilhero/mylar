@@ -458,13 +458,15 @@ class SLACK:
         module += '[NOTIFIER]'
         
         payload = {
-            "text": text,
-            "attachments": [
-                {
-                    "color": "#36a64f",
-                    "text": attachment_text
-                }
-            ]
+#            "text": text,
+#            "attachments": [
+#                {
+#                    "color": "#36a64f",
+#                    "text": attachment_text
+#                }
+#            ]
+# FIX: #1861 move notification from attachment to msg body - bbq
+            "text": attachment_text
         }
 
         try:
