@@ -46,27 +46,16 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
     if issue:
         srchterm += '%20' + str(issue)
 
-    if mylar.CONFIG.TPSE_PROXY:
-        if mylar.CONFIG.TPSE_PROXY.endswith('/'):
-            tpse_url = mylar.CONFIG.TPSE_PROXY
-        else:
-            tpse_url = mylar.CONFIG.TPSE_PROXY + '/'
-    else:
-        #switched to https.
-        tpse_url = mylar.TPSEURL
-
     #this is for the public trackers included thus far in order to properly cycle throught the correct ones depending on the search request
-    # TPSE = search only
     # DEM = rss feed
     # WWT = rss feed
-    if pickfeed == 'TPSE-SEARCH':
-        pickfeed = '2'
-        loopit = 1
-    elif pickfeed == 'TPSE':
+    #if pickfeed == 'TPSE-SEARCH':
+    #    pickfeed = '2'
+    #    loopit = 1
+    loopit = 1
+    if pickfeed == 'Public':
         #we need to cycle through both DEM + WWT feeds
         loopit = 2
-    else:
-        loopit = 1
 
     lp = 0
     totalcount = 0
@@ -117,11 +106,11 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
             return
         elif pickfeed == "5" and srchterm is not None:  # demonoid search / non-RSS
             feed = mylar.DEMURL + "files/?category=10&subcategory=All&language=0&seeded=2&external=2&query=" + str(srchterm) + "&uid=0&out=rss"
-            verify = bool(mylar.CONFIG.TPSE_VERIFY)
+            verify = bool(mylar.CONFIG.PUBLIC_VERIFY)
         elif pickfeed == "6":    # demonoid rss feed 
             feed = mylar.DEMURL + 'rss/10.xml'
             feedtype = ' from the New Releases RSS Feed from Demonoid'
-            verify = bool(mylar.CONFIG.TPSE_VERIFY)
+            verify = bool(mylar.CONFIG.PUBLIC_VERIFY)
         elif pickfeed == "999":    #WWT rss feed
             feed = mylar.WWTURL + 'rss.php?cat=132,50'
             feedtype = ' from the New Releases RSS Feed from WorldWideTorrents'
@@ -135,14 +124,12 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
             logger.error('invalid pickfeed denoted...')
             return
 
-        if pickfeed == '2' or pickfeed == '3':
-            picksite = 'TPSE'
+        #if pickfeed == '2' or pickfeed == '3':
+        #    picksite = 'TPSE'
             #if pickfeed == '2':
             #    feedme = tpse.
-        elif pickfeed == '5' or pickfeed == '6':
+        if pickfeed == '5' or pickfeed == '6':
             picksite = 'DEM'
-            #if pickfeed == '5':
-            #    feedme = dem.
         elif pickfeed == '999':
             picksite = 'WWT'
         elif pickfeed == '1' or pickfeed == '4' or int(pickfeed) > 7:
@@ -165,7 +152,7 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
                 if cf_cookievalue:
                     r = scraper.get(feed, verify=verify, cookies=cf_cookievalue, headers=headers)
                 else:
-                    r = scraper.get(feed, verify=verify)#requests.get(feed, params=payload, verify=verify)
+                    r = scraper.get(feed, verify=verify)
             except Exception, e:
                 logger.warn('Error fetching RSS Feed Data from %s: %s' % (picksite, e))
                 lp+=1
@@ -229,25 +216,8 @@ def torrents(pickfeed=None, seriesname=None, issue=None, feedinfo=None):
                 i+=1
         else:
             for entry in feedme['entries']:
-                #TP.SE RSS SEARCH RESULT
-                if pickfeed == "2":
-                    try:
-                        tmpenc = feedme.entries[i].enclosures[0]
-                    except AttributeError:
-                        logger.warn('Unable to retrieve results - probably just hitting it too fast...')
-                        continue
-                    id = urlparse.urlparse(feedme.entries[i].link).path.rpartition('/')[0]
-
-                    torthetpse.append({
-                                    'site':     picksite,
-                                    'title':    feedme.entries[i].title,
-                                    'id':       re.sub('/', '', id).strip(),  #make sure to remove the leading '/'
-                                    'link':     tmpenc['url'],   #should change this to magnet
-                                    'pubdate':  feedme.entries[i].updated,
-                                    'size':     tmpenc['length']
-                                    })
                 #DEMONOID / FEED
-                elif pickfeed == "6":
+                if pickfeed == "6":
                     tmpsz = feedme.entries[i].description
                     tmpsz_st = tmpsz.find('Size')
                     if tmpsz_st != -1:
@@ -576,7 +546,7 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None, oneoff=False)
     if any([comicid is None, comicid == 'None', oneoff is True]):
         pass
     else:
-        logger.fdebug('ComicID: ' + str(comicid))
+        #logger.fdebug('ComicID: ' + str(comicid))
         snm = myDB.selectone("SELECT * FROM comics WHERE comicid=?", [comicid]).fetchone()
         if snm is None:
             logger.fdebug('Invalid ComicID of ' + str(comicid) + '. Aborting search.')
@@ -599,19 +569,25 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None, oneoff=False)
     else:
         tsearch = tsearch_seriesname + "%"
 
-    logger.fdebug('tsearch : ' + tsearch)
+    if seriesname == '0-Day Comics Pack - %s' % (issue[:4]):
+        #call the helper to get the month
+        tsearch += 'vol%s' % issue[5:7]
+        tsearch += '%'
+        tsearch += '#%s' % issue[8:10]
+        tsearch += '%'
+    #logger.fdebug('tsearch : ' + tsearch)
     AS_Alt = []
     tresults = []
     tsearch = '%' + tsearch
 
     if mylar.CONFIG.ENABLE_32P and nzbprov == '32P':
         tresults = myDB.select("SELECT * FROM rssdb WHERE Title like ? AND Site='32P'", [tsearch])
-    if mylar.CONFIG.ENABLE_TPSE and nzbprov == 'TPSE':
+    if mylar.CONFIG.ENABLE_PUBLIC and nzbprov == 'Public Torrents':
         tresults += myDB.select("SELECT * FROM rssdb WHERE Title like ? AND (Site='DEM' OR Site='WWT')", [tsearch])
 
-    logger.fdebug('seriesname_alt:' + str(seriesname_alt))
+    #logger.fdebug('seriesname_alt:' + str(seriesname_alt))
     if seriesname_alt is None or seriesname_alt == 'None':
-        if tresults is None:
+        if not tresults:
             logger.fdebug('no Alternate name given. Aborting search.')
             return "no results"
     else:
@@ -645,11 +621,11 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None, oneoff=False)
             AS_Alternate = '%' + AS_Alternate
             if mylar.CONFIG.ENABLE_32P and nzbprov == '32P':
                 tresults += myDB.select("SELECT * FROM rssdb WHERE Title like ? AND Site='32P'", [AS_Alternate])
-            if mylar.CONFIG.ENABLE_TPSE and nzbprov == 'TPSE':
+            if mylar.CONFIG.ENABLE_PUBLIC and nzbprov == 'Public Torrents':
                 tresults += myDB.select("SELECT * FROM rssdb WHERE Title like ? AND (Site='DEM' OR Site='WWT')", [AS_Alternate])
 
-    if tresults is None:
-        logger.fdebug('torrent search returned no results for ' + seriesname)
+    if not tresults:
+        logger.fdebug('torrent search returned no results for %s' % seriesname)
         return "no results"
 
     extensions = ('cbr', 'cbz')
@@ -663,43 +639,22 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None, oneoff=False)
 
         #torsplit = torTITLE.split(' ')
         if mylar.CONFIG.PREFERRED_QUALITY == 1:
-            if 'cbr' in torTITLE:
-                logger.fdebug('Quality restriction enforced [ cbr only ]. Accepting result.')
-            else:
-                logger.fdebug('Quality restriction enforced [ cbr only ]. Rejecting result.')
+            if 'cbr' not in torTITLE:
+                #logger.fdebug('Quality restriction enforced [ cbr only ]. Rejecting result.')
                 continue
         elif mylar.CONFIG.PREFERRED_QUALITY == 2:
-            if 'cbz' in torTITLE:
-                logger.fdebug('Quality restriction enforced [ cbz only ]. Accepting result.')
-            else:
-                logger.fdebug('Quality restriction enforced [ cbz only ]. Rejecting result.')
+            if 'cbz' not in torTITLE:
+                #logger.fdebug('Quality restriction enforced [ cbz only ]. Rejecting result.')
                 continue
-        logger.fdebug('tor-Title: ' + torTITLE)
+        #logger.fdebug('tor-Title: ' + torTITLE)
         #logger.fdebug('there are ' + str(len(torsplit)) + ' sections in this title')
         i=0
         if nzbprov is not None:
-            if nzbprov != tor['Site'] and not any([mylar.CONFIG.ENABLE_TPSE, tor['Site'] != 'WWT', tor['Site'] != 'DEM']):
-                logger.fdebug('this is a result from ' + str(tor['Site']) + ', not the site I am looking for of ' + str(nzbprov))
+            if nzbprov != tor['Site'] and not any([mylar.CONFIG.ENABLE_PUBLIC, tor['Site'] != 'WWT', tor['Site'] != 'DEM']):
+                #logger.fdebug('this is a result from ' + str(tor['Site']) + ', not the site I am looking for of ' + str(nzbprov))
                 continue
         #0 holds the title/issue and format-type.
 
-#--- this was for old cbt feeds, no longer used for 32p
-#        while (i < len(torsplit)):
-#            #we'll rebuild the string here so that it's formatted accordingly to be passed back to the parser.
-#            logger.fdebug('section(' + str(i) + '): ' + torsplit[i])
-#            #remove extensions
-#            titletemp = torsplit[i]
-#            titletemp = re.sub('cbr', '', titletemp)
-#            titletemp = re.sub('cbz', '', titletemp)
-#            titletemp = re.sub('none', '', titletemp)
-
-#            if i == 0:
-#                rebuiltline = titletemp
-#            else:
-#                rebuiltline = rebuiltline + ' (' + titletemp + ')'
-#            i+=1
-#        logger.fdebug('rebuiltline is :' + rebuiltline)
-#----
         seriesname_mod = seriesname
         foundname_mod = torTITLE #torsplit[0]
         seriesname_mod = re.sub("\\band\\b", " ", seriesname_mod.lower())
@@ -720,39 +675,22 @@ def torrentdbsearch(seriesname, issue, comicid=None, nzbprov=None, oneoff=False)
         formatrem_torsplit = re.sub('[\-]', ' ', formatrem_torsplit)  #we replace the - with space so we'll get hits if differnces
         formatrem_torsplit = re.sub('[\/]', ' ', formatrem_torsplit)  #not necessary since if has a /, should be removed in above line
         formatrem_torsplit = re.sub('\s+', ' ', formatrem_torsplit)
-        logger.fdebug(str(len(formatrem_torsplit)) + ' - formatrem_torsplit : ' + formatrem_torsplit.lower())
-        logger.fdebug(str(len(formatrem_seriesname)) + ' - formatrem_seriesname :' + formatrem_seriesname.lower())
+        #logger.fdebug(str(len(formatrem_torsplit)) + ' - formatrem_torsplit : ' + formatrem_torsplit.lower())
+        #logger.fdebug(str(len(formatrem_seriesname)) + ' - formatrem_seriesname :' + formatrem_seriesname.lower())
 
         if formatrem_seriesname.lower() in formatrem_torsplit.lower() or any(x.lower() in formatrem_torsplit.lower() for x in AS_Alt):
-            logger.fdebug('matched to : ' + torTITLE)
-            logger.fdebug('matched on series title: ' + seriesname)
+            #logger.fdebug('matched to : ' + torTITLE)
+            #logger.fdebug('matched on series title: ' + seriesname)
             titleend = formatrem_torsplit[len(formatrem_seriesname):]
             titleend = re.sub('\-', '', titleend)   #remove the '-' which is unnecessary
             #remove extensions
             titleend = re.sub('cbr', '', titleend)
             titleend = re.sub('cbz', '', titleend)
             titleend = re.sub('none', '', titleend)
-            logger.fdebug('titleend: ' + titleend)
+            #logger.fdebug('titleend: ' + titleend)
 
             sptitle = titleend.split()
             extra = ''
-
-            #the title on 32P has a mix-mash of crap...ignore everything after cbz/cbr to cleanit
-            #ctitle = torTITLE.find('cbr')
-            #if ctitle == 0:
-            #    ctitle = torTITLE.find('cbz')
-            #    if ctitle == 0:
-            #        ctitle = torTITLE.find('none')
-            #        if ctitle == 0:
-            #            logger.fdebug('cannot determine title properly - ignoring for now.')
-            #            continue
-            #cttitle = torTITLE[:ctitle]
-
-#            if tor['Site'] == '32P':
-#                st_pub = rebuiltline.find('(')
-#                if st_pub < 2 and st_pub != -1:
-#                    st_end = rebuiltline.find(')')
-#                    rebuiltline = rebuiltline[st_end +1:]
 
             tortheinfo.append({
                           'title':   torTITLE, #cttitle,
@@ -952,8 +890,8 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
 
         headers = None #{'Accept-encoding': 'gzip',
                        # 'User-Agent':      str(mylar.USER_AGENT)}
-    elif site == 'TPSE':
-        pass
+    #elif site == 'TPSE':
+    #    pass
         #linkit should be the magnet link since it's TPSE
         #url = linkit
 
@@ -1021,7 +959,7 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
         payload = None
         verify = False
 
-    if site != 'TPSE':
+    if site != 'Public Torrents':
         if not verify:
             #32P throws back an insecure warning because it can't validate against the CA. The below suppresses the message just for 32P instead of being displayed.
             #disable SSL warnings - too many 'warning' messages about invalid certificates
@@ -1074,7 +1012,7 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
             else:
                 return "fail"
 
-        if any([site == 'TPSE', site == 'DEM', site == 'WWT']) and any([str(r.status_code) == '403', str(r.status_code) == '404', str(r.status_code) == '503']):
+        if any([site == 'DEM', site == 'WWT']) and any([str(r.status_code) == '403', str(r.status_code) == '404', str(r.status_code) == '503']):
             if str(r.status_code) != '503':
                 logger.warn('Unable to download from ' + site + ' [' + str(r.status_code) + ']')
                 #retry with the alternate torrent link.
@@ -1099,10 +1037,14 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
 
         if str(r.status_code) != '200':
             logger.warn('Unable to download torrent from ' + site + ' [Status Code returned: ' + str(r.status_code) + ']')
-            logger.info('content: %s' % r.content)
+            if str(r.status_code) == '404' and site == '32P':
+                logger.warn('[32P-CACHED_ENTRY] Entry found in 32P cache - incorrect. Torrent has probably been merged into a pack, or another series id. Removing from cache.')
+                delete_cache_entry(linkit)
+            else:
+                logger.info('content: %s' % r.content)
             return "fail"
 
-        if any([site == 'TPSE', site == 'DEM', site == 'WWT']):
+        if any([site == 'DEM', site == 'WWT']):
             if r.headers.get('Content-Encoding') == 'gzip':
                 buf = StringIO(r.content)
                 f = gzip.GzipFile(fileobj=buf)
@@ -1120,15 +1062,15 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
 
     if mylar.USE_UTORRENT:
         uTC = utorrent.utorrentclient()
-        if site == 'TPSE':
-            ti = uTC.addurl(linkit)
-        else:
-            ti = uTC.addfile(filepath, filename)
+        #if site == 'TPSE':
+        #    ti = uTC.addurl(linkit)
+        #else:
+        ti = uTC.addfile(filepath, filename)
         if ti == 'fail':
             return ti
         else:
             #if ti is value, it will return the hash
-            torrent_info = []
+            torrent_info = {}
             torrent_info['hash'] = ti
             torrent_info['clientmode'] = 'utorrent'
             torrent_info['link'] = linkit
@@ -1206,11 +1148,11 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
 
     elif mylar.USE_WATCHDIR:
         if mylar.CONFIG.TORRENT_LOCAL:
-            if site == 'TPSE':
-                torrent_info = {'hash': pubhash}
-            else:
-                #get the hash so it doesn't mess up...
-                torrent_info = helpers.get_the_hash(filepath)
+            #if site == 'TPSE':
+            #    torrent_info = {'hash': pubhash}
+            #else:
+            #    #get the hash so it doesn't mess up...
+            torrent_info = helpers.get_the_hash(filepath)
             torrent_info['clientmode'] = 'watchdir'
             torrent_info['link'] = linkit
             torrent_info['filepath'] = filepath
@@ -1219,6 +1161,9 @@ def torsend2client(seriesname, issue, seriesyear, linkit, site, pubhash=None):
             tssh = ftpsshup.putfile(filepath, filename)
             return tssh
 
+def delete_cache_entry(id):
+    myDB = db.DBConnection()
+    myDB.action("DELETE FROM rssdb WHERE link=? AND Site='32P'", [id])
 
 if __name__ == '__main__':
     #torrents(sys.argv[1])

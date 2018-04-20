@@ -171,7 +171,14 @@ function refreshTable() {
 		initThisPage();
 	});
 }
-function refreshLoadArtist() {
+function refreshTab() {
+        var url =  $(location).attr('href');
+        var tabId = $('.ui-tabs-panel:visible').attr("id");
+        $('.ui-tabs-panel:visible').load(url + " #"+ tabId, function() {
+                initThisPage();
+        });
+}
+function refreshLoadSeries() {
 	if ( $(".gradeL").length > 0 ) {
 		var url =  $(location).attr('href');
 		var loadingRow = $("table.display tr.gradeL")
@@ -186,20 +193,12 @@ function refreshLoadArtist() {
 				} else {
 					// Still loading
 					setTimeout(function(){
-						refreshLoadArtist();
+						refreshLoadSeries();
 					},3000);
 				}
 			});	
 		});
 	}
-}
-
-function refreshTab() {
-	var url =  $(location).attr('href');
-	var tabId = $('.ui-tabs-panel:visible').attr("id");
-	$('.ui-tabs-panel:visible').load(url + " #"+ tabId, function() {
-		initThisPage();
-	});
 }
 
 function showMsg(msg,loader,timeout,ms) {

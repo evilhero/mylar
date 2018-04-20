@@ -93,13 +93,25 @@ def findComic(name, mode, issue, limityear=None, type=None):
             tehstart = m.start()
             tehend = m.end()
             if any([x == 'the', x == 'and']):
+                if len(name) == tehend:
+                    tehend =-1
                 if not all([tehstart == 0, name[tehend] == ' ']) or not all([tehstart != 0, name[tehstart-1] == ' ', name[tehend] == ' ']):
                     continue
             else:
                 name = name.replace(x, ' ', cnt)
 
+    originalname = name
+    if '+' in name:
+       name = re.sub('\+', 'PLUS', name)
+
     pattern = re.compile(ur'\w+', re.UNICODE)
     name = pattern.findall(name)
+
+    if '+' in originalname:
+        y = []
+        for x in name:
+            y.append(re.sub("PLUS", "%2B", x))
+        name = y
 
     if limityear is None: limityear = 'None'
 
@@ -470,7 +482,7 @@ def storyarcinfo(xmlid):
         if firstid is not None:
             firstdom = cv.pulldetails(comicid=None, type='firstissue', issueid=firstid)
             logger.fdebug('success')
-            arcyear = cv.GetFirstIssue(firstid,firstdom)
+            arcyear = cv.Getissue(firstid,firstdom,'firstissue')
     except:
         logger.fdebug('Unable to retrieve first issue details. Not caclulating at this time.')
 

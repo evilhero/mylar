@@ -8,7 +8,7 @@
 <%def name="headerIncludes()">
 	<div id="subhead_container">
 		<div id="subhead_menu">
-                        <a id="menu_link_refresh" onclick="doAjaxCall('refreshSeries?ComicID=${comic['ComicID']}', $(this),'table')" href="#" data-success="${comic['ComicName']} is being refreshed">Refresh Comic</a>
+                        <a id="menu_link_refresh" onclick="doAjaxCall('refreshSeries?ComicID=${comic['ComicID']}', $(this), 'tabs');" href="#" data-success="${comic['ComicName']} is being refreshed">Refresh Comic</a>
                         <a id="menu_link_delete" href="#">Delete Comic</a>
                            <div id="dialog" title="Delete Series Confirmation" style="display:none" class="configtable">
                               <form action="deleteSeries" method="GET" style="vertical-align: middle; text-align: center">
@@ -24,9 +24,9 @@
                         %if mylar.CONFIG.RENAME_FILES:
                             <a id="menu_link_refresh" onclick="doAjaxCall('manualRename?comicid=${comic['ComicID']}', $(this),'table')" data-success="Renaming files.">Rename Files</a>
                         %endif
-                            <a id="menu_link_refresh" onclick="doAjaxCall('forceRescan?ComicID=${comic['ComicID']}', $(this),true);return true;"  data-success="${comic['ComicName']} is being rescanned">Recheck Files</a>
+                            <a id="menu_link_refresh" onclick="doAjaxCall('forceRescan?ComicID=${comic['ComicID']}', $(this), 'table');"  data-success="${comic['ComicName']} is being rescanned">Recheck Files</a>
                         %if mylar.CONFIG.ENABLE_META:
-                            <a id="menu_link_refresh" onclick="doAjaxCall('group_metatag?ComicID=${comic['ComicID']}&dirName=${comic['ComicLocation'] |u}', $(this),'table')" data-success="(re)tagging every issue present for '${comic['ComicName']}'">Manual MetaTagging</a>
+                            <a id="menu_link_refresh" onclick="doAjaxCall('group_metatag?ComicID=${comic['ComicID']}&dirName=${comic['ComicLocation'] |u}', $(this),'table');refreshLoadSeries();" data-success="(re)tagging every issue present for '${comic['ComicName']}'">Manual MetaTagging</a>
                         %endif
                         %if comic['Status'] == 'Paused':
                                 <a id="menu_link_resume" href="#" onclick="doAjaxCall('resumeSeries?ComicID=${comic['ComicID']}',$(this),true)" data-success="${comic['ComicName']} resumed">Resume Comic</a>
@@ -81,55 +81,22 @@
                 <td id="mainimg">
                    <fieldset>
                        <div id="artistImg">
-                          <img src="${comic['ComicImage']}" alt="" height="400" width="263" />
+                          <img src="${comicConfig['ComicImage']}" alt="" height="400" width="263" />
                        </div>
                    </fieldset>
+                         <%
+                                 if comicConfig['percent'] == 101:
+                                         css = '<div class=\"progress-container warning\">'
+                                 if comicConfig['percent'] == 100:
+                                         css = '<div class=\"progress-container complete\">'
+                                 if comicConfig['percent'] < 100:
+                                         css = '<div class=\"progress-container missing\">'
+                          %>
+                   <div style="display:table;position:relative;margin:auto;top:0px;"><span title="${comicConfig['percent']}"></span>${css}<div style="width:${comicConfig['percent']}%"><span class="progressbar-front-text">${comicConfig['haveissues']}/${comicConfig['totalissues']}</span></div></div></div>
                  </td>
                  <td width="100%" padding="10">
-                       %if comic['ComicPublisher'] == 'DC Comics':
-                        <img src="interfaces/default/images/publisherlogos/logo-dccomics.png" align="right" alt="DC" height="50" width="50" />
-                       %elif comic['ComicPublisher'] == 'Marvel':
-                        <img src="interfaces/default/images/publisherlogos/logo-marvel.jpg" align="right" alt="Marvel" height="50" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Image':
-                        <img src="interfaces/default/images/publisherlogos/logo-imagecomics.png" align="right" alt="Image" height="100" width="50" />
-                       %elif comic['ComicPublisher'] == 'Dark Horse Comics' or comic['ComicPublisher'] == 'Dark Horse':
-                        <img src="interfaces/default/images/publisherlogos/logo-darkhorse.png" align="right" alt="Darkhorse" height="100" width="75" />
-                       %elif comic['ComicPublisher'] == 'IDW Publishing':
-                        <img src="interfaces/default/images/publisherlogos/logo-idwpublish.png" align="right" alt="IDW" height="50" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Icon':
-                        <img src="interfaces/default/images/publisherlogos/logo-iconcomics.png" align="right" alt="Icon" height="50" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Red5':
-                        <img src="interfaces/default/images/publisherlogos/logo-red5comics.png" align="right" alt="Red5" height="50" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Vertigo':
-                        <img src="interfaces/default/images/publisherlogos/logo-vertigo.jpg" align="right" alt="Vertigo" height="50" width="100"/>
-                       %elif comic['ComicPublisher'] == 'ShadowLine':
-                        <img src="interfaces/default/images/publisherlogos/logo-shadowline.png" align="right" alt="Shadowline" height="75" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Archie Comics':
-                        <img src="interfaces/default/images/publisherlogos/logo-archiecomics.jpg" align="right" alt="Archie" height="75" width="75"/>
-                       %elif comic['ComicPublisher'] == 'Oni Press':
-                        <img src="interfaces/default/images/publisherlogos/logo-onipress.png" align="right" alt="Oni Press" height="50" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Tokyopop':
-                        <img src="interfaces/default/images/publisherlogos/logo-tokyopop.jpg" align="right" alt="Tokyopop" height="50" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Midtown Comics':
-                        <img src="interfaces/default/images/publisherlogos/logo-midtowncomics.jpg" align="right" alt="Midtown" height="50" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Boom! Studios':
-                        <img src="interfaces/default/images/publisherlogos/logo-boom.jpg" align="right" alt="Boom!" height="50" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Skybound':
-                        <img src="interfaces/default/images/publisherlogos/logo-skybound.jpg" align="right" alt="Skybound" height="50" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Vertigo':
-                        <img src="interfaces/default/images/publisherlogos/logo-dynamite.jpg" align="right" alt="Dynamite" height="50" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Top Cow':
-                        <img src="interfaces/default/images/publisherlogos/logo-topcow.gif" align="right" alt="Top Cow" height="75" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Dynamite Entertainment':
-                        <img src="interfaces/default/images/publisherlogos/logo-dynamite.png" align="right" alt="Dynamite" height="50" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Cartoon Books':
-                        <img src="interfaces/default/images/publisherlogos/logo-cartoonbooks.jpg" align="right" alt="Cartoon Books" height="75" width="90"/>
-                       %elif comic['ComicPublisher'] == 'Valiant':
-                        <img src="interfaces/default/images/publisherlogos/logo-valiant.png" align="right" alt="Valiant" height="100" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Action Lab':
-                        <img src="interfaces/default/images/publisherlogos/logo-actionlabs.png" align="right" alt="Action Lab" height="100" width="100"/>
-                       %elif comic['ComicPublisher'] == 'Zenescope Entertainment':
-                        <img src="interfaces/default/images/publisherlogos/logo-zenescope.png" align="right" alt="Zenescope" height="100" width="160"/>
+                       %if comicConfig['publisher_image'] is not None:
+                        <img src="${comicConfig['publisher_image']}" align="right" alt="${comicConfig['publisher_image_alt']}" height="${comicConfig['publisher_imageH']}" width="${comicConfig['publisher_imageW']}" />
                        %endif
         		 <fieldset>
                                 <div>
@@ -198,29 +165,21 @@
                 <td id="mainimg">
                    <fieldset>
                        <div class="row" id="artistImg">
-                          <img src="${comic['ComicImage']}" alt="" height="400" width="263" />
+                          <img src="${comicConfig['ComicImage']}" alt="" height="400" width="263" />
                        </div>
                    </fieldset>
+                   <div style="display:table;position:relative;margin:auto;top:0px;"><span title="${comicConfig['percent']}"></span>${css}<div style="width:${comicConfig['percent']}%"><span class="progressbar-front-text">${comicConfig['haveissues']}/${comicConfig['totalissues']}</span></div></div></div>
                  </td>
                  <td width="100%" padding="10">
-                  %if comic['ComicPublisher'] == 'DC Comics':
-                   <img src="interfaces/default/images/publisherlogos/logo-dccomics.png" align="right" alt="DC" height="50" width="50"/>
-                   %elif comic['ComicPublisher'] == 'Marvel':
-                   <img src="interfaces/default/images/publisherlogos/logo-marvel.jpg" align="right" alt="Marvel" height="50" width="100" border="1"/>
-                   %elif comic['ComicPublisher'] == 'Image':
-                   <img src="interfaces/default/images/publisherlogos/logo-imagecomics.png" align="right" alt="Image" height="100" width="50"/>
-                   %elif comic['ComicPublisher'] == 'Dark Horse Comics':
-                   <img src="interfaces/default/images/publisherlogos/logo-darkhorse.png" align="right" alt="Darkhorse" height="75" width="50"/>
-                   %elif comic['ComicPublisher'] == 'IDW Publishing':
-                   <img src="interfaces/default/images/publisherlogos/logo-idwpublish.png" align="right" alt="IDW" height="50" width="100"/>
-                   %endif
-
-                <form action="comic_config" method="GET">
+                 %if comicConfig['publisher_image'] is not None:
+                     <img src="${comicConfig['publisher_image']}" align="right" alt="${comicConfig['publisher_image_alt']}" height="${comicConfig['publisher_imageH']}" width="${comicConfig['publisher_imageW']}" />
+                 %endif
+                 <form action="comic_config" method="GET">
                     <input type="hidden" name="ComicID" value=${comic['ComicID']}>
                         <fieldset>
-                                <br/><br/>
-                                <div class="row checkbox left clearfix">
-                                   <input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="force_continuing" value="2" ${comicConfig['force_continuing']} /><label>Forcibly Mark as Continuing Series<a href="#" title="Will forcibly mark this series as 'Continuing' regardless of actual status"><img src="interfaces/default/images/info32.png" height="16" alt="" /></label></a>
+                                <br/>
+                                <div class="row checkbox right clearfix">
+                                   <input type="checkbox" style="vertical-align: bottom; margin: 3px; margin-top: -3px;" name="force_continuing" value="2" ${comicConfig['force_continuing']} /><label>Forcibly Mark as Continuing<a href="#" title="Will forcibly mark this series as 'Continuing' regardless of actual status"><img src="interfaces/default/images/info32.png" height="16" alt="" /></label></a>
                                 </div>
                                 %if any([comic['ComicYear'] == '2099',comic['ComicYear'] == '0000', comic['ComicYear'] == '', comic['Corrected_SeriesYear']]):
                                     <div class="row">
@@ -257,18 +216,17 @@
                                         <%
                                              year_options = "Default - Keep the Year as is\nYear Removal - Remove issue publication year from searches (dangerous)\nFuzzy the Year - Increase & Decrease the issue publication year by one"
                                         %>
-                                        <label>Year Options<a href="#" title="${year_options}"><img src="interfaces/default/images/info32.png" height="16" alt="" /></a></label>
-                                        <input type="radio" name="fuzzy_year" value="0" ${comicConfig['fuzzy_year0']} /> Default&nbsp;<input type="radio" name="fuzzy_year" value="1" ${comicConfig['fuzzy_year1']} /> Year Removal&nbsp;<input type="radio" name="fuzzy_year" value="2" ${comicConfig['fuzzy_year2']} /> Fuzzy the Year
+                                        <label>Year Options<a href="#" title="${year_options}"><img src="interfaces/default/images/info32.png" valign="bottom" height="16" alt="" /></a></label>
+                                        <input type="radio" style="vertical-align: bottom; margin: 3px; margin-top: -3px;" name="fuzzy_year" value="0" ${comicConfig['fuzzy_year0']} /> Default&nbsp;<input type="radio" style="vertical-align: bottom; margin: 3px; margin-top: -3px;" name="fuzzy_year" value="1" ${comicConfig['fuzzy_year1']} /> Year Removal&nbsp;<input type="radio" style="vertical-align: bottom; margin: 3px; margin-top: -3px;" name="fuzzy_year" value="2" ${comicConfig['fuzzy_year2']} /> Fuzzy the Year
                                      </div>
 
                                    %if mylar.CONFIG.ENABLE_32P and mylar.CONFIG.MODE_32P == 1:
-                                   <div class="row">
-                                       <input type="checkbox" style="vertical-align: middle; margin: 3px; margin-top: -1px;" name="allow_packs" value="1" ${comicConfig['allow_packs']} /><label>Enable Pack Downloads<a href="#" title="Will allow downloading of multiple issues in one file (packs), but will search individual issues first"><img src="interfaces/default/images/info32.png" height="16" alt="" /></a></label>
+                                   <div class="row checkbox right clearfix">
+                                       <input type="checkbox" style="vertical-align: bottom; margin: 3px; margin-top: -3px;" name="allow_packs" value="1" ${comicConfig['allow_packs']} /><label>Enable Pack Downloads<a href="#" title="Will allow downloading of multiple issues in one file (packs), but will search individual issues first"><img src="interfaces/default/images/info32.png" height="16" alt="" /></a></label>
                                    </div>
                                    %endif
-
                         </fieldset>
-                    <input type="submit" value="Update"/>
+                     <input type="submit" style="float:right;" value="Update"/>
                 </form>
                </td>
              </tr>
@@ -355,7 +313,7 @@
                                 <td id="issuenumber">${issue['Issue_Number']}</td>
                                 <%
                                     if len(issue['IssueName']) > 70:
-                                        issuename = issue['IssueName'][:70] + '...'
+                                        issuename = "%s..." % issue['IssueName'][:70]
                                     else:
                                         issuename = issue['IssueName']
                                     endif
@@ -370,6 +328,23 @@
                                 </td>
                                 <td id="options">
                                 <a href="#" title="Manual Search" onclick="doAjaxCall('queueit?ComicID=${issue['ComicID']}&IssueID=${issue['IssueID']}&ComicIssue=${issue['Issue_Number']}&ComicYear=${issue['IssueDate']}&mode=want&manualsearch=True',$(this),'table')" data-success="Manually searching for ${comic['ComicName']} #${issue['Issue_Number']}"><img src="interfaces/default/images/search.png" height="25" width="25" /></a>
+<!--
+                                <a class="menu_link_edit" id="choose_specific_download" title="Choose Specific Download" href="javascript:void(0)" onclick="getAvailableDownloads('${issue['IssueID']}')"><i class="fa fa-search"></i><img src="interfaces/default/images/magnifier.png" height="25" width="25" class="highqual" /></a>
+                                <div id="choose_specific_download_dialog" title="Choose a specific download for this issue" style="display:none" class="configtable">
+                                <table class="display" id="downloads_table">
+                                        <thead>
+                                                <tr>
+                                                        <th id="title">Title</th>
+                                                        <th id="provider">Provider</th>
+                                                        <th id="size">Size</th>
+                                                        <th id="kind">Kind</th>
+                                                </tr>
+                                        </thead>
+                                        <tbody id="downloads_table_body" value="Now searching....this might take up to 90 seconds.">
+                                        </tbody>
+                                </table>
+                                </div>
+-->
                                 %if issue['Status'] == 'Skipped' or issue['Status'] == 'Ignored':
                                         <a href="#" title="Mark issue as Wanted" onclick="doAjaxCall('queueit?ComicID=${issue['ComicID']}&IssueID=${issue['IssueID']}&ComicIssue=${issue['Issue_Number']}&ComicYear=${issue['IssueDate']}&mode=want',$(this),'table')" data-success="Issue Marked as Wanted"><img src="interfaces/default/images/wanted_icon.png" height="25" width="25" class="highqual" /></a>
                                 %elif (issue['Status'] == 'Wanted'):
@@ -408,10 +383,11 @@
                                                 %endif
 
                                                 %if mylar.CONFIG.ENABLE_META:
-                                                    <a href="#" title="Manually meta-tag issue" onclick="doAjaxCall('manual_metatag?dirName=${comic['ComicLocation'] |u}&issueid=${issue['IssueID']}&filename=${linky |u}&comicid=${issue['ComicID']}&comversion=${comic['ComicVersion']}&seriesyear=${comic['ComicYear']}',$(this),'table')" data-success="${comic['ComicName']} #${issue['Issue_Number']} successfully tagged."><img src="interfaces/default/images/comictagger.png" height="25" width="25" class="highqual" /></a>
+                                                    <a href="#" title="Manually meta-tag issue" onclick="doAjaxCall('manual_metatag?dirName=${comic['ComicLocation'] |u}&issueid=${issue['IssueID']}&filename=${linky |u}&comicid=${issue['ComicID']}&comversion=${comic['ComicVersion']}&seriesyear=${comic['ComicYear']}',$(this));refreshLoadSeries();" data-success="${comic['ComicName']} #${issue['Issue_Number']} successfully tagged."><img src="interfaces/default/images/comictagger.png" height="25" width="25" class="highqual" /></a>
                                                 %endif
                                         %endif
                                         <a href="#" title="Add to Reading List" onclick="doAjaxCall('addtoreadlist?IssueID=${issue['IssueID']}',$(this),'table')" data-success="${comic['ComicName']} #${issue['Issue_Number']} added to Reading List"><img src="interfaces/default/images/glasses-icon.png" height="25" width="25" class="highqual" /></a>
+                                        <a href="#" title="Mark issue as Skipped" onclick="doAjaxCall('unqueueissue?IssueID=${issue['IssueID']}&ComicID=${issue['ComicID']}',$(this),'table')" data-success="'${issue['Issue_Number']}' has been marked as skipped"><img src="interfaces/default/images/skipped_icon.png" height="25" width="25" class="highqual" /></a>
                                 %else:
                                 <a href="#" title="Retry the same download again" onclick="doAjaxCall('queueit?ComicID=${issue['ComicID']}&IssueID=${issue['IssueID']}&ComicIssue=${issue['Issue_Number']}&mode=want', $(this),'table')" data-success="Retrying the same version of '${issue['ComicName']}' '${issue['Issue_Number']}'"><img src="interfaces/default/images/retry_icon.png" height="25" width="25" class="highqual" /></a>
                                 <a href="#" title="Mark issue as Skipped" onclick="doAjaxCall('unqueueissue?IssueID=${issue['IssueID']}&ComicID=${issue['ComicID']}',$(this),'table',true);" data-success="'${issue['Issue_Number']}' has been marked as skipped"><img src="interfaces/default/images/skipped_icon.png" height="25" width="25" class="highqual" /></a>
@@ -507,6 +483,23 @@
                                 <td id="aoptions">
                                    <% amode = 'want_ann' %>
                                         <a href="#" title="Manual Search" onclick="doAjaxCall('queueit?ComicID=${annual['ComicID']}&IssueID=${annual['IssueID']}&ComicIssue=${annual['Issue_Number']}&ComicYear=${annual['IssueDate']}&mode=${amode}&manualsearch=True',$(this),'table')" data-success="Manually searching for ${annual['ComicName']} #${annual['Issue_Number']}"><img src="interfaces/default/images/search.png" height="25" width="25" class="highqual" /></a>
+<!--
+                                <a class="menu_link_edit" id="choose_specific_download" title="Choose Specific Download" href="javascript:void(0)" onclick="getAvailableDownloads('${annual['IssueID']}')"><i class="fa fa-search"></i><img src="interfaces/default/images/magnifier.png" height="25" width="25" class="highqual" /></a>
+                                <div id="choose_specific_download_dialog" title="Choose a specific download for this issue" style="display:none" class="configtable">
+                                <table class="display" id="downloads_table">
+                                        <thead>
+                                                <tr>
+                                                        <th id="title">Title</th>
+                                                        <th id="provider">Provider</th>
+                                                        <th id="size">Size</th>
+                                                        <th id="kind">Kind</th>
+                                                </tr>
+                                        </thead>
+                                        <tbody id="downloads_table_body" value="Now searching....this might take up to 90 seconds.">
+                                        </tbody>
+                                </table>
+                                </div>
+-->
                                 %if annual['Status'] == 'Skipped' or annual['Status'] == 'Ignored':
                                         <a href="#" title="Mark annual as Wanted" onclick="doAjaxCall('queueit?ComicID=${annual['ComicID']}&IssueID=${annual['IssueID']}&ComicIssue=${annual['Issue_Number']}&ComicYear=${annual['IssueDate']}&mode=${amode}',$(this),'table')" data-success="Marked ${annual['ReleaseComicName']} #${annual['Issue_Number']} as Wanted"><img src="interfaces/default/images/wanted_icon.png" height="25" width="25" class="highqual" /></a>
                                 %elif (annual['Status'] == 'Wanted'):
@@ -519,15 +512,18 @@
                                         %endif
                                 %elif (annual['Status'] == 'Downloaded'):
                                        <%
-                                              if annual['Location'] is not None:
-                                                  linky = os.path.join(comic['ComicLocation'],annual['Location'])
-                                                  if not os.path.isfile(linky):
-                                                      if mylar.CONFIG.MULTIPLE_DEST_DIRS is not None and mylar.CONFIG.MULTIPLE_DEST_DIRS != 'None':
-                                                          pathdir = os.path.join(mylar.CONFIG.MULTIPLE_DEST_DIRS, os.path.basename(comic['ComicLocation']))
-                                                          linky = os.path.join(pathdir,issue['Location'])
-                                                      else:
-                                                          linky = None
-                                              else:
+                                              try:
+                                                  if annual['Location'] is not None:
+                                                      linky = os.path.join(comic['ComicLocation'],annual['Location'])
+                                                      if not os.path.isfile(linky):
+                                                          if mylar.CONFIG.MULTIPLE_DEST_DIRS is not None and mylar.CONFIG.MULTIPLE_DEST_DIRS != 'None':
+                                                              pathdir = os.path.join(mylar.CONFIG.MULTIPLE_DEST_DIRS, os.path.basename(comic['ComicLocation']))
+                                                              linky = os.path.join(pathdir,issue['Location'])
+                                                          else:
+                                                              linky = None
+                                                  else:
+                                                      linky = None
+                                              except:
                                                   linky = None
                                         %>
                                             %if linky:
@@ -554,12 +550,11 @@
 -->
                                         <a href="#" title="Add to Reading List" onclick="doAjaxCall('addtoreadlist?IssueID=${annual['IssueID']}',$(this),'table')" data-success="${aninfo['annualComicName']} #${annual['Issue_Number']} added to Reading List"><img src="interfaces/default/images/glasses-icon.png" height="25" width="25" class="highqual" /></a>
 
-                                        <a href="#" onclick="doAjaxCall('retryit?ComicName=${annual['ComicName'] |u}&ComicID=${annual['ComicID']}&IssueID=${annual['IssueID']}&IssueNumber=${annual['Issue_Number']}&ComicYear=${annual['IssueDate']}&ReleaseComicID=${annual['ReleaseComicID']}', $(this),'table')" data-success="Retrying the same version of '${annual['ComicName']}' '${annual['Issue_Number']}'" title="Retry the same download again"><img src="interfaces/default/images/retry_icon.png" height="25" width="25" class="highqual" /></a>
-                                        <a href="#" title="Mark annual as Skipped" onclick="doAjaxCall('unqueueissue?IssueID=${annual['IssueID']}&ComicID=${annual['ComicID']}',$(this),'table')" data-success="'${annual['Issue_Number']}' has been marked as skipped"><img src="interfaces/default/images/skipped_icon.png" height="25" width="25" class="highqual" /></a>
+                                        <a href="#" title="Mark annual as Skipped" onclick="doAjaxCall('unqueueissue?IssueID=${annual['IssueID']}&ComicID=${annual['ComicID']}&ReleaseComicID=${annual['ReleaseComicID']}',$(this),'table')" data-success="'${annual['Issue_Number']}' has been marked as skipped"><img src="interfaces/default/images/skipped_icon.png" height="25" width="25" class="highqual" /></a>
 
                                 %else:
                                 <a href="#" title="Retry the same download again" onclick="doAjaxCall('queueit?ComicID=${annual['ComicID']}&IssueID=${annual['IssueID']}&ComicIssue=${annual['Issue_Number']}&mode=want', $(this),'table')" data-success="Retrying the same version of '${annual['ComicName']}' '${annual['Issue_Number']}'"><img src="interfaces/default/images/retry_icon.png" height="25" width="25" class="highqual" /></a>
-                                <a href="#" title="Mark annual as Skipped" onclick="doAjaxCall('unqueueissue?IssueID=${annual['IssueID']}&ComicID=${annual['ComicID']}',$(this),'table')" data-success="'${annual['Issue_Number']}' has been marked as skipped"><img src="interfaces/default/images/skipped_icon.png" height="25" width="25" class="highqual" /></a>
+                                <a href="#" title="Mark annual as Skipped" onclick="doAjaxCall('unqueueissue?IssueID=${annual['IssueID']}&ComicID=${annual['ComicID']}&ReleaseComicID=${annual['ReleaseComicID']}',$(this),'table')" data-success="'${annual['Issue_Number']}' has been marked as skipped"><img src="interfaces/default/images/skipped_icon.png" height="25" width="25" class="highqual" /></a>
                                 %endif
                                 </td>
 
@@ -755,6 +750,69 @@
                 }
             });
         }
+
+        function getAvailableDownloads(issueid) {
+                ShowSpinner();
+                $.getJSON("choose_specific_download", {issueid: issueid}, function(data) {
+                        loader.remove();
+                        feedback.fadeOut();
+                        search_results = data
+                        for( var i = 0, len = data.length; i < len; i++ ) {
+                        $('#downloads_table_body').append('<tr><td id="title"><a href="javascript:void(0)" onclick="downloadSpecificRelease('+i+')">'+data[i].nzbtitle+'</a></td><td id="provider">'+data[i].provider+'</td><td id="size">'+data[i].size+'</td><td id="kind">'+data[i].kind+'</td></tr>');
+                }
+                        $('#downloads_table').dataTable({
+                                "aoColumns": [
+                                        null,
+                                        null,
+                                        null,
+                                        null
+                                ],
+                                "aaSorting": [[ 1, 'desc']],
+                                "bFilter": false,
+                                "bInfo": false,
+                                "bPaginate": false,
+                                "bDestroy": true
+                        });
+                $("#choose_specific_download_dialog").dialog({
+                        width: "60%",
+                        maxHeight: 500
+                });
+                return false;
+                });
+        }
+
+        function downloadSpecificRelease(i){
+
+                name = search_results[i].nzbtitle
+                prov = search_results[i].tmpprov
+                nzbid = search_results[i].nzbid
+                ShowSpinner();
+                $.getJSON("download_specific_release", {nzbid: nzbid, provider: prov, name: name}, function(data) {
+                        loader.remove();
+                        feedback.fadeOut();
+                        refreshSubmenu();
+                        $("#choose_specific_download_dialog").dialog("close");
+                });
+        }
+
+        function ShowSpinner() {
+                feedback = $("#ajaxMsg");
+                update = $("#updatebar");
+                if ( update.is(":visible") ) {
+                        var height = update.height() + 35;
+                        feedback.css("bottom",height + "px");
+                } else {
+                        feedback.removeAttr("style");
+                }
+                loader = $("<i class='fa fa-refresh fa-spin'></i>");
+                feedback.prepend(loader);
+                feedback.fadeIn();
+        }
+
+        var loadingMessage = false;
+        var spinner_active = false;
+        var loadingtext_active = false;
+        var refreshInterval;
 
         function initThisPage(){
 

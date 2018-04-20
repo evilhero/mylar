@@ -80,6 +80,7 @@ def locg(pulldate=None,weeknumber=None,year=None):
                          'comicid':    x['comicid'],
                          'issueid':    x['issueid'],
                          'weeknumber': x['weeknumber'],
+                         'annuallink': x['link'],
                          'year':       x['year'],
                          'volume':     x['volume'],
                          'seriesyear': x['seriesyear']})
@@ -87,12 +88,12 @@ def locg(pulldate=None,weeknumber=None,year=None):
 
         myDB = db.DBConnection()
 
-        myDB.action("CREATE TABLE IF NOT EXISTS weekly (SHIPDATE, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text, ComicID text, IssueID text, CV_Last_Update text, DynamicName text, weeknumber text, year text, volume text, seriesyear text, rowid INTEGER PRIMARY KEY)")
+        myDB.action("CREATE TABLE IF NOT EXISTS weekly (SHIPDATE, PUBLISHER text, ISSUE text, COMIC VARCHAR(150), EXTRA text, STATUS text, ComicID text, IssueID text, CV_Last_Update text, DynamicName text, weeknumber text, year text, volume text, seriesyear text, annuallink text, rowid INTEGER PRIMARY KEY)")
 
         #clear out the upcoming table here so they show the new values properly.
         if pulldate == '00000000':
             logger.info('Re-creating pullist to ensure everything\'s fresh.')
-            myDB.action('DELETE FROM weekly WHERE weeknumber=? AND year=?',[str(weeknumber), str(year)])
+            myDB.action('DELETE FROM weekly WHERE weeknumber=? AND year=?',[int(weeknumber), int(year)])
 
         for x in pull:
             comicid = None
@@ -119,6 +120,7 @@ def locg(pulldate=None,weeknumber=None,year=None):
                             'COMICID':     comicid,
                             'ISSUEID':     issueid,
                             'WEEKNUMBER':  x['weeknumber'],
+                            'ANNUALLINK':  x['annuallink'],
                             'YEAR':        x['year'],
                             'VOLUME':      x['volume'],
                             'SERIESYEAR':  x['seriesyear']}

@@ -47,18 +47,16 @@ def run(dirName, nzbName=None, issueid=None, comversion=None, manual=None, filen
     new_folder = None
     try:
         import tempfile
-        logger.info('Filepath: %s' %filepath)
-        logger.info('Filename: %s' %filename)
+        logger.fdebug('Filepath: %s' %filepath)
+        logger.fdebug('Filename: %s' %filename)
         new_folder = tempfile.mkdtemp(prefix='mylar_', dir=mylar.CONFIG.CACHE_DIR) #prefix, suffix, dir
-        logger.info('New_Folder: %s' % new_folder)
+        logger.fdebug('New_Folder: %s' % new_folder)
         new_filepath = os.path.join(new_folder, filename)
-        logger.info('New_Filepath: %s' % new_filepath)
+        logger.fdebug('New_Filepath: %s' % new_filepath)
         if mylar.CONFIG.FILE_OPTS == 'copy' and manualmeta == False:
-            logger.info('Attempting to copy: %s' % mylar.CONFIG.FILE_OPTS)
             shutil.copy(filepath, new_filepath)
         else:
-            logger.info('Attempting to move: %s' % mylar.CONFIG.FILE_OPTS)
-            shutil.move(filepath, new_filepath)
+            shutil.copy(filepath, new_filepath)
         filepath = new_filepath  
     except:
         logger.warn(module + ' Unexpected Error: %s' % sys.exc_info()[0])

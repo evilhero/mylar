@@ -430,11 +430,16 @@ class OPDS(object):
                 thumbnail = None
                 if issuebook:
                     if 'DateAdded' in issuebook.keys():
-                        title = escape('%03d: %s #%s - %s' % (index + number, issuebook['ComicName'], issuebook['Issue_Number'], issuebook['IssueName']))
-                        image = issuebook['ImageURL_ALT']
-                        thumbnail = issuebook['ImageURL']
+                        if issuebook['DateAdded'] is None:
+                            title = escape('%03d: %s #%s - %s (In stores %s)' % (index + number, issuebook['ComicName'], issuebook['Issue_Number'], issuebook['IssueName'], issuebook['ReleaseDate']))
+                            image = issuebook['ImageURL_ALT']
+                            thumbnail = issuebook['ImageURL']
+                        else:    
+                            title = escape('%03d: %s #%s - %s (Added to Mylar %s, in stores %s)' % (index + number, issuebook['ComicName'], issuebook['Issue_Number'], issuebook['IssueName'], issuebook['DateAdded'], issuebook['ReleaseDate']))
+                            image = issuebook['ImageURL_ALT']
+                            thumbnail = issuebook['ImageURL']
                     else:
-                        title = escape('%03d: %s Annual %s - %s' % (index + number, issuebook['ComicName'], issuebook['Issue_Number'], issuebook['IssueName']))
+                        title = escape('%03d: %s Annual %s - %s (In stores %s)' % (index + number, issuebook['ComicName'], issuebook['Issue_Number'], issuebook['IssueName'], issuebook['ReleaseDate']))
                     # logger.info("%s - %s" % (comic['ComicLocation'], issuebook['Location']))
                     number +=1
                     if not issuebook['Location']:
@@ -486,7 +491,7 @@ class OPDS(object):
             return
         myDB = db.DBConnection()
         issuetype = 0
-        issue = myDB.selectone("SELECT * from readinglist WHERE IssueID=? and Location IS NOT NULL",
+        issue = myDB.selectone("SELECT * from storyarcs WHERE IssueID=? and Location IS NOT NULL",
                                (kwargs['issueid'],)).fetchone()
         if not issue:
             issue = myDB.selectone("SELECT * from issues WHERE IssueID=?", (kwargs['issueid'],)).fetchone()
@@ -522,7 +527,7 @@ class OPDS(object):
             issuecount = 0
             arcname = ''
             updated = '0000-00-00'
-            arclist = myDB.select("SELECT * from readinglist WHERE StoryArcID=?", (arc,))
+            arclist = myDB.select("SELECT * from storyarcs WHERE StoryArcID=?", (arc,))
             for issue in arclist:
                 if issue['Status'] == 'Downloaded':
                     issuecount += 1
@@ -657,7 +662,7 @@ class OPDS(object):
             return
         links = []
         entries=[]
-        arclist = self._dic_from_query("SELECT * from readinglist WHERE StoryArcID='" + kwargs['arcid'] + "' ORDER BY ReadingOrder")
+        arclist = self._dic_from_query("SELECT * from storyarcs WHERE StoryArcID='" + kwargs['arcid'] + "' ORDER BY ReadingOrder")
         newarclist = []
         arcname = ''
         for book in arclist:

@@ -114,17 +114,20 @@ class FileChecker(object):
 
         if self.file:
             runresults = self.parseit(self.dir, self.file)
-            return {'parse_status':   runresults['parse_status'],
-                    'sub':            runresults['sub'],
-                    'comicfilename':  runresults['comicfilename'],
-                    'comiclocation':  runresults['comiclocation'],
-                    'series_name':    runresults['series_name'],
-                    'series_volume':  runresults['series_volume'],
-                    'alt_series':     runresults['alt_series'],
-                    'alt_issue':      runresults['alt_issue'],
-                    'issue_year':     runresults['issue_year'],
-                    'issue_number':   runresults['issue_number'],
-                    'scangroup':      runresults['scangroup']
+            return {'parse_status':        runresults['parse_status'],
+                    'sub':                 runresults['sub'],
+                    'comicfilename':       runresults['comicfilename'],
+                    'comiclocation':       runresults['comiclocation'],
+                    'series_name':         runresults['series_name'],
+                    'series_name_decoded': runresults['series_name_decoded'],
+                    'dynamic_name':        runresults['dynamic_name'],
+                    'series_volume':       runresults['series_volume'],
+                    'alt_series':          runresults['alt_series'],
+                    'alt_issue':           runresults['alt_issue'],
+                    'issue_year':          runresults['issue_year'],
+                    'issue_number':        runresults['issue_number'],
+                    'scangroup':           runresults['scangroup'],
+                    'reading_order':       runresults['reading_order']
                     }
         else:
             filelist = self.traverse_directories(self.dir)
@@ -916,6 +919,10 @@ class FileChecker(object):
 
             if issue_number is None or series_name is None:
                 logger.fdebug('Cannot parse the filename properly. I\'m going to make note of this filename so that my evil ruler can make it work.')
+                if series_name is not None:
+                    dreplace = self.dynamic_replace(series_name)['mod_seriesname']
+                else:
+                    dreplace = None
                 return {'parse_status':        'failure',
                         'sub':                 path_list,
                         'comicfilename':       filename,
@@ -924,12 +931,14 @@ class FileChecker(object):
                         'series_name_decoded': series_name_decoded,
                         'alt_series':          alt_series,
                         'alt_issue':           alt_issue,
+                        'dynamic_name':        dreplace,
                         'issue_number':        issue_number,
                         'justthedigits':       issue_number, #redundant but it's needed atm
                         'series_volume':       issue_volume,
                         'issue_year':          issue_year,
                         'annual_comicid':      None,
-                        'scangroup':           scangroup}
+                        'scangroup':           scangroup,
+                        'reading_order':       None}
 
             if self.justparse:
                 return {'parse_status':           'success',
@@ -1020,7 +1029,7 @@ class FileChecker(object):
                     seriesalt = True
 
             if any([seriesalt is True, re.sub('\|','', nspace_seriesname.lower()).strip() == re.sub('\|', '', nspace_watchcomic.lower()).strip(), re.sub('\|','', nspace_seriesname_decoded.lower()).strip() == re.sub('\|', '', nspace_watchname_decoded.lower()).strip()]) or any(re.sub('[\|\s]','', x.lower()).strip() == re.sub('[\|\s]','', nspace_seriesname.lower()).strip() for x in self.AS_Alt):
-                logger.fdebug('[MATCH: ' + series_info['series_name'] + '] ' + filename)
+                #logger.fdebug('[MATCH: ' + series_info['series_name'] + '] ' + filename)
                 enable_annual = False
                 annual_comicid = None
                 if any(re.sub('[\|\s]','', x.lower()).strip() == re.sub('[\|\s]','', nspace_seriesname.lower()).strip() for x in self.AS_Alt):
@@ -1105,7 +1114,7 @@ class FileChecker(object):
                         'scangroup':       series_info['scangroup']}
 
             else:
-                logger.info('[NO MATCH] ' + filename + ' [WATCHLIST:' + self.watchcomic + ']')
+                #logger.fdebug('[NO MATCH] ' + filename + ' [WATCHLIST:' + self.watchcomic + ']')
                 return {'process_status': 'fail',
                         'comicfilename':  filename,
                         'sub':            series_info['sub'],
@@ -1391,6 +1400,10 @@ def setperms(path, dir=False):
                     permission = int(mylar.CONFIG.CHMOD_DIR, 8)
                     os.chmod(path, permission)
                     os.chown(path, chowner, chgroup)
+                elif os.path.isfile(path):
+                    permission = int(mylar.CONFIG.CHMOD_FILE, 8)
+                    os.chown(path, chowner, chgroup)
+                    os.chmod(path, permission)   
                 else:
                     for root, dirs, files in os.walk(path):
                         for momo in dirs:
@@ -1404,6 +1417,9 @@ def setperms(path, dir=False):
 
                 logger.fdebug('Successfully changed ownership and permissions [' + str(mylar.CONFIG.CHOWNER) + ':' + str(mylar.CONFIG.CHGROUP) + '] / [' + str(mylar.CONFIG.CHMOD_DIR) + ' / ' + str(mylar.CONFIG.CHMOD_FILE) + ']')
 
+            elif os.path.isfile(path):
+                    permission = int(mylar.CONFIG.CHMOD_FILE, 8)
+                    os.chmod(path, permission)
             else:
                 for root, dirs, files in os.walk(path):
                     for momo in dirs:

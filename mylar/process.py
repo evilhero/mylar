@@ -21,10 +21,13 @@ import logger
 
 class Process(object):
 
-    def __init__(self, nzb_name, nzb_folder, failed=False):
+    def __init__(self, nzb_name, nzb_folder, failed=False, issueid=None, comicid=None, apicall=False):
         self.nzb_name = nzb_name
         self.nzb_folder = nzb_folder
         self.failed = failed
+        self.issueid = issueid
+        self.comicid = comicid
+        self.apicall = apicall
 
     def post_process(self):
         if self.failed == '0':
@@ -35,9 +38,9 @@ class Process(object):
         queue = Queue.Queue()
         retry_outside = False
 
-        if not self.failed:
-            PostProcess = mylar.PostProcessor.PostProcessor(self.nzb_name, self.nzb_folder, queue=queue)
-            if any([self.nzb_name == 'Manual Run', self.nzb_name == 'Manual+Run']):
+        if self.failed is False:
+            PostProcess = mylar.PostProcessor.PostProcessor(self.nzb_name, self.nzb_folder, self.issueid, queue=queue, comicid=self.comicid, apicall=self.apicall)
+            if any([self.nzb_name == 'Manual Run', self.nzb_name == 'Manual+Run', self.apicall is True, self.issueid is not None]):
                 threading.Thread(target=PostProcess.Process).start()
             else:
                 thread_ = threading.Thread(target=PostProcess.Process, name="Post-Processing")
@@ -62,8 +65,7 @@ class Process(object):
                         logger.error('mode is unsupported: ' + chk[0]['mode'])
                         break
 
-
-        if self.failed:
+        if self.failed is True:
             if mylar.CONFIG.FAILED_DOWNLOAD_HANDLING is True:
                 #drop the if-else continuation so we can drop down to this from the above if statement.
                 logger.info('Initiating Failed Download handling for this download.')
@@ -108,4 +110,3 @@ class Process(object):
                     logger.error('mode is unsupported: ' + chk[0]['mode'])
                     break
         return
-
