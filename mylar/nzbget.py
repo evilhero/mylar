@@ -34,8 +34,21 @@ class NZBGet(object):
         elif mylar.CONFIG.NZBGET_HOST[:4] == 'http':
             protocol = "http"
             nzbget_host = mylar.CONFIG.NZBGET_HOST[7:]
-        self.nzb_url = '%s://%s:%s@%s:%s/xmlrpc' % (protocol, mylar.CONFIG.NZBGET_USERNAME, mylar.CONFIG.NZBGET_PASSWORD, nzbget_host, mylar.CONFIG.NZBGET_PORT)
-        self.server = xmlrpclib.ServerProxy(self.nzb_url)
+        url = '%s://'
+        val = (protocol,)
+        if mylar.CONFIG.NZBGET_USERNAME is not None:
+            url = url + '%s:'
+            val = val + (mylar.CONFIG.NZBGET_USERNAME,)
+        if mylar.CONFIG.NZBGET_PASSWORD is not None:
+            url = url + '%s'
+            val = val + (mylar.CONFIG.NZBGET_PASSWORD,)
+        if any([mylar.CONFIG.NZBGET_USERNAME, mylar.CONFIG.NZBGET_PASSWORD]):
+            url = url + '@%s:%s/xmlrpc'
+        else:
+            url = url + '%s:%s/xmlrpc'
+        val = val + (nzbget_host,mylar.CONFIG.NZBGET_PORT,)
+        self.nzb_url = (url % val)
+        self.server = xmlrpclib.ServerProxy(self.nzb_url) #,allow_none=True)
 
     def sender(self, filename, test=False):
         if mylar.CONFIG.NZBGET_PRIORITY:
@@ -59,7 +72,11 @@ class NZBGet(object):
         nzbcontent64 = standard_b64encode(nzbcontent)
         try:
             logger.fdebug('sending now to %s' % self.nzb_url)
-            sendresponse = self.server.append(filename, nzbcontent64, mylar.CONFIG.NZBGET_CATEGORY, nzbgetpriority, False, False, '', 0, 'SCORE')
+            if mylar.CONFIG.NZBGET_CATEGORY is None:
+                nzb_category = ''
+            else:
+                nzb_category = mylar.CONFIG.NZBGET_CATEGORY
+            sendresponse = self.server.append(filename, nzbcontent64, nzb_category, nzbgetpriority, False, False, '', 0, 'SCORE')
         except Exception as e:
             logger.warn('uh-oh: %s' % e)
             return {'status': False}
@@ -78,7 +95,7 @@ class NZBGet(object):
         try:
             logger.fdebug('Now checking the active queue of nzbget for the download')
             queueinfo = self.server.listgroups()
-        except Expection as e:
+        except Exception as e:
             logger.warn('Error attempting to retrieve active queue listing: %s' % e)
             return {'status': False}
         else:
@@ -86,7 +103,7 @@ class NZBGet(object):
             queuedl = [qu for qu in queueinfo if qu['NZBID'] == nzbid]
             if len(queuedl) == 0:
                 logger.warn('Unable to locate item in active queue. Could it be finished already ?')
-                return {'status': False}
+                return self.historycheck(nzbid)
 
             stat = False
             while stat is False:
@@ -103,25 +120,29 @@ class NZBGet(object):
                     logger.fdebug('Download Left: %sMB' % queuedl[0]['RemainingSizeMB'])
                     logger.fdebug('health: %s' % (queuedl[0]['Health']/10))
                     logger.fdebug('destination: %s' % queuedl[0]['DestDir'])
+
             logger.fdebug('File has now downloaded!')
             time.sleep(5)  #wait some seconds so shit can get written to history properly
-            history = self.server.history()
-            found = False
-            hq = [hs for hs in history if hs['NZBID'] == nzbid and 'SUCCESS' in hs['Status']]
-            if len(hq) > 0:
-                logger.fdebug('found matching completed item in history. Job has a status of %s' % hq[0]['Status'])
-                if hq[0]['DownloadedSizeMB'] == hq[0]['FileSizeMB']:
-                    logger.fdebug('%s has final file size of %sMB' % (hq[0]['Name'], hq[0]['DownloadedSizeMB']))
-                    if os.path.isdir(hq[0]['DestDir']):
-                        logger.fdebug('location found @ %s' % hq[0]['DestDir'])
-                        return {'status':   True,
-                                'name':     re.sub('.nzb', '', hq[0]['NZBName']).strip(),
-                                'location': hq[0]['DestDir'],
-                                'failed':   False}
+            return self.historycheck(nzbid)
 
-                    else:
-                        logger.warn('no file found where it should be @ %s - is there another script that moves things after completion ?' % hq[0]['DestDir'])
-                        return {'status': False}
-            else:
-                logger.warn('Could not find completed item in history')
-                return {'status': False}
+    def historycheck(self, nzbid):
+        history = self.server.history()
+        found = False
+        hq = [hs for hs in history if hs['NZBID'] == nzbid and 'SUCCESS' in hs['Status']]
+        if len(hq) > 0:
+            logger.fdebug('found matching completed item in history. Job has a status of %s' % hq[0]['Status'])
+            if hq[0]['DownloadedSizeMB'] == hq[0]['FileSizeMB']:
+                logger.fdebug('%s has final file size of %sMB' % (hq[0]['Name'], hq[0]['DownloadedSizeMB']))
+                if os.path.isdir(hq[0]['DestDir']):
+                    logger.fdebug('location found @ %s' % hq[0]['DestDir'])
+                    return {'status':   True,
+                            'name':     re.sub('.nzb', '', hq[0]['NZBName']).strip(),
+                            'location': hq[0]['DestDir'],
+                            'failed':   False}
+
+                else:
+                    logger.warn('no file found where it should be @ %s - is there another script that moves things after completion ?' % hq[0]['DestDir'])
+                    return {'status': False}
+        else:
+            logger.warn('Could not find completed item in history')
+            return {'status': False}
