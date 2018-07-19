@@ -102,10 +102,11 @@ class NZBGet(object):
             logger.fdebug('valid queue result returned. Analyzing...')
             queuedl = [qu for qu in queueinfo if qu['NZBID'] == nzbid]
             if len(queuedl) == 0:
-                logger.warn('Unable to locate item in active queue. Could it be finished already ?')
-                return self.historycheck(nzbid)
+                logger.warn('Unable to locate NZBID %s in active queue. Could it be finished already ?' % nzbid)
+                return self.historycheck(nzbinfo)
 
             stat = False
+            double_pp = False
             while stat is False:
                 time.sleep(10)
                 queueinfo = self.server.listgroups()
@@ -114,6 +115,26 @@ class NZBGet(object):
                     logger.fdebug('Item is no longer in active queue. It should be finished by my calculations')
                     stat = True
                 else:
+                    if 'comicrn' in queuedl[0]['PostInfoText'].lower():
+                        double_pp = True
+
+                    if all([len(queuedl[0]['ScriptStatuses']) > 0, double_pp is False]):
+                        for x in queuedl[0]['ScriptStatuses']:
+                            if 'comicrn' in x['Name'].lower():
+                                double_pp = True
+                                break
+
+                    if all([len(queuedl[0]['Parameters']) > 0, double_pp is False]):
+                        for x in queuedl[0]['Parameters']:
+                            if all(['comicrn' in x['Name'].lower(), x['Value'] == 'yes']):
+                                double_pp = True
+                                break
+
+                    if double_pp is True:
+                        logger.warn('ComicRN has been detected as being active for this category & download. Completed Download Handling will NOT be performed due to this.')
+                        logger.warn('Either disable Completed Download Handling for NZBGet within Mylar, or remove ComicRN from your category script in NZBGet.')
+                        return {'status': 'double-pp', 'failed': False}
+
                     logger.fdebug('status: %s' % queuedl[0]['Status'])
                     logger.fdebug('name: %s' % queuedl[0]['NZBName'])
                     logger.fdebug('FileSize: %sMB' % queuedl[0]['FileSizeMB'])
@@ -123,26 +144,75 @@ class NZBGet(object):
 
             logger.fdebug('File has now downloaded!')
             time.sleep(5)  #wait some seconds so shit can get written to history properly
-            return self.historycheck(nzbid)
+            return self.historycheck(nzbinfo)
 
-    def historycheck(self, nzbid):
-        history = self.server.history()
+    def historycheck(self, nzbinfo):
+        nzbid = nzbinfo['NZBID']
+        history = self.server.history(True)
         found = False
-        hq = [hs for hs in history if hs['NZBID'] == nzbid and 'SUCCESS' in hs['Status']]
+        destdir = None
+        double_pp = False
+        hq = [hs for hs in history if hs['NZBID'] == nzbid and ('SUCCESS' in hs['Status'] or 'COPY' in hs['Status'])]
         if len(hq) > 0:
             logger.fdebug('found matching completed item in history. Job has a status of %s' % hq[0]['Status'])
-            if hq[0]['DownloadedSizeMB'] == hq[0]['FileSizeMB']:
+            if len(hq[0]['ScriptStatuses']) > 0:
+                for x in hq[0]['ScriptStatuses']:
+                    if 'comicrn' in x['Name'].lower():
+                        double_pp = True
+                        break
+
+            if all([len(hq[0]['Parameters']) > 0, double_pp is False]):
+                for x in hq[0]['Parameters']:
+                    if all(['comicrn' in x['Name'].lower(), x['Value'] == 'yes']):
+                        double_pp = True
+                        break
+
+            if double_pp is True:
+                logger.warn('ComicRN has been detected as being active for this category & download. Completed Download Handling will NOT be performed due to this.')
+                logger.warn('Either disable Completed Download Handling for NZBGet within Mylar, or remove ComicRN from your category script in NZBGet.')
+                return {'status': 'double-pp', 'failed': False}
+
+            if all(['SUCCESS' in hq[0]['Status'], hq[0]['DownloadedSizeMB'] == hq[0]['FileSizeMB']]):
                 logger.fdebug('%s has final file size of %sMB' % (hq[0]['Name'], hq[0]['DownloadedSizeMB']))
                 if os.path.isdir(hq[0]['DestDir']):
-                    logger.fdebug('location found @ %s' % hq[0]['DestDir'])
-                    return {'status':   True,
-                            'name':     re.sub('.nzb', '', hq[0]['NZBName']).strip(),
-                            'location': hq[0]['DestDir'],
-                            'failed':   False}
+                    destdir = hq[0]['DestDir']
+                    logger.fdebug('location found @ %s' % destdir)
+            elif all(['COPY' in hq[0]['Status'], int(hq[0]['FileSizeMB']) > 0, hq[0]['DeleteStatus'] == 'COPY']):
+                config = self.server.config()
+                cDestDir = None
+                for x in config:
+                    if x['Name'] == 'TempDir':
+                        cTempDir = x['Value']
+                    elif x['Name'] == 'DestDir':
+                        cDestDir = x['Value']
+                    if cDestDir is not None:
+                        break
 
-                else:
-                    logger.warn('no file found where it should be @ %s - is there another script that moves things after completion ?' % hq[0]['DestDir'])
-                    return {'status': False}
+                if cTempDir in hq[0]['DestDir']:
+                    destdir2 = re.sub(cTempDir, cDestDir, hq[0]['DestDir']).strip()
+                    if not destdir2.endswith(os.sep):
+                        destdir2 = destdir2 + os.sep
+                    destdir = os.path.join(destdir2, hq[0]['Name'])
+                    logger.fdebug('NZBGET Destination dir set to: %s' % destdir)
+            else:
+                logger.warn('no file found where it should be @ %s - is there another script that moves things after completion ?' % hq[0]['DestDir'])
+                return {'status': False}
+
+            if mylar.CONFIG.NZBGET_DIRECTORY is not None:
+                destdir2 = mylar.CONFIG.NZBGET_DIRECTORY
+                if not destdir2.endswith(os.sep):
+                    destdir = destdir2 + os.sep
+                destdir = os.path.join(destdir2, hq[0]['Name'])
+                logger.fdebug('NZBGet Destination folder set via config to: %s' % destdir)
+
+            if destdir is not None:
+                return {'status':   True,
+                       'name':     re.sub('.nzb', '', hq[0]['Name']).strip(),
+                       'location': destdir,
+                       'failed':   False,
+                       'issueid':  nzbinfo['issueid'],
+                       'comicid':  nzbinfo['comicid'],
+                       'apicall':  True}
         else:
-            logger.warn('Could not find completed item in history')
+            logger.warn('Could not find completed NZBID %s in history' % nzbid)
             return {'status': False}

@@ -77,7 +77,10 @@ def pullsearch(comicapi, comicquery, offset, type):
     try:
         dom = parseString(r.content) #(data)
     except ExpatError:
-        logger.warn('[WARNING] ComicVine is not responding correctly at the moment. This is usually due to some problems on their end. If you re-try things again in a few moments, it might work properly.')
+        if u'<title>Abnormal Traffic Detected' in r.content:
+            logger.error('ComicVine has banned this server\'s IP address because it exceeded the API rate limit.')
+        else:
+            logger.warn('[WARNING] ComicVine is not responding correctly at the moment. This is usually due to some problems on their end. If you re-try things again in a few moments, it might work properly.')
         return
 
     return dom
@@ -444,7 +447,14 @@ def storyarcinfo(xmlid):
 #        return
 #    arcdata = file.read()
 #    file.close()
-    arcdom = parseString(r.content) #(arcdata)
+    try:
+        arcdom = parseString(r.content) #(arcdata)
+    except ExpatError:
+        if u'<title>Abnormal Traffic Detected' in r.content:
+            logger.error("ComicVine has banned this server's IP address because it exceeded the API rate limit.")
+        else:
+            logger.warn('While parsing data from ComicVine, got exception: %s for data: %s' % (str(e), r.content))
+        return
 
     try:
         logger.fdebug('story_arc ascension')
@@ -491,9 +501,9 @@ def storyarcinfo(xmlid):
     except:
         logger.fdebug('Unable to retrieve first issue details. Not caclulating at this time.')
 
-    if (arcdom.getElementsByTagName('image')[0].childNodes[0].nodeValue) is None:
+    try:
         xmlimage = arcdom.getElementsByTagName('super_url')[0].firstChild.wholeText
-    else:
+    except:
         xmlimage = "cache/blankcover.jpg"
 
     try:

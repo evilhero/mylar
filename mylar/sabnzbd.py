@@ -16,6 +16,7 @@
 
 import urllib
 import requests
+import ntpath
 import os
 import sys
 import re
@@ -69,32 +70,38 @@ class SABnzbd(object):
             h = requests.get(self.sab_url, params=self.params['queue'], verify=False)
         except Exception as e:
             logger.info('uh-oh: %s' % e)
-            return self.historycheck(sendresponse)
+            return self.historycheck(self.params)
         else:
             queueresponse = h.json()
             logger.info('successfully queried the queue for status')
             try:
                 queueinfo = queueresponse['queue']
-                logger.info('queue: %s' % queueresponse)
-                logger.info('Queue status : %s' % queueinfo['status'])
-                logger.info('Queue mbleft : %s' % queueinfo['mbleft'])
+                #logger.fdebug('queue: %s' % queueinfo)
+                logger.fdebug('Queue status : %s' % queueinfo['status'])
+                logger.fdebug('Queue mbleft : %s' % queueinfo['mbleft'])
                 while any([str(queueinfo['status']) == 'Downloading', str(queueinfo['status']) == 'Idle']) and float(queueinfo['mbleft']) > 0:
-                    logger.info('queue_params: %s' % self.params['queue'])
+                    #if 'comicrn' in queueinfo['script'].lower():
+                    #    logger.warn('ComicRN has been detected as being active for this category & download. Completed Download Handling will NOT be performed due to this.')
+                    #    logger.warn('Either disable Completed Download Handling for SABnzbd within Mylar, or remove ComicRN from your category script in SABnzbd.')
+                    #    return {'status': 'double-pp', 'failed': False}
+
+                    #logger.fdebug('queue_params: %s' % self.params['queue'])
                     queue_resp = requests.get(self.sab_url, params=self.params['queue'], verify=False)
                     queueresp = queue_resp.json()
                     queueinfo = queueresp['queue']
-                    logger.info('status: %s' % queueinfo['status'])
-                    logger.info('mbleft: %s' % queueinfo['mbleft'])
-                    logger.info('timeleft: %s' % queueinfo['timeleft'])
-                    logger.info('eta: %s' % queueinfo['eta'])
+                    logger.fdebug('status: %s' % queueinfo['status'])
+                    logger.fdebug('mbleft: %s' % queueinfo['mbleft'])
+                    logger.fdebug('timeleft: %s' % queueinfo['timeleft'])
+                    logger.fdebug('eta: %s' % queueinfo['eta'])
                     time.sleep(5)
             except Exception as e:
                 logger.warn('error: %s' % e)
 
             logger.info('File has now downloaded!')
-            return self.historycheck(sendresponse)
+            return self.historycheck(self.params)
 
-    def historycheck(self, sendresponse):
+    def historycheck(self, nzbinfo):
+        sendresponse = nzbinfo['nzo_id']
         hist_params = {'mode':      'history',
                        'category':  mylar.CONFIG.SAB_CATEGORY,
                        'failed':    0,
@@ -109,14 +116,22 @@ class SABnzbd(object):
             try:
                 for hq in histqueue['slots']:
                     #logger.info('nzo_id: %s --- %s [%s]' % (hq['nzo_id'], sendresponse, hq['status']))
-                    if hq['nzo_id'] == sendresponse and hq['status'] == 'Completed':
+                    if hq['nzo_id'] == sendresponse and any([hq['status'] == 'Completed', hq['status'] == 'Running', 'comicrn' in hq['script'].lower()]):
                         logger.info('found matching completed item in history. Job has a status of %s' % hq['status'])
+                        if 'comicrn' in hq['script'].lower():
+                            logger.warn('ComicRN has been detected as being active for this category & download. Completed Download Handling will NOT be performed due to this.')
+                            logger.warn('Either disable Completed Download Handling for SABnzbd within Mylar, or remove ComicRN from your category script in SABnzbd.')
+                            return {'status': 'double-pp', 'failed': False}
+
                         if os.path.isfile(hq['storage']):
                             logger.info('location found @ %s' % hq['storage'])
                             found = {'status':   True,
-                                     'name':     re.sub('.nzb', '', hq['nzb_name']).strip(),
+                                     'name':     ntpath.basename(hq['storage']), #os.pathre.sub('.nzb', '', hq['nzb_name']).strip(),
                                      'location': os.path.abspath(os.path.join(hq['storage'], os.pardir)),
-                                     'failed':   False}
+                                     'failed':   False,
+                                     'issueid':  nzbinfo['issueid'],
+                                     'comicid':  nzbinfo['comicid'],
+                                     'apicall':  True}
                             break
                         else:
                             logger.info('no file found where it should be @ %s - is there another script that moves things after completion ?' % hq['storage'])
@@ -134,9 +149,13 @@ class SABnzbd(object):
                                         found = {'status':   True,
                                                  'name':     re.sub('.nzb', '', hq['nzb_name']).strip(),
                                                  'location': os.path.abspath(os.path.join(hq['storage'], os.pardir)),
-                                                 'failed':   True}
+                                                 'failed':   True,
+                                                 'issueid':  sendresponse['issueid'],
+                                                 'comicid':  sendresponse['comicid'],
+                                                 'apicall':  True}
                                 break
                         break
+
             except Exception as e:
                 logger.warn('error %s' % e)
                 break

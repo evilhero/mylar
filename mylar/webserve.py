@@ -291,7 +291,7 @@ class WebInterface(object):
             searchresults = sorted(searchresults, key=itemgetter('comicyear', 'issues'), reverse=True)
         except Exception as e:
             logger.error('Unable to retrieve results from ComicVine: %s' % e)
-            if mylar.COMICVINE_API is None:
+            if mylar.CONFIG.COMICVINE_API is None:
                 logger.error('You NEED to set a ComicVine API key prior to adding anything. It\'s Free - Go get one!')
                 return
         return serve_template(templatename="searchresults.html", title='Search Results for: "' + name + '"', searchresults=searchresults, type=type, imported=None, ogcname=None, name=name, serinfo=serinfo)
@@ -496,22 +496,22 @@ class WebInterface(object):
         try:
             r = requests.get(imageurl, params=None, stream=True, verify=mylar.CONFIG.CV_VERIFY, headers=mylar.CV_HEADERS)
         except Exception, e:
-            logger.warn('Unable to download image from CV URL link: %s [Status Code returned: %s]' % (imageurl, r.status_code))
-
-        logger.fdebug('comic image retrieval status code: ' + str(r.status_code))
-
-        if str(r.status_code) != '200':
-            logger.warn('Unable to download image from CV URL link: %s [Status Code returned: %s]' % (imageurl, r.status_code))
+            logger.warn('Unable to download image from CV URL link - possibly no arc picture is present: %s' % imageurl)
         else:
-            if r.headers.get('Content-Encoding') == 'gzip':
-                buf = StringIO(r.content)
-                f = gzip.GzipFile(fileobj=buf)
+            logger.fdebug('comic image retrieval status code: ' + str(r.status_code))
 
-            with open(coverfile, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=1024):
-                    if chunk: # filter out keep-alive new chunks
-                        f.write(chunk)
-                        f.flush()
+            if str(r.status_code) != '200':
+                logger.warn('Unable to download image from CV URL link: %s [Status Code returned: %s]' % (imageurl, r.status_code))
+            else:
+                if r.headers.get('Content-Encoding') == 'gzip':
+                    buf = StringIO(r.content)
+                    f = gzip.GzipFile(fileobj=buf)
+
+                with open(coverfile, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=1024):
+                        if chunk: # filter out keep-alive new chunks
+                            f.write(chunk)
+                            f.flush()
 
         arc_results = mylar.cv.getComic(comicid=None, type='issue', arcid=arcid, arclist=arclist)
         logger.fdebug(module + ' Arcresults: ' + str(arc_results))
@@ -1352,13 +1352,14 @@ class WebInterface(object):
             controlValueDict = {"IssueArcID": IssueArcID}
             newStatus = {"Status": "Wanted"}
             myDB.upsert("storyarcs", newStatus, controlValueDict)
-            foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=Publisher, IssueDate=IssueDate, StoreDate=ReleaseDate, IssueID=None, AlternateSearch=None, UseFuzzy=None, ComicVersion=dateload['Volume'], SARC=SARC, IssueArcID=IssueArcID)
-            if foundcom['status'] is True:
-                logger.info(u"Downloaded " + ComicName + " #" + ComicIssue + " (" + str(ComicYear) + ")")
-                controlValueDict = {"IssueArcID": IssueArcID}
-                newStatus = {"Status": "Snatched"}
-            myDB.upsert("storyarcs", newStatus, controlValueDict)
-            return foundcom
+            s = mylar.SEARCH_QUEUE.put({'issueid': IssueArcID, 'comicname': ComicName, 'seriesyear': ComicYear, 'comicid': ComicID, 'issuenumber': ComicIssue})
+            #foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=Publisher, IssueDate=IssueDate, StoreDate=ReleaseDate, IssueID=None, AlternateSearch=None, UseFuzzy=None, ComicVersion=dateload['Volume'], SARC=SARC, IssueArcID=IssueArcID)
+            #if foundcom['status'] is True:
+            #    logger.info(u"Downloaded " + ComicName + " #" + ComicIssue + " (" + str(ComicYear) + ")")
+            #    controlValueDict = {"IssueArcID": IssueArcID}
+            #    newStatus = {"Status": "Snatched"}
+            #myDB.upsert("storyarcs", newStatus, controlValueDict)
+            return # foundcom
 
         elif mode == 'pullwant':  #and ComicID is None
             #this is for marking individual comics from the pullist to be downloaded.
@@ -1372,12 +1373,13 @@ class WebInterface(object):
                 ComicYear == now.year
             if Publisher == 'COMICS': Publisher = None
             logger.info(u"Marking " + ComicName + " " + ComicIssue + " as wanted...")
-            foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=Publisher, IssueDate=IssueDate, StoreDate=IssueDate, IssueID=IssueID, ComicID=ComicID, AlternateSearch=None, mode=mode, UseFuzzy=None, ComicVersion=ComicVersion, allow_packs=False, manual=manual)
+            s = mylar.SEARCH_QUEUE.put({'issueid': IssueID, 'comicname': ComicName, 'seriesyear': ComicYear, 'comicid': ComicID, 'issuenumber': ComicIssue})
+            #foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=Publisher, IssueDate=IssueDate, StoreDate=IssueDate, IssueID=IssueID, ComicID=ComicID, AlternateSearch=None, mode=mode, UseFuzzy=None, ComicVersion=ComicVersion, allow_packs=False, manual=manual)
             if manual is True:
                 return foundcom
-            if foundcom['status'] is True:
-                logger.info('[ONE-OFF MODE] Successfully Downloaded ' + ComicName + ' ' + ComicIssue)
-                return updater.foundsearch(ComicID, IssueID, mode=mode, provider=prov, hash=foundcom['info']['t_hash'], pullinfo={'weeknumber': pullweek, 'year': pullyear})
+            #if foundcom['status'] is True:
+                #logger.info('[ONE-OFF MODE] Successfully Downloaded ' + ComicName + ' ' + ComicIssue)
+                #return updater.foundsearch(ComicID, IssueID, mode=mode, provider=prov, hash=foundcom['info']['t_hash'], pullinfo={'weeknumber': pullweek, 'year': pullyear})
             return
 
         elif mode == 'want' or mode == 'want_ann' or manualsearch:
@@ -1436,12 +1438,13 @@ class WebInterface(object):
         #Publisher = miy['ComicPublisher']
         #UseAFuzzy = miy['UseFuzzy']
         #ComicVersion = miy['ComicVersion']
-        foundcom, prov = search.search_init(ComicName, ComicIssue, ComicYear, SeriesYear, Publisher, issues['IssueDate'], storedate, IssueID, AlternateSearch, UseAFuzzy, ComicVersion, mode=mode, ComicID=ComicID, manualsearch=manualsearch, filesafe=ComicName_Filesafe, allow_packs=AllowPacks, torrentid_32p=TorrentID_32p)
-        if foundcom['status'] is True:
-            # file check to see if issue exists and update 'have' count
-            if IssueID is not None:
-                logger.info("passing to updater.")
-                return updater.foundsearch(ComicID, IssueID, mode=mode, provider=prov, hash=foundcom['info']['t_hash'])
+        s = mylar.SEARCH_QUEUE.put({'issueid': IssueID, 'comicname': ComicName, 'seriesyear': SeriesYear, 'comicid': ComicID, 'issuenumber': ComicIssue})
+#        foundcom, prov = search.search_init(ComicName, ComicIssue, ComicYear, SeriesYear, Publisher, issues['IssueDate'], storedate, IssueID, AlternateSearch, UseAFuzzy, ComicVersion, mode=mode, ComicID=ComicID, manualsearch=manualsearch, filesafe=ComicName_Filesafe, allow_packs=AllowPacks, torrentid_32p=TorrentID_32p)
+#        if foundcom['status'] is True:
+#            # file check to see if issue exists and update 'have' count
+#            if IssueID is not None:
+#                logger.info("passing to updater.")
+#                return updater.foundsearch(ComicID, IssueID, mode=mode, provider=prov, hash=foundcom['info']['t_hash'])
         if manualsearch:
             # if it's a manual search, return to null here so the thread will die and not cause http redirect errors.
             return
@@ -1906,6 +1909,7 @@ class WebInterface(object):
             myDB.action('DELETE FROM weekly WHERE weeknumber=? and year=?', [int(weeknumber), int(year)])
             logger.info("Deleted existing pull-list data for week %s, %s. Now Recreating the Pull-list..." % (weeknumber, year))
         weeklypull.pullit(forcecheck, weeknumber, year)
+        weeklypull.future_check()
     pullrecreate.exposed = True
 
     def upcoming(self):
@@ -2104,7 +2108,6 @@ class WebInterface(object):
                 logger.fdebug('[DELETE] - ' + mvup['ComicName'] + ' issue #: ' + str(mvup['IssueNumber']))
                 deleteit = myDB.action("DELETE from upcoming WHERE ComicName=? AND IssueNumber=?", [mvup['ComicName'], mvup['IssueNumber']])
 
-
         return serve_template(templatename="upcoming.html", title="Upcoming", upcoming=upcoming, issues=issues, ann_list=ann_list, futureupcoming=futureupcoming, future_nodata_upcoming=future_nodata_upcoming, futureupcoming_count=futureupcoming_count, upcoming_count=upcoming_count, wantedcount=wantedcount, isCounts=isCounts)
     upcoming.exposed = True
 
@@ -2232,7 +2235,7 @@ class WebInterface(object):
         mylarRoot = mylar.CONFIG.DESTINATION_DIR
         import db
         myDB = db.DBConnection()
-        jobresults = myDB.select('SELECT * FROM jobhistory')
+        jobresults = myDB.select('SELECT DISTINCT * FROM jobhistory')
         if jobresults is not None:
             tmp = []
             for jb in jobresults:
@@ -2424,22 +2427,38 @@ class WebInterface(object):
             if action == 'importselected':
                 logger.info('importing selected series.')
                 for k,v in args.items():
-                    #k = Comicname[Volume]
+                    #k = Comicname[Volume]|ComicID
                     #v = DynamicName
                     Volst = k.find('[')
-                    volume = re.sub('[\[\]]', '', k[Volst:]).strip()
+                    comicid_st = k.find('|')
+                    if comicid_st == -1:
+                        comicid = None
+                        volume = re.sub('[\[\]]', '', k[Volst:]).strip()
+                    else:
+                        comicid = k[comicid_st+1:]
+                        if comicid == 'None':
+                            comicid = None
+                        volume = re.sub('[\[\]]', '', k[Volst:comicid_st]).strip()
                     ComicName = k[:Volst].strip()
                     DynamicName = v
                     cid = ComicName.decode('utf-8', 'replace')
                     comicstoimport.append({'ComicName': cid,
                                            'DynamicName': DynamicName,
                                            'Volume':    volume,
-                                           'ComicID':   None})
+                                           'ComicID':   comicid})
 
             elif action == 'removeimport':
                 for k,v in args.items():
                     Volst = k.find('[')
-                    volume = re.sub('[\[\]]', '', k[Volst:]).strip()
+                    comicid_st = k.find('|')
+                    if comicid_st == -1:
+                        comicid = None
+                        volume = re.sub('[\[\]]', '', k[Volst:]).strip()
+                    else:
+                        comicid = k[comicid_st+1:]
+                        if comicid == 'None':
+                            comicid = None
+                        volume = re.sub('[\[\]]', '', k[Volst:comicid_st]).strip()
                     ComicName = k[:Volst].strip()
                     DynamicName = v
                     if volume is None or volume == 'None':
@@ -2708,25 +2727,33 @@ class WebInterface(object):
         #bannerwidth = 263
         filepath = None
         sb = 'cache/storyarcs/' + str(arcinfo[0]['CV_ArcID']) + '-banner'
-        dir = os.listdir(os.path.join(mylar.CONFIG.CACHE_DIR, 'storyarcs'))
-        for fname in dir:
-            if str(arcinfo[0]['CV_ArcID']) in fname:
-                storyarcbanner = sb
-                filepath = os.path.join(mylar.CONFIG.CACHE_DIR, 'storyarcs', fname)
-        #        if any(['H' in fname, 'W' in fname]):
-        #            if 'H' in fname:
-        #                bannerheight = int(fname[fname.find('H')+1:fname.find('.')])
-        #            elif 'W' in fname:
-        #                bannerwidth = int(fname[fname.find('W')+1:fname.find('.')])
+        storyarc_imagepath = os.path.join(mylar.CONFIG.CACHE_DIR, 'storyarcs')
+        if not os.path.exists(storyarc_imagepath):
+            try:
+                os.mkdir(storyarc_imagepath)
+            except:
+                logger.warn('Unable to create storyarc image directory @ %s' % storyarc_imagepath)
 
-        #            if any([bannerwidth != 263, 'W' in fname]):
-        #                #accomodate poster size
-        #                storyarcbanner += 'W' + str(bannerheight)
-        #            else:
-        #                #for actual banner width (ie. 960x280)
-        #                storyarcbanner += 'H' + str(bannerheight)
-                storyarcbanner += os.path.splitext(fname)[1] + '?' + datetime.datetime.now().strftime('%y-%m-%d %H:%M:%S')
-                break
+        if os.path.exists(storyarc_imagepath):
+            dir = os.listdir(storyarc_imagepath)
+            for fname in dir:
+                if str(arcinfo[0]['CV_ArcID']) in fname:
+                    storyarcbanner = sb
+                    filepath = os.path.join(storyarc_imagepath, fname)
+           #        if any(['H' in fname, 'W' in fname]):
+           #            if 'H' in fname:
+           #                bannerheight = int(fname[fname.find('H')+1:fname.find('.')])
+           #            elif 'W' in fname:
+           #                bannerwidth = int(fname[fname.find('W')+1:fname.find('.')])
+
+           #            if any([bannerwidth != 263, 'W' in fname]):
+           #                #accomodate poster size
+           #                storyarcbanner += 'W' + str(bannerheight)
+           #            else:
+           #                #for actual banner width (ie. 960x280)
+           #                storyarcbanner += 'H' + str(bannerheight)
+                    storyarcbanner += os.path.splitext(fname)[1] + '?' + datetime.datetime.now().strftime('%y-%m-%d %H:%M:%S')
+                    break
 
         template = 'storyarc_detail.html'
         if filepath is not None:
@@ -3598,7 +3625,6 @@ class WebInterface(object):
     def getLog(self, iDisplayStart=0, iDisplayLength=100, iSortCol_0=0, sSortDir_0="desc", sSearch="", **kwargs):
         iDisplayStart = int(iDisplayStart)
         iDisplayLength = int(iDisplayLength)
-
         filtered = []
         if sSearch == "" or sSearch == None:
             filtered = mylar.LOGLIST[::]
@@ -4377,38 +4403,26 @@ class WebInterface(object):
     def pretty_git(self, br_history):
         #in order to 'prettify' the history log for display, we need to break it down so it's line by line.
         br_split = br_history.split("\n")  #split it on each commit
+        commit = []
         for br in br_split:
-            br_commit_st = br.find('-')  #first - will represent end of commit numeric
-            br_commit = br[:br_commit_st].strip()
-            br_time_en = br.replace('-', 'XXX', 1).find('-')  #2nd - is end of time datestamp
-            br_time = br[br_commit_st +1:br_time_en].strip()
-            print 'COMMIT:' + str(br_commit)
-            print 'TIME:' + str(br_time)
-            commit_split = br.split() #split it by space to break it further down..
-            tag_chk = False
-            statline = ''
-            commit = []
-            for cs in commit_split:
-                if tag_chk == True:
-                    if 'FIX:' in cs or 'IMP:' in cs:
-                        commit.append({"commit":    br_commit,
-                                       "time":      br_time,
-                                       "stat":      tag_status,
-                                       "line":      statline})
-                        print commit
-                        tag_chk == False
-                        statline = ''
-                    else:
-                        statline += str(cs) + ' '
-                else:
-                    if 'FIX:' in cs:
-                        tag_status = 'FIX'
-                        tag_chk = True
-                        print 'status: ' + str(tag_status)
-                    elif 'IMP:' in cs:
-                        tag_status = 'IMPROVEMENT'
-                        tag_chk = True
-                        print 'status: ' + str(tag_status)
+            commit_st = br.find('-')
+            commitno = br[:commit_st].strip()
+            time_end = br.find('-',commit_st+1)
+            time = br[commit_st+1:time_end].strip()
+            author_end = br.find('-', time_end+1)
+            author = br[time_end+1:author_end].strip()
+            desc = br[author_end+1:].strip()
+            if len(desc) > 103:
+                desc = '<span title="%s">%s...</span>' % (desc, desc[:103])
+            if author != 'evilhero':
+                pr_tag = True
+                dspline = '[%s][PR] %s {<span style="font-size:11px">%s/%s</span>}'
+            else:
+                pr_tag = False
+                dspline = '[%s] %s {<span style="font-size:11px">%s/%s</span>}'
+            commit.append(dspline % ("<a href='https://github.com/evilhero/mylar/commit/" + commitno + "'>"+commitno+"</a>", desc, time, author))
+
+        return '<br />\n'.join(commit)
 
     pretty_git.exposed = True
     #---
@@ -4417,13 +4431,16 @@ class WebInterface(object):
         interface_list = [name for name in os.listdir(interface_dir) if os.path.isdir(os.path.join(interface_dir, name))]
 #----
 # to be implemented in the future.
-#        branch_history, err = mylar.versioncheck.runGit("log --oneline --pretty=format:'%h - %ar - %s' -n 4")
-#        #here we pass the branch_history to the pretty_git module to break it down
-#        if branch_history:
-#            self.pretty_git(branch_history)
-#            br_hist = branch_history.replace("\n", "<br />\n")
-#        else:
-#            br_hist = err
+        if mylar.INSTALL_TYPE == 'git':
+            branch_history, err = mylar.versioncheck.runGit("log --pretty=format:'%h - %cr - %an - %s' -n 5")
+            #here we pass the branch_history to the pretty_git module to break it down
+            if branch_history:
+                br_hist = self.pretty_git(branch_history)
+                #br_hist = branch_history.replace("\n", "<br />\n")
+            else:
+                br_hist = err
+        else:
+            br_hist = 'This would be a nice place to see revision history...'
 #----
         myDB = db.DBConnection()
         CCOMICS = myDB.select("SELECT COUNT(*) FROM comics")
@@ -4647,8 +4664,7 @@ class WebInterface(object):
                     "cache_dir": mylar.CONFIG.CACHE_DIR,
                     "config_file": mylar.CONFIG_FILE,
                     "lang": '%s.%s' % (logger.LOG_LANG,logger.LOG_CHARSET),
-                    "branch_history": 'None',
-#                    "branch_history" : br_hist,
+                    "branch_history" : br_hist,
                     "log_dir": mylar.CONFIG.LOG_DIR,
                     "opds_enable": helpers.checked(mylar.CONFIG.OPDS_ENABLE),
                     "opds_authentication": helpers.checked(mylar.CONFIG.OPDS_AUTHENTICATION),
@@ -5434,7 +5450,7 @@ class WebInterface(object):
             logger.info('Successfully tested %s [%s] - valid api response received' % (name, host))
             return 'Successfully tested %s!' % name
         else:
-            logger.warn('Testing failed to %s [HOST:%s][SSL:%s]' % (name, host, ssl))
+            logger.warn('Testing failed to %s [HOST:%s][SSL:%s]' % (name, host, bool(ssl)))
             return 'Error - failed running test for %s' % name
     testnewznab.exposed = True
 
@@ -5825,3 +5841,4 @@ class WebInterface(object):
             return json.dumps({'result': 'success'})
 
     download_specific_release.exposed = True
+

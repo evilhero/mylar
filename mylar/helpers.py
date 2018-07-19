@@ -229,9 +229,10 @@ def extract_logline(s):
 def is_number(s):
     try:
         float(s)
-        return True
-    except ValueError:
+    except (ValueError, TypeError):
         return False
+    else:
+        return True
 
 def decimal_issue(iss):
     iss_find = iss.find('.')
@@ -2086,7 +2087,12 @@ def duplicate_filecheck(filename, ComicID=None, IssueID=None, StoryArcID=None, r
     myDB = db.DBConnection()
 
     logger.info('[DUPECHECK] Duplicate check for ' + filename)
-    filesz = os.path.getsize(filename)
+    try:
+        filesz = os.path.getsize(filename)
+    except OSError as e:
+        logger.warn('[DUPECHECK] File cannot be located in location specified. Something has moved or altered the name.')
+        logger.warn('[DUPECHECK] Make sure if you are using ComicRN, you do not have Completed Download Handling enabled (or vice-versa). Aborting')
+        return
 
     if IssueID:
         dupchk = myDB.selectone("SELECT * FROM issues WHERE IssueID=?", [IssueID]).fetchone()
@@ -2372,10 +2378,8 @@ def issue_status(IssueID):
                 return False
 
     if any([isschk['Status'] == 'Downloaded', isschk['Status'] == 'Snatched']):
-        logger.info('returning true')
         return True
     else:
-        logger.info('returning false')
         return False
 
 def crc(filename):
@@ -2987,6 +2991,28 @@ def postprocess_main(queue):
         else:
             time.sleep(5)
 
+def search_queue(queue):
+    while True:
+        if mylar.SEARCHLOCK is True:
+            time.sleep(5)
+
+        elif mylar.SEARCHLOCK is False and queue.qsize() >= 1: #len(queue) > 1:
+            item = queue.get(True)
+            logger.info('[SEARCH-QUEUE] Now loading item from search queue: %s' % item)
+            if item == 'exit':
+                logger.info('[SEARCH-QUEUE] Cleaning up workers for shutdown')
+                break
+
+            if mylar.SEARCHLOCK is False:
+                ss_queue = mylar.search.searchforissue(item['issueid'])
+                time.sleep(5) #arbitrary sleep to let the process attempt to finish pp'ing
+
+            if mylar.SEARCHLOCK is True:
+                logger.fdebug('[SEARCH-QUEUE] Another item is currently being searched....')
+                time.sleep(15)
+        else:
+            time.sleep(5)
+
 
 def worker_main(queue):
     while True:
@@ -3022,7 +3048,7 @@ def nzb_monitor(queue):
            break
 
         if nzstat['status'] is False:
-            logger.info('Something went wrong - maybe you should retry things. I will requeue up this item for post-processing...')
+            logger.info('Could not find NZBID %s in the downloader\'s queue. I will requeue this item for post-processing...' % item['NZBID'])
             time.sleep(5)
             mylar.NZB_QUEUE.put(item)
         elif nzstat['status'] is True:
@@ -3031,8 +3057,14 @@ def nzb_monitor(queue):
             else:
                 logger.info('File failed either due to being corrupt or incomplete - now initiating completed failed downloading handling.')
             try:
-                cc = process.Process(nzstat['name'], nzstat['location'], failed=nzstat['failed'])
-                nzpp = cc.post_process()
+                mylar.PP_QUEUE.put({'nzb_name':     nzstat['name'],
+                                    'nzb_folder':   nzstat['location'],
+                                    'failed':       nzstat['failed'],
+                                    'issueid':      nzstat['issueid'],
+                                    'comicid':      nzstat['comicid'],
+                                    'apicall':      nzstat['apicall']})
+                #cc = process.Process(nzstat['name'], nzstat['location'], failed=nzstat['failed'])
+                #nzpp = cc.post_process()
             except Exception as e:
                 logger.info('process error: %s' % e)
 
@@ -3088,6 +3120,13 @@ def script_env(mode, vars):
                     mylar_env['mylar_issueid'] = vars['comicinfo']['issueid']
                 else:
                     mylar_env['mylar_issueid'] = 'None'
+            except:
+                pass
+            try:
+                if vars['comicinfo']['issuearcid'] is not None:
+                    mylar_env['mylar_issuearcid'] = vars['comicinfo']['issuearcid']
+                else:
+                    mylar_env['mylar_issuearcid'] = 'None'
             except:
                 pass
             mylar_env['mylar_comicname'] = vars['comicinfo']['comicname']
@@ -3201,7 +3240,7 @@ def job_management(write=False, job=None, last_run_completed=None, current_run=N
             monitor_newstatus = 'Waiting'
             monitor_nextrun = None
 
-            job_info = myDB.select('select * from jobhistory')
+            job_info = myDB.select('SELECT DISTINCT * FROM jobhistory')
             #set default values if nothing has been ran yet
             for ji in job_info:
                 if 'update' in ji['JobName'].lower():
@@ -3400,9 +3439,10 @@ def newznab_test(name, host, ssl, apikey):
         host = host + 'api'
     else:
         host = host + '/api'
+    headers = {'User-Agent': str(mylar.USER_AGENT)}
     logger.info('host: %s' % host)
     try:
-        r = requests.get(host, params=params, verify=bool(ssl))
+        r = requests.get(host, params=params, headers=headers, verify=bool(ssl))
     except Exception as e:
         logger.warn('Unable to connect: %s' % e)
         return
@@ -3410,18 +3450,22 @@ def newznab_test(name, host, ssl, apikey):
         try:
             data = parseString(r.content)
         except Exception as e:
-            logger.warn('error %s' % e)
+            logger.warn('[WARNING] Error attempting to test: %s' % e)
 
         try:
             error_code = data.getElementsByTagName('error')[0].attributes['code'].value
         except Exception as e:
             logger.info('Connected - Status code returned: %s' % r.status_code)
-            return True
-        else:
-            code = error_code
-            description = data.getElementsByTagName('error')[0].attributes['description'].value
-            logger.info('[ERROR:%s] - %s' % (code, description))
-            return False
+            if r.status_code == 200:
+                return True
+            else:
+                logger.warn('Received response - Status code returned: %s' % r.status_code)
+                return False
+
+        code = error_code
+        description = data.getElementsByTagName('error')[0].attributes['description'].value
+        logger.info('[ERROR:%s] - %s' % (code, description))
+        return False
 
 def get_free_space(folder):
     min_threshold = 100000000 #threshold for minimum amount of freespace available (#100mb)
