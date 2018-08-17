@@ -635,7 +635,7 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                     if host_torznab[len(host_torznab)-1:len(host_torznab)] == '/':
                         torznab_fix = host_torznab[:-1]
                     else:
-                        torznab_fix = host.torznab
+                        torznab_fix = host_torznab
                     findurl = str(torznab_fix) + "?t=search&q=" + str(comsearch)
                     if category_torznab is not None:
                         findurl += "&cat=" + str(category_torznab)
@@ -2981,7 +2981,7 @@ def notify_snatch(nzbname, sent_to, modcomicname, comyear, IssueNumber, nzbprov)
     if mylar.CONFIG.SLACK_ENABLED and mylar.CONFIG.SLACK_ONSNATCH:
         logger.info(u"Sending Slack notification")
         slack = notifiers.SLACK()
-        slack.notify("Snatched", snline)
+        slack.notify("Snatched", snline, snatched_nzb=nzbname, sent_to=sent_to, prov=nzbprov)
 
     return
 
