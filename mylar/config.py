@@ -101,6 +101,7 @@ _CONFIG_DEFINITIONS = OrderedDict({
     'HOST_RETURN' : (str, 'Interface', None),
     'AUTHENTICATION' : (int, 'Interface', 0),
     'LOGIN_TIMEOUT': (int, 'Interface', 43800),
+    'ALPHAINDEX': (bool, 'Interface', True),
 
     'API_ENABLED' : (bool, 'API', False),
     'API_KEY' : (str, 'API', None),
@@ -274,6 +275,7 @@ _CONFIG_DEFINITIONS = OrderedDict({
     'MINSEEDS': (int, 'Torrents', 0),
     'ALLOW_PACKS': (bool, 'Torrents', False),
     'ENABLE_PUBLIC': (bool, 'Torrents', False),
+    'PUBLIC_VERIFY': (bool, 'Torrents', True),
 
     'AUTO_SNATCH': (bool, 'AutoSnatch', False),
     'AUTO_SNATCH_SCRIPT': (str, 'AutoSnatch', None),
@@ -760,6 +762,10 @@ class Config(object):
                os.makedirs(self.CACHE_DIR)
             except OSError:
                 logger.error('[Cache Check] Could not create cache dir. Check permissions of datadir: ' + mylar.DATA_DIR)
+
+        if all([self.GRABBAG_DIR is None, self.DESTINATION_DIR is not None]):
+            self.GRABBAG_DIR = os.path.join(self.DESTINATION_DIR, 'Grabbag')
+            logger.fdebug('[Grabbag Directory] Setting One-Off directory to default location: %s' % self.GRABBAG_DIR)
 
         ## Sanity checking
         if any([self.COMICVINE_API is None, self.COMICVINE_API == 'None', self.COMICVINE_API == '']):

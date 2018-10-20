@@ -21,7 +21,7 @@
 	<div id="paddingheader">
 		<h1 class="clearfix"><img src="interfaces/default/images/icon_gear.png" alt="settings"/>Settings</h1>
 	</div>
-	<form action="configUpdate" method="post" class="form" id="configUpdate">
+	<form action="configUpdate" method="post" id="configUpdate">
 	<div id="tabs">
 		<ul>
                         <li><a href="#tabs-1">Information</a></li>
@@ -72,6 +72,7 @@
                       <legend>Bragging Rights</legend>
                         <div>
                            <label><strong># of Series you're watching: </strong> ${comicinfo['COUNT_COMICS']}</br></label>
+			   <label><strong># of Series you're watching that are continuing: </strong> ${comicinfo['CCONTCOUNT']}</br></label>
                            <label><strong># of Issues you're watching: </strong> ${comicinfo['COUNT_ISSUES']}</br></label>
                            <label><strong># of Issues you actually have: </strong> ${comicinfo['COUNT_HAVES']}</br></label>
                            <label><strong> ... total HD-space being used: </strong> ${comicinfo['COUNT_SIZE']}</br></label>
@@ -99,6 +100,23 @@
                 <fieldset>
                     <legend>Branch history</legend>
                         <div>${config['branch_history']}</div>
+                </fieldset>
+                <fieldset>
+                    <div class="row">
+                        <label style="font-size:16px;font-weight:bold;">Provider Usage (${config['dltotals']})</label>
+                        <a href="#" onclick="show_stats();"><span style="vertical-align:bottom;text-align:center;float:right;">Show Stats</span></a>
+                    </div>
+                    <div id="stats" style="display:none">
+                    </br>
+                    %for dl in config['dlstats']:
+                        <%
+                            dlline = '%s: %s snatches' % (dl[0], dl[1])
+                            if dl[0] == 'newznab':
+                                dlline += '<small>  (*erroneous collection data)</small>'
+                        %>
+                        ${dlline}</br>
+                    %endfor
+                    </div>
                 </fieldset>
                </td>
             </tr>
@@ -337,7 +355,7 @@
                                     <label>SABnzbd Password:</label>
                                     <input type="password" name="sab_password" id="sab_password" value="${config['sab_pass']| h}" size="20">
                                 </div>
-                                <div Class="row">
+                                <div class="row">
                                      <div class="populatesab">
                                         <label>SABnzbd API:</label>
                                         <input type="text" name="sab_apikey" id="sab_apikey" value="${config['sab_api']}" size="28">
@@ -629,7 +647,7 @@
 				<div class="row">
 					<label>Deluge Host:Port </label>
 					<input type="text" name="deluge_host" value="${config['deluge_host']}" size="30">
-                                        <small>port uses the deluge daemon port (remote connection to daemon has to be enabled)</small>
+                                        <small>(ie. 192.168.1.2:58846) port uses the deluge daemon port (remote connection to daemon has to be enabled)</small>
 				</div>
 				<div class="row">
 					<label>Deluge Username</label>
@@ -1447,10 +1465,10 @@
         <input type="button" value="Save Changes" onclick="doAjaxCall('configUpdate',$(this),'tabs',true);return false;" data-success="Changes saved successfully">
         <div class="message">
         	<p><span class="ui-icon ui-icon-info" style="float: left; margin-right: .3em;"></span>Web Interface changes require a restart to take effect</p>
-		</div>
+	</div>
 
-      </form>
- </div>
+     </div>
+    </form>
 </%def>
 
 <%def name="javascriptIncludes()">
@@ -1479,6 +1497,15 @@
                 document.getElementById("auth_options").style.display = "initial";
             } else {
                 document.getElementById("auth_options").style.display = "none";
+            }
+        }
+        function show_stats()
+        {
+            var x = document.getElementById("stats");
+            if (x.style.display === "none") {
+                x.style.display = "block";
+            } else {
+                x.style.display = "none";
             }
         }
         </script>

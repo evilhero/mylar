@@ -70,7 +70,7 @@ class WebInterface(object):
 
     def home(self):
         comics = helpers.havetotals()
-        return serve_template(templatename="index.html", title="Home", comics=comics)
+        return serve_template(templatename="index.html", title="Home", comics=comics, alphaindex=mylar.CONFIG.ALPHAINDEX)
     home.exposed = True
 
     def comicDetails(self, ComicID):
@@ -2022,6 +2022,10 @@ class WebInterface(object):
 
         futureupcoming = sorted(futureupcoming, key=itemgetter('IssueDate', 'ComicName', 'IssueNumber'), reverse=True)
 
+
+        #fix None DateAdded points here
+        helpers.DateAddedFix()
+
         issues = myDB.select("SELECT * from issues WHERE Status='Wanted'")
         if mylar.CONFIG.UPCOMING_STORYARCS is True:
             arcs = myDB.select("SELECT * from storyarcs WHERE Status='Wanted'")
@@ -2042,6 +2046,7 @@ class WebInterface(object):
         isCounts[1] = 0   #1 wanted
         isCounts[2] = 0   #2 snatched
         isCounts[3] = 0   #3 failed
+        isCounts[4] = 0   #3 wantedTier
 
         ann_list = []
 
@@ -2061,7 +2066,8 @@ class WebInterface(object):
             issues += annuals_list
 
         issues_tmp = sorted(issues, key=itemgetter('ReleaseDate'), reverse=True)
-        issues = sorted(issues_tmp, key=itemgetter('Status'), reverse=True)
+        issues_tmp1 = sorted(issues_tmp, key=itemgetter('DateAdded'), reverse=True)
+        issues = sorted(issues_tmp1, key=itemgetter('Status'), reverse=True)
 
         for curResult in issues:
             baseissues = {'wanted': 1, 'snatched': 2, 'failed': 3}
@@ -2070,17 +2076,21 @@ class WebInterface(object):
                    continue
                 else:
                     if seas in curResult['Status'].lower():
-                        sconv = baseissues[seas]
-                        isCounts[sconv]+=1
+                        if all([curResult['DateAdded'] <= mylar.SEARCH_TIER_DATE, curResult['Status'] == 'Wanted']):
+                            isCounts[4]+=1
+                        else:
+                            sconv = baseissues[seas]
+                            isCounts[sconv]+=1
                         continue
 
         isCounts = {"Wanted": str(isCounts[1]),
                     "Snatched": str(isCounts[2]),
                     "Failed": str(isCounts[3]),
-                    "StoryArcs": str(len(arcs))}
+                    "StoryArcs": str(len(arcs)),
+                    "WantedTier": str(isCounts[4])}
 
         iss_cnt = int(isCounts['Wanted'])
-        wantedcount = iss_cnt # + ann_cnt
+        wantedcount = iss_cnt + int(isCounts['WantedTier']) # + ann_cnt
 
         #let's straightload the series that have no issue data associated as of yet (ie. new series) from the futurepulllist
         future_nodata_upcoming = myDB.select("SELECT * FROM futureupcoming WHERE IssueNumber='1' OR IssueNumber='0'")
@@ -4451,10 +4461,52 @@ class WebInterface(object):
         COUNT_HAVES = CHAVES[0][0]
         COUNT_ISSUES = CISSUES[0][0]
         COUNT_SIZE = helpers.human_size(CSIZE[0][0])
+        CCONTCOUNT = 0
+        cti = helpers.havetotals()
+        for cchk in cti:
+            if cchk['recentstatus'] is 'Continuing':
+                CCONTCOUNT += 1
         comicinfo = {"COUNT_COMICS": COUNT_COMICS,
                       "COUNT_HAVES": COUNT_HAVES,
                       "COUNT_ISSUES": COUNT_ISSUES,
-                      "COUNT_SIZE": COUNT_SIZE}
+                      "COUNT_SIZE": COUNT_SIZE,
+                      "CCONTCOUNT": CCONTCOUNT}
+        DLPROVSTATS = myDB.select("SELECT Provider, COUNT(Provider) AS Frequency FROM Snatched WHERE Status = 'Snatched' AND Provider is NOT NULL GROUP BY Provider ORDER BY Frequency DESC")
+        freq = dict()
+        freq_tot = 0
+        for row in DLPROVSTATS:
+            if any(['CBT' in row['Provider'], '32P' in row['Provider'], 'ComicBT' in row['Provider']]):
+                try:
+                    tmpval = freq['32P']
+                    freq.update({'32P': tmpval + row['Frequency']})
+                except:
+                    freq.update({'32P': row['Frequency']})
+            elif 'KAT' in row['Provider']:
+                try:
+                    tmpval = freq['KAT']
+                    freq.update({'KAT': tmpval + row['Frequency']})
+                except:
+                    freq.update({'KAT': row['Frequency']})
+            elif 'experimental' in row['Provider']:
+                try:
+                    tmpval = freq['Experimental']
+                    freq.update({'Experimental': tmpval + row['Frequency']})
+                except:
+                    freq.update({'Experimental': row['Frequency']})
+
+
+            elif [True for x in freq if re.sub("\(newznab\)", "", str(row['Provider'])).strip() in x]:
+                try:
+                    tmpval = freq[re.sub("\(newznab\)", "", row['Provider']).strip()]
+                    freq.update({re.sub("\(newznab\)", "", row['Provider']).strip(): tmpval + row['Frequency']})
+                except:
+                    freq.update({re.sub("\(newznab\)", "", row['Provider']).strip(): row['Frequency']})
+            else:
+                freq.update({re.sub("\(newznab\)", "", row['Provider']).strip(): row['Frequency']})
+
+            freq_tot += row['Frequency']
+
+        dlprovstats = sorted(freq.iteritems(), key=itemgetter(1), reverse=True)
 
         if mylar.SCHED_RSS_LAST is None:
             rss_sclast = 'Unknown'
@@ -4670,7 +4722,10 @@ class WebInterface(object):
                     "opds_authentication": helpers.checked(mylar.CONFIG.OPDS_AUTHENTICATION),
                     "opds_username": mylar.CONFIG.OPDS_USERNAME,
                     "opds_password": mylar.CONFIG.OPDS_PASSWORD,
-                    "opds_metainfo": helpers.checked(mylar.CONFIG.OPDS_METAINFO)
+                    "opds_metainfo": helpers.checked(mylar.CONFIG.OPDS_METAINFO),
+                    "dlstats": dlprovstats,
+                    "dltotals": freq_tot,
+                    "alphaindex": mylar.CONFIG.ALPHAINDEX
                }
         return serve_template(templatename="config.html", title="Settings", config=config, comicinfo=comicinfo)
     config.exposed = True
@@ -4880,7 +4935,7 @@ class WebInterface(object):
                            'lowercase_filenames', 'autowant_upcoming', 'autowant_all', 'comic_cover_local', 'alternate_latest_series_covers', 'cvinfo', 'snatchedtorrent_notify',
                            'prowl_enabled', 'prowl_onsnatch', 'nma_enabled', 'nma_onsnatch', 'pushover_enabled', 'pushover_onsnatch', 'boxcar_enabled',
                            'boxcar_onsnatch', 'pushbullet_enabled', 'pushbullet_onsnatch', 'telegram_enabled', 'telegram_onsnatch', 'slack_enabled', 'slack_onsnatch',
-                           'opds_enable', 'opds_authentication', 'opds_metainfo']
+                           'opds_enable', 'opds_authentication', 'opds_metainfo', 'alphaindex']
 
         for checked_config in checked_configs:
             if checked_config not in kwargs:

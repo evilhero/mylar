@@ -76,10 +76,10 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueD
         logger.info("Annual/Special issue search detected. Appending to issue #")
         #anything for mode other than None indicates an annual.
         if all(['annual' not in ComicName.lower(), 'special' not in ComicName.lower()]):
-            ComicName = ComicName + " annual"
+            ComicName = ComicName + " Annual"
 
         if all([AlternateSearch is not None, AlternateSearch != "None", 'special' not in ComicName.lower()]):
-            AlternateSearch = AlternateSearch + " annual"
+            AlternateSearch = AlternateSearch + " Annual"
 
     if mode == 'pullwant' or IssueID is None:
         #one-off the download.
@@ -367,7 +367,11 @@ def search_init(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueD
                 prov_count+=1
 
             if findit['status'] is True:
-                srchloop = 4 
+                if searchprov == 'newznab':
+                    searchprov = newznab_host[0].rstrip() + ' (newznab)'
+                elif searchprov == 'torznab':
+                    searchprov = torznab_host[0].rstrip() + ' (torznab)'
+                srchloop = 4
                 break
             elif srchloop == 2 and (cmloopit -1 >= 1):
                 time.sleep(30)  #pause for 30s to not hammmer api's
@@ -1064,7 +1068,7 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
 
                 fndcomicversion = None
                 for ct in ctchk:
-                    if any([ct.lower().startswith('v') and ct[1:].isdigit(), ct.lower()[:3] == 'vol', volfound == True]):
+                    if any([ct.lower().startswith('v') and ct[1:].isdigit(), ct.lower()[:3] == 'vol' and (len(ct) == 3 or ct[3:].isdigit()), volfound == True]):
                         if volfound == True:
                             logger.fdebug('Split Volume label detected [' + ct + '] - ie. Vol 4. Attempting to adust.')
                             if ct.isdigit():
@@ -1079,6 +1083,7 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                                 logger.fdebug('Newly finished reformed cleantitle (with NO volume label): ' + cleantitle)
                                 volfound == False
                         tmpsplit = ct
+                        #re.sub(r'\W+','', tmpsplit[tmpsplit.find('vol')+3]) == '']
                         if tmpsplit.lower().startswith('vol'):
                             logger.fdebug('volume detected - stripping and re-analzying for volume label.')
                             origvol = tmpsplit
@@ -1912,7 +1917,8 @@ def searchforissue(issueid=None, new=False, rsscheck=None, manual=False):
                                         'SARC':          None,
                                         'StoryArcID':    None,
                                         'IssueArcID':    None,
-                                        'mode':          'want'
+                                        'mode':          'want',
+                                        'DateAdded':     iss['DateAdded']
                                        })
                 elif stloop == 2:
                     if mylar.CONFIG.SEARCH_STORYARCS is True or rsscheck:
@@ -1930,7 +1936,8 @@ def searchforissue(issueid=None, new=False, rsscheck=None, manual=False):
                                             'SARC':          iss['StoryArc'],
                                             'StoryArcID':    iss['StoryArcID'],
                                             'IssueArcID':    iss['IssueArcID'],
-                                            'mode':          'story_arc'
+                                            'mode':          'story_arc',
+                                            'DateAdded':     iss['DateAdded']
                                            })
                             cnt+=1
                         logger.info('Storyarcs to be searched for : %s' % cnt)
@@ -1948,7 +1955,8 @@ def searchforissue(issueid=None, new=False, rsscheck=None, manual=False):
                                         'SARC':          None,
                                         'StoryArcID':    None,
                                         'IssueArcID':    None,
-                                        'mode':          'want_ann'
+                                        'mode':          'want_ann',
+                                        'DateAdded':     iss['DateAdded']
                                        })
                 stloop-=1
 
@@ -2016,7 +2024,22 @@ def searchforissue(issueid=None, new=False, rsscheck=None, manual=False):
                 else:
                     ComicYear = str(result['IssueDate'])[:4]
 
-                if rsscheck is None:
+                if result['DateAdded'] is None:
+                    DA = datetime.datetime.today()
+                    DateAdded = DA.strftime('%Y-%m-%d')
+                    if result['mode'] == 'want':
+                        table = 'issues'
+                    elif result['mode'] == 'want_ann':
+                        table = 'annuals'
+                    elif result['mode'] == 'story_arc':
+                        table = 'storyarcs'
+                    logger.fdebug('%s #%s did not have a DateAdded recorded, setting it : %s' % (comic['ComicName'], result['Issue_Number'], DateAdded))
+                    myDB.upsert(table, {'DateAdded': DateAdded}, {'IssueID': result['IssueID']})
+
+                else:
+                    DateAdded = result['DateAdded']
+
+                if rsscheck is None and DateAdded >= mylar.SEARCH_TIER_DATE:
                     logger.info('adding: ComicID:%s  IssueiD: %s' % (result['ComicID'], result['IssueID']))
                     mylar.SEARCH_QUEUE.put({'comicname': comic['ComicName'], 'seriesyear': SeriesYear, 'issuenumber': result['Issue_Number'], 'issueid': result['IssueID'], 'comicid': result['ComicID']})
                     continue
