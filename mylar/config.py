@@ -136,6 +136,7 @@ _CONFIG_DEFINITIONS = OrderedDict({
     'ADD_COMICS': (bool, 'Import', False),
     'COMIC_DIR': (str, 'Import', None),
     'IMP_MOVE': (bool, 'Import', False),
+    'IMP_PATHS': (bool, 'Import', False),
     'IMP_RENAME': (bool, 'Import', False),
     'IMP_METADATA': (bool, 'Import', False),  # should default to False - this is enabled for testing only.
 
@@ -278,6 +279,10 @@ _CONFIG_DEFINITIONS = OrderedDict({
     'ALLOW_PACKS': (bool, 'Torrents', False),
     'ENABLE_PUBLIC': (bool, 'Torrents', False),
     'PUBLIC_VERIFY': (bool, 'Torrents', True),
+
+    'ENABLE_DDL': (bool, 'DDL', False),
+    'ALLOW_PACKS': (bool, 'DDL', False),
+    'DDL_LOCATION': (str, 'DDL', None),
 
     'AUTO_SNATCH': (bool, 'AutoSnatch', False),
     'AUTO_SNATCH_SCRIPT': (str, 'AutoSnatch', None),
@@ -786,6 +791,12 @@ class Config(object):
             logger.fdebug("Minimum RSS Interval Check delay set for 20 minutes to avoid hammering.")
             self.RSS_CHECKINTERVAL = 20
 
+        if self.ENABLE_RSS is True and mylar.RSS_STATUS == 'Paused':
+            mylar.RSS_STATUS = 'Waiting'
+        elif self.ENABLE_RSS is False and mylar.RSS_STATUS == 'Waiting':
+            mylar.RSS_STATUS = 'Paused'
+        logger.info('self.enable_rss is %s [%s]' % (self.ENABLE_RSS, mylar.RSS_STATUS))
+
         if not helpers.is_number(self.CHMOD_DIR):
             logger.fdebug("CHMOD Directory value is not a valid numeric - please correct. Defaulting to 0777")
             self.CHMOD_DIR = '0777'
@@ -831,6 +842,9 @@ class Config(object):
                         logger.error('Unable to create setting directory for ComicTagger. This WILL cause problems when tagging.')
                 else:
                     logger.fdebug('Successfully created ComicTagger Settings location.')
+
+        if self.DDL_LOCATION is None:
+            self.DDL_LOCATION = self.CACHE_DIR
 
         if self.MODE_32P is False and self.RSSFEED_32P is not None:
             mylar.KEYS_32P = self.parse_32pfeed(self.RSSFEED_32P)
@@ -942,7 +956,11 @@ class Config(object):
             PR.append('Experimental')
             PR_NUM +=1
 
-        PPR = ['32p', 'public torrents', 'nzb.su', 'dognzb', 'Experimental']
+        if self.ENABLE_DDL:
+            PR.append('DDL')
+            PR_NUM +=1
+
+        PPR = ['32p', 'public torrents', 'nzb.su', 'dognzb', 'Experimental', 'DDL']
         if self.NEWZNAB:
             for ens in self.EXTRA_NEWZNABS:
                 if str(ens[5]) == '1': # if newznabs are enabled

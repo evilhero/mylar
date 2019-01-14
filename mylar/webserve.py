@@ -26,6 +26,7 @@ from datetime import timedelta, date
 import re
 import json
 import copy
+import ntpath
 
 from mako.template import Template
 from mako.lookup import TemplateLookup
@@ -179,12 +180,27 @@ class WebInterface(object):
         else:
             comicImage = comic['ComicImage']
         comicpublisher = helpers.publisherImages(comic['ComicPublisher'])
+
+        if comic['Collects'] is not None:
+            issues_list = json.loads(comic['Collects'])
+        else:
+            issues_list = None
+        #logger.info('issues_list: %s' % issues_list)
+
+        if comic['Corrected_Type'] == 'TPB':
+            force_type = 1
+        elif comic['Corrected_Type'] == 'Print':
+            force_type = 2
+        else:
+            force_type = 0
+
         comicConfig = {
                     "fuzzy_year0":                    helpers.radio(int(usethefuzzy), 0),
                     "fuzzy_year1":                    helpers.radio(int(usethefuzzy), 1),
                     "fuzzy_year2":                    helpers.radio(int(usethefuzzy), 2),
                     "skipped2wanted":                 helpers.checked(skipped2wanted),
                     "force_continuing":               helpers.checked(force_continuing),
+                    "force_type":                     helpers.checked(force_type),
                     "delete_dir":                     helpers.checked(mylar.CONFIG.DELETE_REMOVE_DIR),
                     "allow_packs":                    helpers.checked(int(allowpacks)),
                     "corrected_seriesyear":           comic['ComicYear'],
@@ -196,6 +212,7 @@ class WebInterface(object):
                     "publisher_image_alt":            comicpublisher['publisher_image_alt'],
                     "publisher_imageH":               comicpublisher['publisher_imageH'],
                     "publisher_imageW":               comicpublisher['publisher_imageW'],
+                    "issue_list":                     issues_list,
                     "ComicImage":                     comicImage + '?' + datetime.datetime.now().strftime('%y-%m-%d %H:%M:%S')
                }
 
@@ -223,6 +240,7 @@ class WebInterface(object):
                                      "Int_IssueNumber":   ann['Int_IssueNumber'],
                                      "IssueName":         issuename,
                                      "IssueDate":         ann['IssueDate'],
+                                     "DigitalDate":       ann['DigitalDate'],
                                      "Status":            ann['Status'],
                                      "Location":          ann['Location'],
                                      "ComicID":           ann['ComicID'],
@@ -574,6 +592,7 @@ class WebInterface(object):
                     st_issueid = str(storyarcid) + "_" + str(random.randint(1000,9999))
                 issnum = arcval['Issue_Number']
                 issdate = str(arcval['Issue_Date'])
+                digitaldate = str(arcval['Digital_Date'])
                 storedate = str(arcval['Store_Date'])
 
                 int_issnum = helpers.issuedigits(issnum)
@@ -603,6 +622,7 @@ class WebInterface(object):
                                   "Issue_Number":       issnum,
                                   "IssueDate":          issdate,
                                   "ReleaseDate":        storedate,
+                                  "DigitalDate":        digitaldate,
                                   "ReadingOrder":       readingorder, #n +1,
                                   "Int_IssueNumber":    int_issnum,
                                   "Manual":             manual_mod})
@@ -644,7 +664,8 @@ class WebInterface(object):
                            "TotalIssues":       storyarcissues,
                            "ReadingOrder":      AD['ReadingOrder'],
                            "IssueDate":         AD['IssueDate'],
-                           "ReleaseDate":         AD['ReleaseDate'],
+                           "ReleaseDate":       AD['ReleaseDate'],
+                           "DigitalDate":       AD['DigitalDate'],
                            "SeriesYear":        seriesYear,
                            "IssuePublisher":    issuePublisher,
                            "CV_ArcID":          arcid,
@@ -657,8 +678,10 @@ class WebInterface(object):
         logger.fdebug(module + ' Now searching your watchlist for matches belonging to this story arc.')
         self.ArcWatchlist(storyarcid)
         if arcrefresh:
+            logger.info('%s Successfully Refreshed %s' % (module, storyarcname))
             return
         else:
+            logger.info('%s Successfully Added %s' % (module, storyarcname))
             raise cherrypy.HTTPRedirect("detailStoryArc?StoryArcID=%s&StoryArcName=%s" % (storyarcid, storyarcname))
     addStoryArc.exposed = True
 
@@ -898,6 +921,8 @@ class WebInterface(object):
         if comic['ComicName'] is None: ComicName = "None"
         else: ComicName = comic['ComicName']
         seriesdir = comic['ComicLocation']
+        seriesyear = comic['ComicYear']
+        seriesvol = comic['ComicVersion']
         logger.info(u"Deleting all traces of Comic: " + ComicName)
         myDB.action('DELETE from comics WHERE ComicID=?', [ComicID])
         myDB.action('DELETE from issues WHERE ComicID=?', [ComicID])
@@ -912,10 +937,12 @@ class WebInterface(object):
                     shutil.rmtree(seriesdir)
                 except:
                     logger.warn('Unable to remove directory after removing series from Mylar.')
+                else:
+                    logger.info('Successfully removed directory: %s' % (seriesdir))
             else:
                 logger.warn('Unable to remove directory as it does not exist in : ' + seriesdir)
             myDB.action('DELETE from readlist WHERE ComicID=?', [ComicID])
-
+        logger.info('Successful deletion of %s %s (%s) from your watchlist' % (ComicName, seriesvol, seriesyear))
         helpers.ComicSort(sequence='update')
         raise cherrypy.HTTPRedirect("home")
     deleteSeries.exposed = True
@@ -1352,6 +1379,7 @@ class WebInterface(object):
             controlValueDict = {"IssueArcID": IssueArcID}
             newStatus = {"Status": "Wanted"}
             myDB.upsert("storyarcs", newStatus, controlValueDict)
+            logger.info('[STORY-ARCS] Now Queuing %s (%s) #%s for search' % (ComicName, ComicYear, ComicIssue))
             s = mylar.SEARCH_QUEUE.put({'issueid': IssueArcID, 'comicname': ComicName, 'seriesyear': ComicYear, 'comicid': ComicID, 'issuenumber': ComicIssue})
             #foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=Publisher, IssueDate=IssueDate, StoreDate=ReleaseDate, IssueID=None, AlternateSearch=None, UseFuzzy=None, ComicVersion=dateload['Volume'], SARC=SARC, IssueArcID=IssueArcID)
             #if foundcom['status'] is True:
@@ -1372,7 +1400,7 @@ class WebInterface(object):
             except:
                 ComicYear == now.year
             if Publisher == 'COMICS': Publisher = None
-            logger.info(u"Marking " + ComicName + " " + ComicIssue + " as wanted...")
+            logger.info('Now Queuing %s %s for search' % (ComicName, ComicIssue))
             s = mylar.SEARCH_QUEUE.put({'issueid': IssueID, 'comicname': ComicName, 'seriesyear': ComicYear, 'comicid': ComicID, 'issuenumber': ComicIssue})
             #foundcom, prov = search.search_init(ComicName=ComicName, IssueNumber=ComicIssue, ComicYear=ComicYear, SeriesYear=None, Publisher=Publisher, IssueDate=IssueDate, StoreDate=IssueDate, IssueID=IssueID, ComicID=ComicID, AlternateSearch=None, mode=mode, UseFuzzy=None, ComicVersion=ComicVersion, allow_packs=False, manual=manual)
             if manual is True:
@@ -1393,6 +1421,7 @@ class WebInterface(object):
             ComicVersion = cdname['ComicVersion']
             ComicName = cdname['ComicName']
             TorrentID_32p = cdname['TorrentID_32P']
+            BookType = cdname['Type']
             controlValueDict = {"IssueID": IssueID}
             newStatus = {"Status": "Wanted"}
             if mode == 'want':
@@ -1438,7 +1467,13 @@ class WebInterface(object):
         #Publisher = miy['ComicPublisher']
         #UseAFuzzy = miy['UseFuzzy']
         #ComicVersion = miy['ComicVersion']
-        s = mylar.SEARCH_QUEUE.put({'issueid': IssueID, 'comicname': ComicName, 'seriesyear': SeriesYear, 'comicid': ComicID, 'issuenumber': ComicIssue})
+        if BookType == 'TPB':
+            logger.info('[%s] Now Queueing %s (%s) for search' % (BookType, ComicName, SeriesYear))
+        elif ComicIssue is None:
+            logger.info('Now Queueing %s (%s) for search' % (ComicName, SeriesYear))
+        else:
+            logger.info('Now Queueing %s (%s) #%s for search' % (ComicName, SeriesYear, ComicIssue))
+        s = mylar.SEARCH_QUEUE.put({'issueid': IssueID, 'comicname': ComicName, 'seriesyear': SeriesYear, 'comicid': ComicID, 'issuenumber': ComicIssue, 'booktype': BookType})
 #        foundcom, prov = search.search_init(ComicName, ComicIssue, ComicYear, SeriesYear, Publisher, issues['IssueDate'], storedate, IssueID, AlternateSearch, UseAFuzzy, ComicVersion, mode=mode, ComicID=ComicID, manualsearch=manualsearch, filesafe=ComicName_Filesafe, allow_packs=AllowPacks, torrentid_32p=TorrentID_32p)
 #        if foundcom['status'] is True:
 #            # file check to see if issue exists and update 'have' count
@@ -1585,7 +1620,7 @@ class WebInterface(object):
             return
     pullSearch.exposed = True
 
-    def pullist(self, week=None, year=None, generateonly=False):
+    def pullist(self, week=None, year=None, generateonly=False, current=None):
         myDB = db.DBConnection()
         autowant = []
         if generateonly is False:
@@ -1600,7 +1635,7 @@ class WebInterface(object):
         weeklyresults = []
         wantedcount = 0
 
-        weekinfo = helpers.weekly_info(week, year)
+        weekinfo = helpers.weekly_info(week, year, current)
 
         popit = myDB.select("SELECT * FROM sqlite_master WHERE name='weekly' and type='table'")
         if popit:
@@ -1682,7 +1717,8 @@ class WebInterface(object):
                                            "HAVEIT":  haveit,
                                            "LINK":    linkit,
                                            "HASH":    None,
-                                           "AUTOWANT": False
+                                           "AUTOWANT": False,
+                                           "FORMAT":   weekly['format']
                                          })
                     else:
                         if any(x['ComicName'].lower() == weekly['COMIC'].lower() for x in autowant):
@@ -1698,7 +1734,8 @@ class WebInterface(object):
                                            "HAVEIT":  haveit,
                                            "LINK":    linkit,
                                            "HASH":    None,
-                                           "AUTOWANT": True
+                                           "AUTOWANT": True,
+                                           "FORMAT":   weekly['format']
                                          })
                         else:
                             weeklyresults.append({
@@ -1713,7 +1750,8 @@ class WebInterface(object):
                                            "HAVEIT":  haveit,
                                            "LINK":    linkit,
                                            "HASH":    None,
-                                           "AUTOWANT": False
+                                           "AUTOWANT": False,
+                                           "FORMAT":   weekly['format']
                                          })
 
                     if tmp_status == 'Wanted':
@@ -2156,23 +2194,48 @@ class WebInterface(object):
 
     annualDelete.exposed = True
 
-    def previewRename(self, comicidlist):
+    def previewRename(self, **args): #comicid=None, comicidlist=None):
+        file_format = mylar.CONFIG.FILE_FORMAT
         myDB = db.DBConnection()
         resultlist = []
-        for comicid in comicidlist:
-            comic = myDB.selectone("SELECT * FROM comics WHERE ComicID=?", [comicid]).fetchone()
+        for k,v in args.items():
+            if any([k == 'x', k == 'y']):
+                continue
+            elif 'file_format' in k:
+                file_format = str(v)
+            elif 'comicid' in k:
+                if type(v) is list:
+                    comicid = str(' '.join(v))
+                elif type(v) is unicode:
+                    comicid = re.sub('[\]\[\']', '', v.decode('utf-8').encode('ascii')).strip()
+                else:
+                    comicid = v
+
+        if comicid is not None and type(comicid) is not list:
+            comicidlist = []
+            comicidlist.append(comicid)
+        for cid in comicidlist:
+            comic = myDB.selectone("SELECT * FROM comics WHERE ComicID=?", [cid]).fetchone()
             comicdir = comic['ComicLocation']
             comicname = comic['ComicName']
-            issue = myDB.selectone("SELECT * FROM issues WHERE ComicID=? AND Location is not None ORDER BY ReleaseDate", [comicid]).fetchone()
-            if 'annual' in issue['Location'].lower():
-                annualize = 'yes'
-            else:
-                annualize = None
-            renameiss = helpers.rename_param(comicid, comicname, issue['Issue_Number'], issue['Location'], comicyear=None, issueid=issue['IssueID'], annualize=annualize)
-            resultlist.append({'original':   issue['Location'],
-                               'new':        renameiss['nfilename']})
+            issuelist = myDB.select("SELECT * FROM issues WHERE ComicID=? AND Location is not NULL ORDER BY ReleaseDate", [str(cid)])
+            if issuelist:
+                for issue in issuelist:
+                    if 'annual' in issue['Location'].lower():
+                        annualize = 'yes'
+                    else:
+                        annualize = None
+                    import filers
+                    rniss = filers.FileHandlers(ComicID=str(cid), IssueID=issue['IssueID'])
+                    renameiss = rniss.rename_file(issue['Location'], annualize=annualize, file_format=file_format)
+                    #renameiss = helpers.rename_param(comicid, comicname, issue['Issue_Number'], issue['Location'], comicyear=None, issueid=issue['IssueID'], annualize=annualize)
+                    resultlist.append({'issueid':    renameiss['issueid'],
+                                       'comicid':    renameiss['comicid'],
+                                       'original':   issue['Location'],
+                                       'new':        renameiss['nfilename']})
 
-
+            logger.info('resultlist: %s' % resultlist)
+        return serve_template(templatename="previewrename.html", title="Preview Renamer", resultlist=resultlist, file_format=file_format, comicid=comicidlist)
     previewRename.exposed = True
 
     def manualRename(self, comicid):
@@ -2266,6 +2329,10 @@ class WebInterface(object):
                 else:
                     next_run = None
                 if 'rss' in jb['JobName'].lower():
+                    if jb['Status'] == 'Waiting' and mylar.CONFIG.ENABLE_RSS is False:
+                        mylar.RSS_STATUS = 'Paused'
+                    elif jb['Status'] == 'Paused' and mylar.CONFIG.ENABLE_RSS is True:
+                        mylar.RSS_STATUS = 'Waiting'
                     status = mylar.RSS_STATUS
                     interval = str(mylar.CONFIG.RSS_CHECKINTERVAL) + ' mins'
                 if 'weekly' in jb['JobName'].lower():
@@ -2284,6 +2351,9 @@ class WebInterface(object):
                 if 'version' in jb['JobName'].lower():
                     status = mylar.VERSION_STATUS
                     interval = str(mylar.CONFIG.CHECK_GITHUB_INTERVAL) + 'mins'
+
+                if status != jb['Status'] and not('rss' in jb['JobName'].lower()):
+                    status = jb['Status']
 
                 tmp.append({'prev_run_datetime':  prev_run,
                             'next_run_datetime': next_run,
@@ -2306,17 +2376,32 @@ class WebInterface(object):
         if jobid is not None:
             myDB = db.DBConnection()
             if mode == 'pause':
-                mylar.SCHED.pause_job(jobid)
+                try:
+                    mylar.SCHED.pause_job(jobid)
+                except:
+                    pass
                 logger.info('[%s] Paused scheduled runtime.' % job)
                 ctrl = {'JobName': job}
                 val = {'Status': 'Paused'}
+                if jobid == 'rss':
+                    mylar.CONFIG.ENABLE_RSS = False
+                elif jobid == 'monitor':
+                    mylar.CONFIG.ENABLE_CHECK_FOLDER = False
                 myDB.upsert('jobhistory', val, ctrl)
             elif mode == 'resume':
-                mylar.SCHED.resume_job(jobid)
+                try:
+                    mylar.SCHED.resume_job(jobid)
+                except:
+                     pass
                 logger.info('[%s] Resumed scheduled runtime.' % job)
                 ctrl = {'JobName': job}
                 val = {'Status': 'Waiting'}
                 myDB.upsert('jobhistory', val, ctrl)
+                if jobid == 'rss':
+                    mylar.CONFIG.ENABLE_RSS = True
+                elif jobid == 'monitor':
+                    mylar.CONFIG.ENABLE_CHECK_FOLDER = True
+
             helpers.job_management()
         else:
             logger.warn('%s cannot be matched against any scheduled jobs - maybe you should restart?' % job)
@@ -2329,7 +2414,7 @@ class WebInterface(object):
                 logger.info('[%s] Now force submitting job for jobid %s' % (jb, jobid))
                 if any([jobid == 'rss', jobid == 'weekly', jobid =='search', jobid == 'version', jobid == 'updater', jobid == 'monitor']):
                     jb.modify(next_run_time=datetime.datetime.utcnow())
-                break
+                    break
     schedulerForceCheck.exposed = True
 
     def manageComics(self):
@@ -2817,6 +2902,9 @@ class WebInterface(object):
         logger.fdebug('[%s] Issue to renumber sequence from : %s' % (issuearcid, valid_readingorder))
         reading_seq = 1
         for rc in sorted(readchk, key=itemgetter('ReadingOrder'), reverse=False):
+            filename = None
+            if rc['Location'] is not None:
+                filename = ntpath.basename(rc['Location'])
             if str(issuearcid) == str(rc['IssueArcID']):
                 logger.fdebug('new order sequence detected at #: %s' % valid_readingorder)
                 if valid_readingorder > int(rc['ReadingOrder']):
@@ -2839,10 +2927,8 @@ class WebInterface(object):
                     else:
                         #valid_readingorder
                         if valid_readingorder < old_reading_seq:
-                            logger.info('2')
                             reading_seq = int(rc['ReadingOrder'])
                         else:
-                            logger.info('3')
                             reading_seq = oldreading_seq +1
                     logger.fdebug('old sequence discovered at %s to %s' % (oldreading_seq, reading_seq))
                     oldreading_seq = None
@@ -2855,7 +2941,8 @@ class WebInterface(object):
                 logger.fdebug('reordering existing sequence as lower sequence has changed. Altering from %s to %s' % (rc['ReadingOrder'], reading_seq))
             new_readorder.append({'IssueArcID':   IssueArcID,
                                   'IssueID':      issueid,
-                                  'ReadingOrder': reading_seq})
+                                  'ReadingOrder': reading_seq,
+                                  'filename':     filename})
 
         #we resequence in the following way:
         #  everything before the new reading number stays the same
@@ -2865,6 +2952,14 @@ class WebInterface(object):
         logger.fdebug('new reading order: %s' % new_readorder)
         #newrl = 0
         for rl in sorted(new_readorder, key=itemgetter('ReadingOrder'), reverse=False):
+
+            if rl['filename'] is not None:
+                try:
+                    if int(rl['ReadingOrder']) != int(rl['filename'][:rl['filename'].find('-')]) and mylar.CONFIG.READ2FILENAME is True:
+                        logger.fdebug('Order-Change: %s TO %s' % (int(rl['filename'][:rl['filename'].find('-')]), int(rl['ReadingOrder'])))
+                    logger.fdebug('%s to %s' % (rl['filename'], helpers.renamefile_readingorder(rl['ReadingOrder']) + '-' + rl['filename'][rl['filename'].find('-')+1:]))
+                except:
+                    pass
 
             rl_ctrl = {"IssueID":           rl['IssueID'],
                        "IssueArcID":        rl['IssueArcID'],
@@ -3156,7 +3251,8 @@ class WebInterface(object):
             logger.info("No Story Arcs to search")
         else:
             #cycle through the story arcs here for matches on the watchlist
-            arcdir = helpers.filesafe(ArcWatch[0]['StoryArc'])
+            arcname = ArcWatch[0]['StoryArc']
+            arcdir = helpers.filesafe(arcname)
             arcpub = ArcWatch[0]['Publisher']
             if arcpub is None:
                 arcpub = ArcWatch[0]['IssuePublisher']
@@ -3441,6 +3537,8 @@ class WebInterface(object):
                             myDB.upsert("storyarcs", newVal, ctrlVal)
                             logger.info("Marked " + issue['ComicName'] + " :# " + issue['Issue_Number'] + " as " + issue['Status'])
 
+            arcstats = self.storyarc_main(StoryArcID)
+            logger.info('[STORY-ARCS] Completed Missing/Recheck Files for %s [%s / %s]' % (arcname, arcstats['Have'], arcstats['TotalIssues']))
             return
 
     ArcWatchlist.exposed = True
@@ -3837,7 +3935,7 @@ class WebInterface(object):
         return mylar.IMPORT_STATUS
     Check_ImportStatus.exposed = True
 
-    def comicScan(self, path, scan=0, libraryscan=0, redirect=None, autoadd=0, imp_move=0, imp_rename=0, imp_metadata=0, forcescan=0):
+    def comicScan(self, path, scan=0, libraryscan=0, redirect=None, autoadd=0, imp_move=0, imp_paths=0, imp_rename=0, imp_metadata=0, forcescan=0):
         import Queue
         queue = Queue.Queue()
 
@@ -3848,10 +3946,15 @@ class WebInterface(object):
         #    #to handle long paths, let's append the '\\?\' to the path to allow for unicode windows api access
         #    path = "\\\\?\\" + path
         mylar.CONFIG.COMIC_DIR = path
-        mylar.CONFIG.IMP_MOVE = imp_move
-        mylar.CONFIG.IMP_RENAME = imp_rename
-        mylar.CONFIG.IMP_METADATA = imp_metadata
-        #mylar.config_write()
+        mylar.CONFIG.IMP_MOVE = bool(imp_move)
+        mylar.CONFIG.IMP_RENAME = bool(imp_rename)
+        mylar.CONFIG.IMP_METADATA = bool(imp_metadata)
+        mylar.CONFIG.IMP_PATHS = bool(imp_paths)
+
+        mylar.CONFIG.configure(update=True)
+        # Write the config
+        logger.info('Now updating config...')
+        mylar.CONFIG.writeconfig()
 
         logger.info('forcescan is: ' +  str(forcescan))
         if mylar.IMPORTLOCK and forcescan == 1:
@@ -4603,6 +4706,7 @@ class WebInterface(object):
                     "extra_torznabs": sorted(mylar.CONFIG.EXTRA_TORZNABS, key=itemgetter(4), reverse=True),
                     "newznab": helpers.checked(mylar.CONFIG.NEWZNAB),
                     "extra_newznabs": sorted(mylar.CONFIG.EXTRA_NEWZNABS, key=itemgetter(5), reverse=True),
+                    "enable_ddl": helpers.checked(mylar.CONFIG.ENABLE_DDL),
                     "enable_rss": helpers.checked(mylar.CONFIG.ENABLE_RSS),
                     "rss_checkinterval": mylar.CONFIG.RSS_CHECKINTERVAL,
                     "rss_last": rss_sclast,
@@ -4772,13 +4876,18 @@ class WebInterface(object):
         raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % comicid)
     manual_annual_add.exposed = True
 
-    def comic_config(self, com_location, ComicID, alt_search=None, fuzzy_year=None, comic_version=None, force_continuing=None, alt_filename=None, allow_packs=None, corrected_seriesyear=None, torrentid_32p=None):
+    def comic_config(self, com_location, ComicID, alt_search=None, fuzzy_year=None, comic_version=None, force_continuing=None, force_type=None, alt_filename=None, allow_packs=None, corrected_seriesyear=None, torrentid_32p=None):
         myDB = db.DBConnection()
-        chk1 = myDB.selectone('SELECT ComicLocation FROM comics WHERE ComicID=?', [ComicID]).fetchone()
-        if chk1 is None:
+        chk1 = myDB.selectone('SELECT ComicLocation, Corrected_Type FROM comics WHERE ComicID=?', [ComicID]).fetchone()
+        if chk1[0] is None:
             orig_location = com_location
         else:
-            orig_location = chk1['ComicLocation']
+            orig_location = chk1[0]
+        if chk1[1] is None:
+            orig_type = None
+        else:
+            orig_type = chk1[1]
+
 #--- this is for multiple search terms............
 #--- works, just need to redo search.py to accomodate multiple search terms
         ffs_alt = []
@@ -4802,7 +4911,7 @@ class WebInterface(object):
         asearch = str(alt_search)
 
         controlValueDict = {'ComicID': ComicID}
-        newValues = {"ComicLocation":        com_location}
+        newValues = {}
         if asearch is not None:
             if re.sub(r'\s', '', asearch) == '':
                 newValues['AlternateSearch'] = "None"
@@ -4834,6 +4943,23 @@ class WebInterface(object):
         else:
             newValues['ForceContinuing'] = 1
 
+        if force_type == '1':
+            newValues['Corrected_Type'] = 'TPB'
+        elif force_type == '2':
+            newValues['Corrected_Type'] = 'Print'
+        else:
+            newValues['Corrected_Type'] = None
+
+        if orig_type != force_type:
+            if '$Type' in mylar.CONFIG.FOLDER_FORMAT and com_location == orig_location:
+                #rename folder to accomodate new forced TPB format.
+                import filers
+                x = filers.FileHandlers(ComicID=ComicID)
+                newcom_location = x.folder_create(booktype=newValues['Corrected_Type'])
+                if newcom_location is not None:
+                    com_location = newcom_location
+
+
         if allow_packs is None:
             newValues['AllowPacks'] = 0
         else:
@@ -4864,6 +4990,9 @@ class WebInterface(object):
                     if not checkdirectory:
                         logger.warn('Error trying to validate/create directory. Aborting this process at this time.')
                         return
+
+        newValues['ComicLocation'] = com_location
+
         myDB.upsert("comics", newValues, controlValueDict)
         logger.fdebug('Updated Series options!') 
         raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % ComicID)
@@ -4935,7 +5064,7 @@ class WebInterface(object):
                            'lowercase_filenames', 'autowant_upcoming', 'autowant_all', 'comic_cover_local', 'alternate_latest_series_covers', 'cvinfo', 'snatchedtorrent_notify',
                            'prowl_enabled', 'prowl_onsnatch', 'nma_enabled', 'nma_onsnatch', 'pushover_enabled', 'pushover_onsnatch', 'boxcar_enabled',
                            'boxcar_onsnatch', 'pushbullet_enabled', 'pushbullet_onsnatch', 'telegram_enabled', 'telegram_onsnatch', 'slack_enabled', 'slack_onsnatch',
-                           'opds_enable', 'opds_authentication', 'opds_metainfo']
+                           'opds_enable', 'opds_authentication', 'opds_metainfo'] #, 'enable_ddl']
 
         for checked_config in checked_configs:
             if checked_config not in kwargs:
@@ -5891,9 +6020,9 @@ class WebInterface(object):
             if sresults is not None:
                 updater.foundsearch(dsr['ComicID'], dsr['IssueID'], mode='series', provider=dsr['tmpprov'], hash=sresults['t_hash'])
         except:
-            return json.dumps({'result': 'failure'})
+            return False #json.dumps({'result': 'failure'})
         else:
-            return json.dumps({'result': 'success'})
+            return True #json.dumps({'result': 'success'})
 
     download_specific_release.exposed = True
 

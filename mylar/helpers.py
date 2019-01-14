@@ -821,6 +821,18 @@ def updateComicLocation():
 
                 publisher = re.sub('!', '', dl['ComicPublisher']) # thanks Boom!
                 year = dl['ComicYear']
+
+                if dl['Corrected_Type'] is not None:
+                    booktype = dl['Corrected_Type']
+                else:
+                    booktype = dl['Type']
+                if booktype == 'Print' or all([booktype != 'Print', mylar.CONFIG.FORMAT_BOOKTYPE is False]):
+                    chunk_fb = re.sub('\$Type', '', mylar.CONFIG.FOLDER_FORMAT)
+                    chunk_b = re.compile(r'\s+')
+                    chunk_folder_format = chunk_b.sub(' ', chunk_fb)
+                else:
+                    chunk_folder_format = mylar.CONFIG.FOLDER_FORMAT
+
                 comversion = dl['ComicVersion']
                 if comversion is None:
                     comversion = 'None'
@@ -841,7 +853,8 @@ def updateComicLocation():
                           '$publisher':     publisher.lower(),
                           '$VolumeY':       'V' + str(year),
                           '$VolumeN':       comversion,
-                          '$Annual':        'Annual'
+                          '$Annual':        'Annual',
+                          '$Type':          booktype
                           }
 
                 #set the paths here with the seperator removed allowing for cross-platform altering.
@@ -1424,7 +1437,9 @@ def havetotals(refreshit=None):
                            "percent":         percent,
                            "totalissues":     totalissues,
                            "haveissues":      haveissues,
-                           "DateAdded":       comic['LastUpdated']})
+                           "DateAdded":       comic['LastUpdated'],
+                           "Type":            comic['Type'],
+                           "Corrected_Type":   comic['Corrected_Type']})
 
         return comics
 
@@ -1842,17 +1857,31 @@ def listPull(weeknumber, year):
         library[row['ComicID']] = row['ComicID']
     return library
 
-def listLibrary():
+def listLibrary(comicid=None):
     import db
     library = {}
     myDB = db.DBConnection()
-    list = myDB.select("SELECT a.comicid, b.releasecomicid, a.status FROM Comics AS a LEFT JOIN annuals AS b on a.comicid=b.comicid group by a.comicid")
+    if comicid is None:
+        if mylar.CONFIG.ANNUALS_ON is True:
+            list = myDB.select("SELECT a.comicid, b.releasecomicid, a.status FROM Comics AS a LEFT JOIN annuals AS b on a.comicid=b.comicid group by a.comicid")
+        else:
+            list = myDB.select("SELECT comicid, status FROM Comics group by comicid")
+    else:
+        if mylar.CONFIG.ANNUALS_ON is True:
+            list = myDB.select("SELECT a.comicid, b.releasecomicid, a.status FROM Comics AS a LEFT JOIN annuals AS b on a.comicid=b.comicid WHERE a.comicid=? group by a.comicid", [re.sub('4050-', '', comicid).strip()])
+        else:
+            list = myDB.select("SELECT comicid, status FROM Comics WHERE comicid=? group by comicid", [re.sub('4050-', '', comicid).strip()])
+
     for row in list:
         library[row['ComicID']] = {'comicid':        row['ComicID'],
                                    'status':         row['Status']}
-        if row['ReleaseComicID'] is not None:
-            library[row['ReleaseComicID']] = {'comicid':   row['ComicID'],
-                                              'status':    row['Status']}
+        try:
+            if row['ReleaseComicID'] is not None:
+                library[row['ReleaseComicID']] = {'comicid':   row['ComicID'],
+                                                  'status':    row['Status']}
+        except:
+            pass
+
     return library
 
 def listStoryArcs():
@@ -2865,15 +2894,29 @@ def torrentinfo(issueid=None, torrent_hash=None, download=False, monitor=False):
     torrent_info['snatch_status'] = snatch_status
     return torrent_info
 
-def weekly_info(week=None, year=None):
+def weekly_info(week=None, year=None, current=None):
     #find the current week and save it as a reference point.
     todaydate = datetime.datetime.today()
     current_weeknumber = todaydate.strftime("%U")
-
+    if current is not None:
+        c_weeknumber = int(current[:current.find('-')])
+        c_weekyear = int(current[current.find('-')+1:])
+    else:
+        c_weeknumber = week
+        c_weekyear = year
 
     if week:
         weeknumber = int(week)
         year = int(year)
+
+        #monkey patch for 2018/2019 - week 52/week 0
+        if all([weeknumber == 52, c_weeknumber == 51, c_weekyear == 2018]):
+            weeknumber = 0
+            year = 2019
+        elif all([weeknumber == 52, c_weeknumber == 0, c_weekyear == 2019]):
+            weeknumber = 51
+            year = 2018
+
         #view specific week (prev_week, next_week)
         startofyear = date(year,1,1)
         week0 = startofyear - timedelta(days=startofyear.isoweekday())
@@ -2884,11 +2927,20 @@ def weekly_info(week=None, year=None):
     else:
         #find the given week number for the current day
         weeknumber = current_weeknumber
+        year = todaydate.strftime("%Y")
+
+        #monkey patch for 2018/2019 - week 52/week 0
+        if all([weeknumber == 52, c_weeknumber == 51, c_weekyear == 2018]):
+            weeknumber = 0
+            year = 2019
+        elif all([weeknumber == 52, c_weeknumber == 0, c_weekyear == 2019]):
+            weeknumber = 51
+            year = 2018
+
         stweek = datetime.datetime.strptime(todaydate.strftime('%Y-%m-%d'), '%Y-%m-%d')
         startweek = stweek - timedelta(days = (stweek.weekday() + 1) % 7)
         midweek = startweek + timedelta(days = 3)
         endweek = startweek + timedelta(days = 6)
-        year = todaydate.strftime("%Y")
 
     prev_week = int(weeknumber) - 1
     prev_year = year
@@ -3211,7 +3263,8 @@ def disable_provider(site, newznab=False):
             mylar.CONFIG.DOGNZB = False
         elif site == 'experimental':
             mylar.CONFIG.EXPERIMENTAL = False
-
+        elif site == '32P':
+            mylar.CONFIG.ENABLE_32P = False
 
 def date_conversion(originaldate):
     c_obj_date = datetime.datetime.strptime(originaldate, "%Y-%m-%d %H:%M:%S")
@@ -3229,7 +3282,10 @@ def job_management(write=False, job=None, last_run_completed=None, current_run=N
         if job is None:
             dbupdate_newstatus = 'Waiting'
             dbupdate_nextrun = None
-            rss_newstatus = 'Waiting'
+            if mylar.CONFIG.ENABLE_RSS is True:
+                rss_newstatus = 'Waiting'
+            else:
+                rss_newstatus = 'Paused'
             rss_nextrun = None
             weekly_newstatus = 'Waiting'
             weekly_nextrun = None
@@ -3237,7 +3293,10 @@ def job_management(write=False, job=None, last_run_completed=None, current_run=N
             search_nextrun = None
             version_newstatus = 'Waiting'
             version_nextrun = None
-            monitor_newstatus = 'Waiting'
+            if mylar.CONFIG.ENABLE_CHECK_FOLDER is True:
+                monitor_newstatus = 'Waiting'
+            else:
+                monitor_newstatus = 'Paused'
             monitor_nextrun = None
 
             job_info = myDB.select('SELECT DISTINCT * FROM jobhistory')
@@ -3247,31 +3306,37 @@ def job_management(write=False, job=None, last_run_completed=None, current_run=N
                     if mylar.SCHED_DBUPDATE_LAST is None:
                         mylar.SCHED_DBUPDATE_LAST = ji['prev_run_timestamp']
                     dbupdate_newstatus = ji['status']
+                    mylar.UPDATER_STATUS = dbupdate_newstatus
                     dbupdate_nextrun = ji['next_run_timestamp']
                 elif 'search' in ji['JobName'].lower():
                     if mylar.SCHED_SEARCH_LAST is None:
                         mylar.SCHED_SEARCH_LAST = ji['prev_run_timestamp']
                     search_newstatus = ji['status']
+                    mylar.SEARCH_STATUS = search_newstatus
                     search_nextrun = ji['next_run_timestamp']
                 elif 'rss' in ji['JobName'].lower():
                     if mylar.SCHED_RSS_LAST is None:
                         mylar.SCHED_RSS_LAST = ji['prev_run_timestamp']
                     rss_newstatus = ji['status']
+                    mylar.RSS_STATUS = rss_newstatus
                     rss_nextrun = ji['next_run_timestamp']
                 elif 'weekly' in ji['JobName'].lower():
                     if mylar.SCHED_WEEKLY_LAST is None:
                         mylar.SCHED_WEEKLY_LAST = ji['prev_run_timestamp']
                     weekly_newstatus = ji['status']
+                    mylar.WEEKLY_STATUS = weekly_newstatus
                     weekly_nextrun = ji['next_run_timestamp']
                 elif 'version' in ji['JobName'].lower():
                     if mylar.SCHED_VERSION_LAST is None:
                         mylar.SCHED_VERSION_LAST = ji['prev_run_timestamp']
                     version_newstatus = ji['status']
+                    mylar.VERSION_STATUS = version_newstatus
                     version_nextrun = ji['next_run_timestamp']
                 elif 'monitor' in ji['JobName'].lower():
                     if mylar.SCHED_MONITOR_LAST is None:
                         mylar.SCHED_MONITOR_LAST = ji['prev_run_timestamp']
                     monitor_newstatus = ji['status']
+                    mylar.MONITOR_STATUS = monitor_newstatus
                     monitor_nextrun = ji['next_run_timestamp']
 
             monitors = {'weekly': mylar.SCHED_WEEKLY_LAST,
@@ -3290,21 +3355,27 @@ def job_management(write=False, job=None, last_run_completed=None, current_run=N
                 elif 'update' in jobinfo.lower():
                     prev_run_timestamp = mylar.SCHED_DBUPDATE_LAST
                     newstatus = dbupdate_newstatus
+                    mylar.UPDATER_STATUS = newstatus
                 elif 'search' in jobinfo.lower():
                     prev_run_timestamp = mylar.SCHED_SEARCH_LAST
                     newstatus = search_newstatus
+                    mylar.SEARCH_STATUS = newstatus
                 elif 'rss' in jobinfo.lower():
                     prev_run_timestamp = mylar.SCHED_RSS_LAST
                     newstatus = rss_newstatus
+                    mylar.RSS_STATUS = newstatus
                 elif 'weekly' in jobinfo.lower():
                     prev_run_timestamp = mylar.SCHED_WEEKLY_LAST
                     newstatus = weekly_newstatus
+                    mylar.WEEKLY_STATUS = newstatus
                 elif 'version' in jobinfo.lower():
                     prev_run_timestamp = mylar.SCHED_VERSION_LAST
                     newstatus = version_newstatus
+                    mylar.VERSION_STATUS = newstatus
                 elif 'monitor' in jobinfo.lower():
                     prev_run_timestamp = mylar.SCHED_MONITOR_LAST
                     newstatus = monitor_newstatus
+                    mylar.MONITOR_STATUS = newstatus
 
                 jobname = jobinfo[:jobinfo.find('(')-1].strip()
                 #logger.fdebug('jobinfo: %s' % jobinfo)

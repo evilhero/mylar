@@ -22,6 +22,7 @@ import sys
 import shlex
 import datetime
 import re
+import json
 import urllib
 import urllib2
 import shutil
@@ -31,7 +32,7 @@ import cherrypy
 import requests
 
 import mylar
-from mylar import logger, helpers, db, mb, cv, parseit, filechecker, search, updater, moveit, comicbookdb
+from mylar import logger, filers, helpers, db, mb, cv, parseit, filechecker, search, updater, moveit, comicbookdb
 
 
 def is_exists(comicid):
@@ -48,7 +49,7 @@ def is_exists(comicid):
         return False
 
 
-def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=None, calledfrom=None, annload=None, chkwant=None, issuechk=None, issuetype=None, latestissueinfo=None, csyear=None):
+def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=None, calledfrom=None, annload=None, chkwant=None, issuechk=None, issuetype=None, latestissueinfo=None, csyear=None, fixed_type=None):
     myDB = db.DBConnection()
 
     controlValueDict = {"ComicID":     comicid}
@@ -57,10 +58,14 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     if dbcomic is None:
         newValueDict = {"ComicName":   "Comic ID: %s" % (comicid),
                 "Status":   "Loading"}
-        comlocation = None
+        if all([imported, mylar.CONFIG.IMP_PATHS is True]):
+            comlocation = os.path.dirname(imported['filelisting'][0]['comiclocation'])
+        else:
+            comlocation = None
         oldcomversion = None
         series_status = 'Loading'
         lastissueid = None
+        aliases = None
     else:
         if chkwant is not None:
             logger.fdebug('ComicID: ' + str(comicid) + ' already exists. Not adding from the future pull list at this time.')
@@ -75,6 +80,8 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
         newValueDict = {"Status":   "Loading"}
         comlocation = dbcomic['ComicLocation']
         lastissueid = dbcomic['LatestIssueID']
+        aliases = dbcomic['AlternateSearch']
+        logger.info('aliases currently: %s' % aliases)
 
         if not latestissueinfo:
             latestissueinfo = []
@@ -112,6 +119,9 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     else:
         sortname = comic['ComicName']
 
+    comic['Corrected_Type'] = fixed_type
+    if fixed_type is not None and fixed_type != comic['Type']:
+        logger.info('Forced Comic Type to : %s' % comic['Corrected_Type'])
 
     logger.info('Now adding/updating: ' + comic['ComicName'])
     #--Now that we know ComicName, let's try some scraping
@@ -196,59 +206,16 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     comicname_filesafe = helpers.filesafe(u_comicnm)
 
     if comlocation is None:
-        comicdir = comicname_filesafe
-        series = comicdir
-        if series[-1:] == '.':
-            series[:-1]
 
-        publisher = re.sub('!', '', comic['ComicPublisher']) # thanks Boom!
-        publisher = helpers.filesafe(publisher)
-        year = SeriesYear
-        if comicVol is None:
-            comicVol = 'None'
-        #if comversion is None, remove it so it doesn't populate with 'None'
-        if comicVol == 'None':
-            chunk_f_f = re.sub('\$VolumeN', '', mylar.CONFIG.FOLDER_FORMAT)
-            chunk_f = re.compile(r'\s+')
-            chunk_folder_format = chunk_f.sub(' ', chunk_f_f)
-            logger.fdebug('No version # found for series, removing from folder format')
-            logger.fdebug("new folder format: " + str(chunk_folder_format))
-        else:
-            chunk_folder_format = mylar.CONFIG.FOLDER_FORMAT
+        comic_values = {'ComicName':        comic['ComicName'], 
+                        'ComicPublisher':   comic['ComicPublisher'],
+                        'ComicYear':        SeriesYear,
+                        'ComicVersion':     comicVol,
+                        'Type':             comic['Type'],
+                        'Corrected_Type':   comic['Corrected_Type']}
 
-        #do work to generate folder path
-
-        values = {'$Series':        series,
-                  '$Publisher':     publisher,
-                  '$Year':          year,
-                  '$series':        series.lower(),
-                  '$publisher':     publisher.lower(),
-                  '$VolumeY':       'V' + str(year),
-                  '$VolumeN':       comicVol.upper(),
-                  '$Annual':        'Annual'
-                  }
-        try:
-            if mylar.CONFIG.FOLDER_FORMAT == '':
-                comlocation = os.path.join(mylar.CONFIG.DESTINATION_DIR, comicdir, " (" + SeriesYear + ")")
-            else:
-                comlocation = os.path.join(mylar.CONFIG.DESTINATION_DIR, helpers.replace_all(chunk_folder_format, values))
-        except Exception as e:
-            if 'TypeError' in e:
-                if mylar.CONFIG.DESTINATION_DIR is None:
-                    logger.error('[ERROR] %s' % e)
-                    logger.error('No Comic Location specified. This NEEDS to be set before anything can be added successfully.')
-                    return
-            logger.error('[ERROR] %s' % e)
-            logger.error('Cannot determine Comic Location path properly. Check your Comic Location and Folder Format for any errors.')
-            return
-
-        #comlocation = mylar.CONFIG.DESTINATION_DIR + "/" + comicdir + " (" + comic['ComicYear'] + ")"
-        if mylar.CONFIG.DESTINATION_DIR == "":
-            logger.error('There is no Comic Location Path specified - please specify one in Config/Web Interface.')
-            return
-        if mylar.CONFIG.REPLACE_SPACES:
-            #mylar.CONFIG.REPLACE_CHAR ...determines what to replace spaces with underscore or dot
-            comlocation = comlocation.replace(' ', mylar.CONFIG.REPLACE_CHAR)
+        dothedew = filers.FileHandlers(comic=comic_values)
+        comlocation = dothedew.folder_create()
 
     #moved this out of the above loop so it will chk for existance of comlocation in case moved
     #if it doesn't exist - create it (otherwise will bugger up later on)
@@ -308,6 +275,25 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     tmpseriesname = as_dinfo['mod_seriesname']
     dynamic_seriesname = re.sub('[\|\s]','', tmpseriesname.lower()).strip()
 
+    if comic['Issue_List'] != 'None':
+        issue_list = json.dumps(comic['Issue_List'])
+    else:
+        issue_list = None
+
+    if comic['Aliases'] != 'None':
+        if all([aliases is not None, aliases != 'None']):
+            for x in aliases.split('##'):
+                aliaschk = [x for y in comic['Aliases'].split('##') if y == x]
+                if aliaschk and x not in aliases.split('##'):
+                    aliases += '##' + ''.join(x)
+                else:
+                    if x not in aliases.split('##'):
+                        aliases += '##' + x
+        else:
+            aliases = comic['Aliases']
+    else:
+        aliases = aliases
+
     controlValueDict = {"ComicID":        comicid}
     newValueDict = {"ComicName":          comic['ComicName'],
                     "ComicSortName":      sortname,
@@ -323,10 +309,12 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
                     "ComicPublisher":     comic['ComicPublisher'],
 #                    "Description":       Cdesc, #.dencode('utf-8', 'replace'),
                     "DetailURL":          comic['ComicURL'],
-#                    "AlternateSearch":    comic['Aliases'],
+                    "AlternateSearch":    aliases,
 #                    "ComicPublished":    gcdinfo['resultPublished'],
                     "ComicPublished":     "Unknown",
                     "Type":               comic['Type'],
+                    "Corrected_Type":     comic['Corrected_Type'],
+                    "Collects":           issue_list,
                     "DateAdded":          helpers.today(),
                     "Status":             "Loading"}
 
@@ -887,6 +875,7 @@ def issue_collection(issuedata, nostatus):
                             "Issue_Number":       issue['Issue_Number'],
                             "IssueDate":          issue['IssueDate'],
                             "ReleaseDate":        issue['ReleaseDate'],
+                            "DigitalDate":        issue['DigitalDate'],
                             "Int_IssueNumber":    issue['Int_IssueNumber'],
                             "ImageURL":           issue['ImageURL'],
                             "ImageURL_ALT":       issue['ImageURL_ALT']
@@ -1005,6 +994,7 @@ def manualAnnual(manual_comicid=None, comicname=None, comicyear=None, comicid=No
                                    'IssueName':        cleanname,
                                    'IssueDate':        str(firstval['Issue_Date']),
                                    'ReleaseDate':      str(firstval['Store_Date']),
+                                   'DigitalDate':      str(firstval['Digital_Date']),
                                    'Status':           astatus,
                                    'ReleaseComicName': sr['ComicName']})
                     n+=1
@@ -1018,6 +1008,7 @@ def manualAnnual(manual_comicid=None, comicname=None, comicyear=None, comicid=No
                        "Int_IssueNumber":  helpers.issuedigits(ann['Issue_Number']),
                        "IssueDate":        ann['IssueDate'],
                        "ReleaseDate":      ann['ReleaseDate'],
+                       "DigitalDate":      ann['DigitalDate'],
                        "IssueName":        ann['IssueName'],
                        "ComicID":          ann['ComicID'],   #this is the series ID
                        "ReleaseComicID":   ann['ReleaseComicID'],  #this is the series ID for the annual(s)
@@ -1100,6 +1091,7 @@ def updateissuedata(comicid, comicname=None, issued=None, comicIssues=None, call
             issname = cleanname
             issdate = str(firstval['Issue_Date'])
             storedate = str(firstval['Store_Date'])
+            digitaldate = str(firstval['Digital_Date'])
             int_issnum = None
             if issnum.isdigit():
                 int_issnum = int(issnum) * 1000
@@ -1264,6 +1256,7 @@ def updateissuedata(comicid, comicname=None, issued=None, comicIssues=None, call
                               "Issue_Number":       issnum,
                               "IssueDate":          issdate,
                               "ReleaseDate":        storedate,
+                              "DigitalDate":        digitaldate,
                               "Int_IssueNumber":    int_issnum,
                               "ImageURL":           firstval['Image'],
                               "ImageURL_ALT":       firstval['ImageALT']})
@@ -1286,6 +1279,10 @@ def updateissuedata(comicid, comicname=None, issued=None, comicIssues=None, call
             issue_collection(issuedata, nostatus='True')
 
         styear = str(SeriesYear)
+        if firstdate is not None:
+            if SeriesYear != firstdate[:4]:
+                logger.fdebug('Series start date (%s) crosses over into different year (%s) - assuming store date of first issue (%s) as Start Year (even though CV will say previous year - it\'s all gravy).' % (SeriesYear, firstdate[:4], firstdate))
+                styear = str(firstdate[:4])
 
         if firstdate[5:7] == '00':
             stmonth = "?"
@@ -1467,6 +1464,7 @@ def annual_check(ComicName, SeriesYear, comicid, issuetype, issuechk, annualslis
                             issname = cleanname
                             issdate = str(firstval['Issue_Date'])
                             stdate = str(firstval['Store_Date'])
+                            digdate = str(firstval['Digital_Date'])
                             int_issnum = helpers.issuedigits(issnum)
 
                             iss_exists = myDB.selectone('SELECT * from annuals WHERE IssueID=?', [issid]).fetchone()
@@ -1494,6 +1492,7 @@ def annual_check(ComicName, SeriesYear, comicid, issuetype, issuechk, annualslis
                                                 "Int_IssueNumber":  int_issnum,
                                                 "IssueDate":        issdate,
                                                 "ReleaseDate":      stdate,
+                                                "DigitalDate":      digdate,
                                                 "IssueName":        issname,
                                                 "ComicID":          comicid,
                                                 "IssueID":          issid,

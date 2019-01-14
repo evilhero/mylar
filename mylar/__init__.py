@@ -129,7 +129,7 @@ PP_QUEUE = Queue.Queue()
 SEARCH_QUEUE = Queue.Queue()
 SEARCH_TIER_DATE = None
 COMICSORT = None
-PULLBYFILE = None
+PULLBYFILE = False
 CFG = None
 CURRENT_WEEKNUMBER = None
 CURRENT_YEAR = None
@@ -243,7 +243,7 @@ def initialize(config_file):
         CVURL = 'https://comicvine.gamespot.com/api/'
 
         #set default URL for Public trackers (just in case it changes more frequently)
-        WWTURL = 'https://worldwidetorrents.me/'
+        WWTURL = 'https://worldwidetorrents.to/'
         DEMURL = 'https://www.demonoid.pw/'
 
         if CONFIG.LOCMOVE:
@@ -343,27 +343,30 @@ def start():
             SCHED_RSS_LAST = monitors['rss']
 
             # Start our scheduled background tasks
-            SCHED.add_job(func=updater.dbUpdate, id='dbupdater', name='DB Updater', args=[None,None,True], trigger=IntervalTrigger(hours=5, minutes=5, timezone='UTC'))
+            if UPDATER_STATUS != 'Paused':
+                SCHED.add_job(func=updater.dbUpdate, id='dbupdater', name='DB Updater', args=[None,None,True], trigger=IntervalTrigger(hours=0, minutes=5, timezone='UTC'))
+                logger.info('DB Updater sccheduled to fire every 5 minutes')
 
             #let's do a run at the Wanted issues here (on startup) if enabled.
-            ss = searchit.CurrentSearcher()
-            if CONFIG.NZB_STARTUP_SEARCH:
-                SCHED.add_job(func=ss.run, id='search', next_run_time=datetime.datetime.utcnow(), name='Auto-Search', trigger=IntervalTrigger(hours=0, minutes=CONFIG.SEARCH_INTERVAL, timezone='UTC'))
-            else:
-                if SCHED_SEARCH_LAST is not None:
-                    search_timestamp = float(SCHED_SEARCH_LAST)
-                    logger.fdebug('[AUTO-SEARCH] Search last run @ %s' % datetime.datetime.utcfromtimestamp(search_timestamp))
+            if SEARCH_STATUS != 'Paused':
+                ss = searchit.CurrentSearcher()
+                if CONFIG.NZB_STARTUP_SEARCH:
+                    SCHED.add_job(func=ss.run, id='search', next_run_time=datetime.datetime.utcnow(), name='Auto-Search', trigger=IntervalTrigger(hours=0, minutes=CONFIG.SEARCH_INTERVAL, timezone='UTC'))
                 else:
-                    search_timestamp = helpers.utctimestamp() + (int(CONFIG.SEARCH_INTERVAL) *60)
+                    if SCHED_SEARCH_LAST is not None:
+                        search_timestamp = float(SCHED_SEARCH_LAST)
+                        logger.fdebug('[AUTO-SEARCH] Search last run @ %s' % datetime.datetime.utcfromtimestamp(search_timestamp))
+                    else:
+                        search_timestamp = helpers.utctimestamp() + (int(CONFIG.SEARCH_INTERVAL) *60)
 
-                duration_diff = (helpers.utctimestamp() - search_timestamp)/60
-                if duration_diff >= int(CONFIG.SEARCH_INTERVAL):
-                    logger.fdebug('[AUTO-SEARCH]Auto-Search set to a delay of one minute before initialization as it has been %s minutes since the last run' % duration_diff)
-                    SCHED.add_job(func=ss.run, id='search', name='Auto-Search', trigger=IntervalTrigger(hours=0, minutes=CONFIG.SEARCH_INTERVAL, timezone='UTC'))
-                else:
-                    search_diff = datetime.datetime.utcfromtimestamp(helpers.utctimestamp() + ((int(CONFIG.SEARCH_INTERVAL) * 60)  - (duration_diff*60)))
-                    logger.fdebug('[AUTO-SEARCH] Scheduling next run @ %s every %s minutes' % (search_diff, CONFIG.SEARCH_INTERVAL))
-                    SCHED.add_job(func=ss.run, id='search', name='Auto-Search', next_run_time=search_diff, trigger=IntervalTrigger(hours=0, minutes=CONFIG.SEARCH_INTERVAL, timezone='UTC'))
+                    duration_diff = (helpers.utctimestamp() - search_timestamp)/60
+                    if duration_diff >= int(CONFIG.SEARCH_INTERVAL):
+                        logger.fdebug('[AUTO-SEARCH]Auto-Search set to a delay of one minute before initialization as it has been %s minutes since the last run' % duration_diff)
+                        SCHED.add_job(func=ss.run, id='search', name='Auto-Search', trigger=IntervalTrigger(hours=0, minutes=CONFIG.SEARCH_INTERVAL, timezone='UTC'))
+                    else:
+                        search_diff = datetime.datetime.utcfromtimestamp(helpers.utctimestamp() + ((int(CONFIG.SEARCH_INTERVAL) * 60)  - (duration_diff*60)))
+                        logger.fdebug('[AUTO-SEARCH] Scheduling next run @ %s every %s minutes' % (search_diff, CONFIG.SEARCH_INTERVAL))
+                        SCHED.add_job(func=ss.run, id='search', name='Auto-Search', next_run_time=search_diff, trigger=IntervalTrigger(hours=0, minutes=CONFIG.SEARCH_INTERVAL, timezone='UTC'))
 
             if all([CONFIG.ENABLE_TORRENTS, CONFIG.AUTO_SNATCH, OS_DETECT != 'Windows']) and any([CONFIG.TORRENT_DOWNLOADER == 2, CONFIG.TORRENT_DOWNLOADER == 4]):
                 logger.info('[AUTO-SNATCHER] Auto-Snatch of completed torrents enabled & attempting to background load....')
@@ -420,17 +423,18 @@ def start():
             ws = weeklypullit.Weekly()
             duration_diff = (weektimestamp - weekly_timestamp)/60
 
-            if abs(duration_diff) >= weekly_interval/60:
-                logger.info('[WEEKLY] Weekly Pull-Update initializing immediately as it has been %s hours since the last run' % abs(duration_diff/60))
-                SCHED.add_job(func=ws.run, id='weekly', name='Weekly Pullist', next_run_time=datetime.datetime.utcnow(), trigger=IntervalTrigger(hours=weektimer, minutes=0, timezone='UTC'))
-            else:
-                weekly_diff = datetime.datetime.utcfromtimestamp(weektimestamp + (weekly_interval - (duration_diff * 60)))
-                logger.fdebug('[WEEKLY] Scheduling next run for @ %s every %s hours' % (weekly_diff, weektimer))
-                SCHED.add_job(func=ws.run, id='weekly', name='Weekly Pullist', next_run_time=weekly_diff, trigger=IntervalTrigger(hours=weektimer, minutes=0, timezone='UTC'))
+            if WEEKLY_STATUS != 'Paused':
+                if abs(duration_diff) >= weekly_interval/60:
+                    logger.info('[WEEKLY] Weekly Pull-Update initializing immediately as it has been %s hours since the last run' % abs(duration_diff/60))
+                    SCHED.add_job(func=ws.run, id='weekly', name='Weekly Pullist', next_run_time=datetime.datetime.utcnow(), trigger=IntervalTrigger(hours=weektimer, minutes=0, timezone='UTC'))
+                else:
+                    weekly_diff = datetime.datetime.utcfromtimestamp(weektimestamp + (weekly_interval - (duration_diff * 60)))
+                    logger.fdebug('[WEEKLY] Scheduling next run for @ %s every %s hours' % (weekly_diff, weektimer))
+                    SCHED.add_job(func=ws.run, id='weekly', name='Weekly Pullist', next_run_time=weekly_diff, trigger=IntervalTrigger(hours=weektimer, minutes=0, timezone='UTC'))
 
             #initiate startup rss feeds for torrents/nzbs here...
             rs = rsscheckit.tehMain()
-            if CONFIG.ENABLE_RSS:
+            if CONFIG.ENABLE_RSS is True:
                 logger.info('[RSS-FEEDS] Initiating startup-RSS feed checks.')
                 if SCHED_RSS_LAST is not None:
                     rss_timestamp = float(SCHED_RSS_LAST)
@@ -444,13 +448,16 @@ def start():
                     rss_diff = datetime.datetime.utcfromtimestamp(helpers.utctimestamp() + (int(CONFIG.RSS_CHECKINTERVAL) * 60) - (duration_diff * 60))
                     logger.fdebug('[RSS-FEEDS] Scheduling next run for @ %s every %s minutes' % (rss_diff, CONFIG.RSS_CHECKINTERVAL))
                     SCHED.add_job(func=rs.run, id='rss', name='RSS Feeds', args=[True], next_run_time=rss_diff, trigger=IntervalTrigger(hours=0, minutes=int(CONFIG.RSS_CHECKINTERVAL), timezone='UTC'))
-            #else:
+            else:
+                 RSS_STATUS = 'Paused'
             #    SCHED.add_job(func=rs.run, id='rss', name='RSS Feeds', args=[True], trigger=IntervalTrigger(hours=0, minutes=int(CONFIG.RSS_CHECKINTERVAL), timezone='UTC'))
             #    SCHED.pause_job('rss')
 
             if CONFIG.CHECK_GITHUB:
                 vs = versioncheckit.CheckVersion()
                 SCHED.add_job(func=vs.run, id='version', name='Check Version', trigger=IntervalTrigger(hours=0, minutes=CONFIG.CHECK_GITHUB_INTERVAL, timezone='UTC'))
+            else:
+                VERSION_STATUS = 'Paused'
 
             ##run checkFolder every X minutes (basically Manual Run Post-Processing)
             if CONFIG.ENABLE_CHECK_FOLDER:
@@ -460,6 +467,8 @@ def start():
                     SCHED.add_job(func=fm.run, id='monitor', name='Folder Monitor', trigger=IntervalTrigger(hours=0, minutes=int(CONFIG.DOWNLOAD_SCAN_INTERVAL), timezone='UTC'))
                 else:
                     logger.error('[FOLDER MONITOR] You need to specify a monitoring time for the check folder option to work')
+            else:
+                MONITOR_STATUS = 'Paused'
 
             logger.info('Firing up the Background Schedulers now....')
             try:
@@ -482,21 +491,21 @@ def dbcheck():
         c.execute('SELECT ReleaseDate from storyarcs')
     except sqlite3.OperationalError:
         try:
-            c.execute('CREATE TABLE IF NOT EXISTS storyarcs(StoryArcID TEXT, ComicName TEXT, IssueNumber TEXT, SeriesYear TEXT, IssueYEAR TEXT, StoryArc TEXT, TotalIssues TEXT, Status TEXT, inCacheDir TEXT, Location TEXT, IssueArcID TEXT, ReadingOrder INT, IssueID TEXT, ComicID TEXT, ReleaseDate TEXT, IssueDate TEXT, Publisher TEXT, IssuePublisher TEXT, IssueName TEXT, CV_ArcID TEXT, Int_IssueNumber INT, DynamicComicName TEXT, Volume TEXT, Manual TEXT, DateAdded TEXT)')
+            c.execute('CREATE TABLE IF NOT EXISTS storyarcs(StoryArcID TEXT, ComicName TEXT, IssueNumber TEXT, SeriesYear TEXT, IssueYEAR TEXT, StoryArc TEXT, TotalIssues TEXT, Status TEXT, inCacheDir TEXT, Location TEXT, IssueArcID TEXT, ReadingOrder INT, IssueID TEXT, ComicID TEXT, ReleaseDate TEXT, IssueDate TEXT, Publisher TEXT, IssuePublisher TEXT, IssueName TEXT, CV_ArcID TEXT, Int_IssueNumber INT, DynamicComicName TEXT, Volume TEXT, Manual TEXT, DateAdded TEXT, DigitalDate TEXT)')
             c.execute('INSERT INTO storyarcs(StoryArcID, ComicName, IssueNumber, SeriesYear, IssueYEAR, StoryArc, TotalIssues, Status, inCacheDir, Location, IssueArcID, ReadingOrder, IssueID, ComicID, ReleaseDate, IssueDate, Publisher, IssuePublisher, IssueName, CV_ArcID, Int_IssueNumber, DynamicComicName, Volume, Manual) SELECT StoryArcID, ComicName, IssueNumber, SeriesYear, IssueYEAR, StoryArc, TotalIssues, Status, inCacheDir, Location, IssueArcID, ReadingOrder, IssueID, ComicID, StoreDate, IssueDate, Publisher, IssuePublisher, IssueName, CV_ArcID, Int_IssueNumber, DynamicComicName, Volume, Manual FROM readinglist')
             c.execute('DROP TABLE readinglist')
         except sqlite3.OperationalError:
             logger.warn('Unable to update readinglist table to new storyarc table format.')
 
-    c.execute('CREATE TABLE IF NOT EXISTS comics (ComicID TEXT UNIQUE, ComicName TEXT, ComicSortName TEXT, ComicYear TEXT, DateAdded TEXT, Status TEXT, IncludeExtras INTEGER, Have INTEGER, Total INTEGER, ComicImage TEXT, ComicPublisher TEXT, ComicLocation TEXT, ComicPublished TEXT, NewPublish TEXT, LatestIssue TEXT, LatestDate TEXT, Description TEXT, QUALalt_vers TEXT, QUALtype TEXT, QUALscanner TEXT, QUALquality TEXT, LastUpdated TEXT, AlternateSearch TEXT, UseFuzzy TEXT, ComicVersion TEXT, SortOrder INTEGER, DetailURL TEXT, ForceContinuing INTEGER, ComicName_Filesafe TEXT, AlternateFileName TEXT, ComicImageURL TEXT, ComicImageALTURL TEXT, DynamicComicName TEXT, AllowPacks TEXT, Type TEXT, Corrected_SeriesYear TEXT, TorrentID_32P TEXT, LatestIssueID TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS issues (IssueID TEXT, ComicName TEXT, IssueName TEXT, Issue_Number TEXT, DateAdded TEXT, Status TEXT, Type TEXT, ComicID TEXT, ArtworkURL Text, ReleaseDate TEXT, Location TEXT, IssueDate TEXT, Int_IssueNumber INT, ComicSize TEXT, AltIssueNumber TEXT, IssueDate_Edit TEXT, ImageURL TEXT, ImageURL_ALT TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS comics (ComicID TEXT UNIQUE, ComicName TEXT, ComicSortName TEXT, ComicYear TEXT, DateAdded TEXT, Status TEXT, IncludeExtras INTEGER, Have INTEGER, Total INTEGER, ComicImage TEXT, ComicPublisher TEXT, ComicLocation TEXT, ComicPublished TEXT, NewPublish TEXT, LatestIssue TEXT, LatestDate TEXT, Description TEXT, QUALalt_vers TEXT, QUALtype TEXT, QUALscanner TEXT, QUALquality TEXT, LastUpdated TEXT, AlternateSearch TEXT, UseFuzzy TEXT, ComicVersion TEXT, SortOrder INTEGER, DetailURL TEXT, ForceContinuing INTEGER, ComicName_Filesafe TEXT, AlternateFileName TEXT, ComicImageURL TEXT, ComicImageALTURL TEXT, DynamicComicName TEXT, AllowPacks TEXT, Type TEXT, Corrected_SeriesYear TEXT, Corrected_Type TEXT, TorrentID_32P TEXT, LatestIssueID TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS issues (IssueID TEXT, ComicName TEXT, IssueName TEXT, Issue_Number TEXT, DateAdded TEXT, Status TEXT, Type TEXT, ComicID TEXT, ArtworkURL Text, ReleaseDate TEXT, Location TEXT, IssueDate TEXT, DigitalDate TEXT, Int_IssueNumber INT, ComicSize TEXT, AltIssueNumber TEXT, IssueDate_Edit TEXT, ImageURL TEXT, ImageURL_ALT TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS snatched (IssueID TEXT, ComicName TEXT, Issue_Number TEXT, Size INTEGER, DateAdded TEXT, Status TEXT, FolderName TEXT, ComicID TEXT, Provider TEXT, Hash TEXT, crc TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS upcoming (ComicName TEXT, IssueNumber TEXT, ComicID TEXT, IssueID TEXT, IssueDate TEXT, Status TEXT, DisplayComicName TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS nzblog (IssueID TEXT, NZBName TEXT, SARC TEXT, PROVIDER TEXT, ID TEXT, AltNZBName TEXT, OneOff TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS weekly (SHIPDATE TEXT, PUBLISHER TEXT, ISSUE TEXT, COMIC VARCHAR(150), EXTRA TEXT, STATUS TEXT, ComicID TEXT, IssueID TEXT, CV_Last_Update TEXT, DynamicName TEXT, weeknumber TEXT, year TEXT, volume TEXT, seriesyear TEXT, annuallink TEXT, rowid INTEGER PRIMARY KEY)')
+    c.execute('CREATE TABLE IF NOT EXISTS weekly (SHIPDATE TEXT, PUBLISHER TEXT, ISSUE TEXT, COMIC VARCHAR(150), EXTRA TEXT, STATUS TEXT, ComicID TEXT, IssueID TEXT, CV_Last_Update TEXT, DynamicName TEXT, weeknumber TEXT, year TEXT, volume TEXT, seriesyear TEXT, annuallink TEXT, format TEXT, rowid INTEGER PRIMARY KEY)')
     c.execute('CREATE TABLE IF NOT EXISTS importresults (impID TEXT, ComicName TEXT, ComicYear TEXT, Status TEXT, ImportDate TEXT, ComicFilename TEXT, ComicLocation TEXT, WatchMatch TEXT, DisplayName TEXT, SRID TEXT, ComicID TEXT, IssueID TEXT, Volume TEXT, IssueNumber TEXT, DynamicName TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS readlist (IssueID TEXT, ComicName TEXT, Issue_Number TEXT, Status TEXT, DateAdded TEXT, Location TEXT, inCacheDir TEXT, SeriesYear TEXT, ComicID TEXT, StatusChange TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS annuals (IssueID TEXT, Issue_Number TEXT, IssueName TEXT, IssueDate TEXT, Status TEXT, ComicID TEXT, GCDComicID TEXT, Location TEXT, ComicSize TEXT, Int_IssueNumber INT, ComicName TEXT, ReleaseDate TEXT, ReleaseComicID TEXT, ReleaseComicName TEXT, IssueDate_Edit TEXT, DateAdded TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS annuals (IssueID TEXT, Issue_Number TEXT, IssueName TEXT, IssueDate TEXT, Status TEXT, ComicID TEXT, GCDComicID TEXT, Location TEXT, ComicSize TEXT, Int_IssueNumber INT, ComicName TEXT, ReleaseDate TEXT, DigitalDate TEXT, ReleaseComicID TEXT, ReleaseComicName TEXT, IssueDate_Edit TEXT, DateAdded TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS rssdb (Title TEXT UNIQUE, Link TEXT, Pubdate TEXT, Site TEXT, Size TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS futureupcoming (ComicName TEXT, IssueNumber TEXT, ComicID TEXT, IssueID TEXT, IssueDate TEXT, Publisher TEXT, Status TEXT, DisplayComicName TEXT, weeknumber TEXT, year TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS failed (ID TEXT, Status TEXT, ComicID TEXT, IssueID TEXT, Provider TEXT, ComicName TEXT, Issue_Number TEXT, NZBName TEXT, DateFailed TEXT)')
@@ -505,6 +514,7 @@ def dbcheck():
     c.execute('CREATE TABLE IF NOT EXISTS oneoffhistory (ComicName TEXT, IssueNumber TEXT, ComicID TEXT, IssueID TEXT, Status TEXT, weeknumber TEXT, year TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS jobhistory (JobName TEXT, prev_run_datetime timestamp, prev_run_timestamp REAL, next_run_datetime timestamp, next_run_timestamp REAL, last_run_completed TEXT, successful_completions TEXT, failed_completions TEXT, status TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS manualresults (provider TEXT, id TEXT, kind TEXT, comicname TEXT, volume TEXT, oneoff TEXT, fullprov TEXT, issuenumber TEXT, modcomicname TEXT, name TEXT, link TEXT, size TEXT, pack_numbers TEXT, pack_issuelist TEXT, comicyear TEXT, issuedate TEXT, tmpprov TEXT, pack TEXT, issueid TEXT, comicid TEXT, sarc TEXT, issuearcid TEXT)')
+    c.execute('CREATE TABLE IF NOT EXISTS storyarcs(StoryArcID TEXT, ComicName TEXT, IssueNumber TEXT, SeriesYear TEXT, IssueYEAR TEXT, StoryArc TEXT, TotalIssues TEXT, Status TEXT, inCacheDir TEXT, Location TEXT, IssueArcID TEXT, ReadingOrder INT, IssueID TEXT, ComicID TEXT, ReleaseDate TEXT, IssueDate TEXT, Publisher TEXT, IssuePublisher TEXT, IssueName TEXT, CV_ArcID TEXT, Int_IssueNumber INT, DynamicComicName TEXT, Volume TEXT, Manual TEXT, DateAdded TEXT, DigitalDate TEXT)')
     conn.commit
     c.close
 
@@ -610,6 +620,11 @@ def dbcheck():
         c.execute('ALTER TABLE comics ADD COLUMN Corrected_SeriesYear TEXT')
 
     try:
+        c.execute('SELECT Corrected_Type from comics')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE comics ADD COLUMN Corrected_Type TEXT')
+
+    try:
         c.execute('SELECT TorrentID_32P from comics')
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE comics ADD COLUMN TorrentID_32P TEXT')
@@ -618,6 +633,11 @@ def dbcheck():
         c.execute('SELECT LatestIssueID from comics')
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE comics ADD COLUMN LatestIssueID TEXT')
+
+    try:
+        c.execute('SELECT Collects from comics')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE comics ADD COLUMN Collects CLOB')
 
     try:
         c.execute('SELECT DynamicComicName from comics')
@@ -660,6 +680,11 @@ def dbcheck():
         c.execute('SELECT ImageURL_ALT from issues')
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE issues ADD COLUMN ImageURL_ALT TEXT')
+
+    try:
+        c.execute('SELECT DigitalDate from issues')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE issues ADD COLUMN DigitalDate TEXT')
 
     ## -- ImportResults Table --
 
@@ -812,6 +837,11 @@ def dbcheck():
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE weekly ADD COLUMN annuallink TEXT')
 
+    try:
+        c.execute('SELECT format from weekly')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE weekly ADD COLUMN format TEXT')
+
     ## -- Nzblog Table --
 
     try:
@@ -891,6 +921,11 @@ def dbcheck():
         c.execute('SELECT DateAdded from annuals')
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE annuals ADD COLUMN DateAdded TEXT')
+
+    try:
+        c.execute('SELECT DigitalDate from annuals')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE annuals ADD COLUMN DigitalDate TEXT')
 
     ## -- Snatched Table --
 
@@ -983,6 +1018,11 @@ def dbcheck():
         c.execute('SELECT DateAdded from storyarcs')
     except sqlite3.OperationalError:
         c.execute('ALTER TABLE storyarcs ADD COLUMN DateAdded TEXT')
+
+    try:
+        c.execute('SELECT DigitalDate from storyarcs')
+    except sqlite3.OperationalError:
+        c.execute('ALTER TABLE storyarcs ADD COLUMN DigitalDate TEXT')
 
     ## -- searchresults Table --
     try:
