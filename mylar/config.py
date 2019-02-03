@@ -3,6 +3,7 @@ from collections import OrderedDict
 from operator import itemgetter
 
 import os
+import glob
 import codecs
 import shutil
 import re
@@ -74,6 +75,7 @@ _CONFIG_DEFINITIONS = OrderedDict({
     'ALTERNATE_LATEST_SERIES_COVERS': (bool, 'General', False),
     'SHOW_ICONS': (bool, 'General', False),
     'FORMAT_BOOKTYPE': (bool, 'General', False),
+    'SECURE_DIR': (str, 'General', None),
 
     'RSS_CHECKINTERVAL': (int, 'Scheduler', 20),
     'SEARCH_INTERVAL': (int, 'Scheduler', 360),
@@ -769,6 +771,25 @@ class Config(object):
                os.makedirs(self.CACHE_DIR)
             except OSError:
                 logger.error('[Cache Check] Could not create cache dir. Check permissions of datadir: ' + mylar.DATA_DIR)
+
+
+        if not self.SECURE_DIR:
+            self.SECURE_DIR = os.path.join(mylar.DATA_DIR, '.secure')
+
+        if not os.path.exists(self.SECURE_DIR):
+            try:
+               os.makedirs(self.SECURE_DIR)
+            except OSError:
+                logger.error('[Secure DIR Check] Could not create secure directory. Check permissions of datadir: ' + mylar.DATA_DIR)
+
+        #make sure the cookies.dat file is not in cache
+        for f in glob.glob(os.path.join(self.CACHE_DIR, '.32p_cookies.dat')):
+             try:
+                 if os.path.isfile(f):
+                     shutil.move(f, os.path.join(self.SECURE_DIR, '.32p_cookies.dat'))
+             except Exception as e:
+                 logger.error('SECURE-DIR-MOVE] Unable to move cookies file into secure location. This is a fatal error.')
+                 sys.exit()
 
         if all([self.GRABBAG_DIR is None, self.DESTINATION_DIR is not None]):
             self.GRABBAG_DIR = os.path.join(self.DESTINATION_DIR, 'Grabbag')
