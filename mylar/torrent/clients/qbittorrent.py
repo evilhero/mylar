@@ -11,29 +11,33 @@ class TorrentClient(object):
     def __init__(self):
         self.conn = None
 
-    def connect(self, host, username, password):
+    def connect(self, host, username, password, test=False):
         if self.conn is not None:
             return self.connect
 
         if not host:
-            return {'status': False}
+            return {'status': False, 'error': 'host not specified'}
 
         try:
-            logger.info(host)
             self.client = client.Client(host)
         except Exception as e:
-            logger.error('Could not create qBittorrent Object' + str(e))
-            return {'status': False}
+            logger.error('Could not create qBittorrent Object %s' % e)
+            return {'status': False, 'error': e}
         else:
             try:
                 self.client.login(username, password)
             except Exception as e:
-                logger.error('Could not connect to qBittorrent ' + host)
+                logger.error('Could not connect to qBittorrent: %s' % host)
+                return {'status': False, 'error': e}
             else:
-                return self.client
+                if test is True:
+                    version = self.client.qbittorrent_version
+                    return {'status': True, 'version': version}
+                else:
+                    return self.client
 
     def find_torrent(self, hash):
-        logger.debug('Finding Torrent hash: ' + hash)
+        logger.debug('Finding Torrent hash: %s' % hash)
         torrent_info = self.get_torrent(hash)
         if torrent_info:
             return True
@@ -41,11 +45,11 @@ class TorrentClient(object):
             return False
 
     def get_torrent(self, hash):
-        logger.debug('Getting Torrent info hash: ' + hash)
+        logger.debug('Getting Torrent info hash: %s' % hash)
         try:
             torrent_info = self.client.get_torrent(hash)
         except Exception as e:
-            logger.error('Could not get torrent info for ' + hash)
+            logger.error('Could not get torrent info for %s' % hash)
             return False
         else:
             logger.info('Successfully located information for torrent')
@@ -55,7 +59,7 @@ class TorrentClient(object):
     def load_torrent(self, filepath):
 
         if not filepath.startswith('magnet'):
-            logger.info('filepath to torrent file set to : ' + filepath)
+            logger.info('filepath to torrent file set to : %s' % filepath)
 
         if self.client._is_authenticated is True:
             logger.info('Checking if Torrent Exists!')
@@ -68,67 +72,66 @@ class TorrentClient(object):
                 logger.debug('Magnet (load_torrent) initiating')
             else:
                 hash = self.get_the_hash(filepath)
-                logger.debug('FileName (load_torrent): ' + str(os.path.basename(filepath)))
+                logger.debug('FileName (load_torrent): %s' % os.path.basename(filepath))
 
-            logger.debug('Torrent Hash (load_torrent): "' + hash + '"')
+            logger.debug('Torrent Hash (load_torrent): "%s"' % hash)
 
 
             #Check if torrent already added
             if self.find_torrent(hash):
                 logger.info('load_torrent: Torrent already exists!')
-                return {'status': False}
+                return {'status': False, 'error': 'Torrent already exists'}
                 #should set something here to denote that it's already loaded, and then the failed download checker not run so it doesn't download
                 #multiple copies of the same issues that's already downloaded
             else:
                 logger.info('Torrent not added yet, trying to add it now!')
-                if any([mylar.CONFIG.QBITTORRENT_FOLDER is None, mylar.CONFIG.QBITTORRENT_FOLDER == '', mylar.CONFIG.QBITTORRENT_FOLDER == 'None']):
-                    down_dir = None
-                else:
-                    down_dir = mylar.CONFIG.QBITTORRENT_FOLDER
-                    logger.info('Forcing Download location to: %s' % down_dir)
 
+                # Build an arg dict based on user prefs.
+                addargs = {}
+                if not any([mylar.CONFIG.QBITTORRENT_LABEL is None, mylar.CONFIG.QBITTORRENT_LABEL == '', mylar.CONFIG.QBITTORRENT_LABEL == 'None']):
+                    addargs.update( { 'category': str(mylar.CONFIG.QBITTORRENT_LABEL) } )
+                    logger.info('Setting download label to: %s' % mylar.CONFIG.QBITTORRENT_LABEL)
+                if not any([mylar.CONFIG.QBITTORRENT_FOLDER is None, mylar.CONFIG.QBITTORRENT_FOLDER == '', mylar.CONFIG.QBITTORRENT_FOLDER == 'None']):
+                    addargs.update( { 'savepath': str(mylar.CONFIG.QBITTORRENT_FOLDER) } )
+                    logger.info('Forcing download location to: %s' % mylar.CONFIG.QBITTORRENT_FOLDER)
+                if mylar.CONFIG.QBITTORRENT_LOADACTION == 'pause':
+                    addargs.update( { 'paused': 'true' } )
+                    logger.info('Attempting to add torrent in paused state')
+                
                 if filepath.startswith('magnet'):
                     try:
-                        if down_dir is not None:
-                            tid = self.client.download_from_link(filepath, savepath=str(down_dir), category=str(mylar.CONFIG.QBITTORRENT_LABEL))
-                        else:
-                            tid = self.client.download_from_link(filepath, category=str(mylar.CONFIG.QBITTORRENT_LABEL))
+                        tid = self.client.download_from_link(filepath, **addargs)
                     except Exception as e:
-                        logger.debug('Torrent not added')
-                        return {'status': False}
+                        logger.error('Torrent not added')
+                        return {'status': False, 'error': e}
                     else:
                         logger.debug('Successfully submitted for add as a magnet. Verifying item is now on client.')
                 else:
                     try:
                         torrent_content = open(filepath, 'rb')
-                        if down_dir is not None:
-                            tid = self.client.download_from_file(torrent_content, savepath=str(down_dir), category=str(mylar.CONFIG.QBITTORRENT_LABEL))
-                        else:
-                            tid = self.client.download_from_file(torrent_content, category=str(mylar.CONFIG.QBITTORRENT_LABEL))
+                        tid = self.client.download_from_file(torrent_content, **addargs)
                     except Exception as e:
-                        logger.debug('Torrent not added')
-                        return {'status': False}
+                        logger.error('Torrent not added')
+                        return {'status': False, 'error': e}
                     else:
                         logger.debug('Successfully submitted for add via file. Verifying item is now on client.')
 
-            if mylar.CONFIG.QBITTORRENT_STARTONLOAD:
-                logger.info('attempting to start')
-                startit = self.client.force_start(hash)
-                logger.info('startit returned:' + str(startit))
-            else:
-                logger.info('attempting to pause torrent incase it starts')
+            if mylar.CONFIG.QBITTORRENT_LOADACTION == 'force_start':
+                logger.info('Attempting to force start torrent')
                 try:
-                    startit = self.client.pause(hash)
-                    logger.info('startit paused:' + str(startit))
+                    startit = self.client.force_start(hash)
+                    logger.info('startit returned: %s' % startit)
                 except:
-                    logger.warn('Unable to pause torrent - possibly already paused?')
+                    logger.warn('Unable to force start torrent - please check your client.')
+            else:
+                logger.info('Client default add action selected. Doing nothing.')
 
         try:
             time.sleep(5) # wait 5 in case it's not populated yet.
             tinfo = self.get_torrent(hash)
         except Exception as e:
             logger.warn('Torrent was not added! Please check logs')
-            return {'status': False}
+            return {'status': False, 'error': e}
         else:
             logger.info('Torrent successfully added!')
             filelist = self.client.get_torrent_files(hash)
@@ -160,6 +163,5 @@ class TorrentClient(object):
         metainfo = bencode.decode(torrent_file.read())
         info = metainfo['info']
         thehash = hashlib.sha1(bencode.encode(info)).hexdigest().upper()
-        logger.debug('Hash: ' + thehash)
         return thehash
 

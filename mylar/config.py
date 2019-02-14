@@ -75,6 +75,7 @@ _CONFIG_DEFINITIONS = OrderedDict({
     'ALTERNATE_LATEST_SERIES_COVERS': (bool, 'General', False),
     'SHOW_ICONS': (bool, 'General', False),
     'FORMAT_BOOKTYPE': (bool, 'General', False),
+    'CLEANUP_CACHE': (bool, 'General', False),
     'SECURE_DIR': (str, 'General', None),
 
     'RSS_CHECKINTERVAL': (int, 'Scheduler', 20),
@@ -210,6 +211,7 @@ _CONFIG_DEFINITIONS = OrderedDict({
     'SAB_PRIORITY': (str, 'SABnzbd', "Default"),
     'SAB_TO_MYLAR': (bool, 'SABnzbd', False),
     'SAB_DIRECTORY': (str, 'SABnzbd', None),
+    'SAB_VERSION': (str, 'SABnzbd', None),
     'SAB_CLIENT_POST_PROCESSING': (bool, 'SABnzbd', False),   #0/False: ComicRN.py, #1/True: Completed Download Handling
 
     'NZBGET_HOST': (str, 'NZBGet', None),
@@ -346,7 +348,7 @@ _CONFIG_DEFINITIONS = OrderedDict({
     'QBITTORRENT_PASSWORD': (str, 'qBittorrent', None),
     'QBITTORRENT_LABEL': (str, 'qBittorrent', None),
     'QBITTORRENT_FOLDER': (str, 'qBittorrent', None),
-    'QBITTORRENT_STARTONLOAD': (bool, 'qBittorrent', False),
+    'QBITTORRENT_LOADACTION': (str, 'qBittorrent', 'default'),   #default, force_start, paused
 
     'OPDS_ENABLE': (bool, 'OPDS', False),
     'OPDS_AUTHENTICATION': (bool, 'OPDS', False),
@@ -791,6 +793,26 @@ class Config(object):
                  logger.error('SECURE-DIR-MOVE] Unable to move cookies file into secure location. This is a fatal error.')
                  sys.exit()
 
+        if self.CLEANUP_CACHE is True:
+            logger.fdebug('[Cache Cleanup] Cache Cleanup initiated. Will delete items from cache that are no longer needed.')
+            cache_types = ['*.nzb', '*.torrent', '*.zip', '*.html', 'mylar_*']
+            cntr = 0
+            for x in cache_types:
+                for f in glob.glob(os.path.join(self.CACHE_DIR,x)):
+                    try:
+                        if os.path.isdir(f):
+                            shutil.rmtree(f)
+                        else:
+                            os.remove(f)
+                    except Exception as e:
+                        logger.warn('[ERROR] Unable to remove %s from cache. Could be a possible permissions issue ?' % f)
+                    cntr+=1
+
+            if cntr > 1:
+                logger.fdebug('[Cache Cleanup] Cache Cleanup finished. Cleaned %s items' % cntr)
+            else:
+                logger.fdebug('[Cache Cleanup] Cache Cleanup finished. Nothing to clean!')
+
         if all([self.GRABBAG_DIR is None, self.DESTINATION_DIR is not None]):
             self.GRABBAG_DIR = os.path.join(self.DESTINATION_DIR, 'Grabbag')
             logger.fdebug('[Grabbag Directory] Setting One-Off directory to default location: %s' % self.GRABBAG_DIR)
@@ -816,7 +838,6 @@ class Config(object):
             mylar.RSS_STATUS = 'Waiting'
         elif self.ENABLE_RSS is False and mylar.RSS_STATUS == 'Waiting':
             mylar.RSS_STATUS = 'Paused'
-        logger.info('self.enable_rss is %s [%s]' % (self.ENABLE_RSS, mylar.RSS_STATUS))
 
         if not helpers.is_number(self.CHMOD_DIR):
             logger.fdebug("CHMOD Directory value is not a valid numeric - please correct. Defaulting to 0777")
@@ -864,8 +885,10 @@ class Config(object):
                 else:
                     logger.fdebug('Successfully created ComicTagger Settings location.')
 
-        if self.DDL_LOCATION is None:
+        if not self.DDL_LOCATION:
             self.DDL_LOCATION = self.CACHE_DIR
+            if self.ENABLE_DDL is True:
+                logger.info('Setting DDL Location set to : %s' % self.DDL_LOCATION)
 
         if self.MODE_32P is False and self.RSSFEED_32P is not None:
             mylar.KEYS_32P = self.parse_32pfeed(self.RSSFEED_32P)
@@ -895,6 +918,12 @@ class Config(object):
             elif self.SAB_PRIORITY == "3": self.SAB_PRIORITY = "High"
             elif self.SAB_PRIORITY == "4": self.SAB_PRIORITY = "Paused"
             else: self.SAB_PRIORITY = "Default"
+
+        if self.SAB_VERSION is not None:
+            config.set('SABnzbd', 'sab_version', self.SAB_VERSION)
+            if int(re.sub("[^0-9]", '', self.SAB_VERSION).strip()) < int(re.sub("[^0-9]", '', '0.8.0').strip()) and self.SAB_CLIENT_POST_PROCESSING is True:
+                logger.warn('Your SABnzbd client is less than 0.8.0, and does not support Completed Download Handling which is enabled. Disabling CDH.')
+                self.SAB_CLIENT_POST_PROCESSING = False
 
         mylar.USE_WATCHDIR = False
         mylar.USE_UTORRENT = False

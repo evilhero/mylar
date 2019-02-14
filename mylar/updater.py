@@ -114,12 +114,12 @@ def dbUpdate(ComicIDList=None, calledfrom=None, sched=False):
                     #logger.fdebug('%s [%s] Was refreshed less than %s hours ago. Skipping Refresh at this time.' % (ComicName, ComicID, cache_hours))
                     cnt +=1
                     continue
-            logger.info('[' + str(cnt) + '/' + str(len(comiclist)) + '] Refreshing :' + ComicName + ' (' + str(dspyear) + ') [' + str(ComicID) + ']')
+            logger.info('[%s/%s] Refreshing :%s (%s) [%s]' % (cnt, len(comiclist), ComicName, dspyear, ComicID))
         else:
             ComicID = comic['ComicID']
             ComicName = comic['ComicName']
 
-            logger.fdebug('Refreshing: ' + ComicName + ' (' + str(dspyear) + ') [' + str(ComicID) + ']')
+            logger.info('Refreshing/Updating: %s (%s) [%s]' % (ComicName, dspyear, ComicID))
 
         mismatch = "no"
         if not mylar.CONFIG.CV_ONLY or ComicID[:1] == "G":
@@ -1104,6 +1104,8 @@ def forceRescan(ComicID, archive=None, module=None, recheck=False):
                 temploc = '1'
             else:
                 temploc = None
+                logger.warn('The filename [%s] does not have a valid issue number, and the Edition of the series is %s. You might need to Forcibly Mark the Series as TPB/GN and try this again.' % (tmpfc['ComicFilename'], rescan['Type']))
+                return
 
         if all(['annual' not in temploc.lower(), 'special' not in temploc.lower()]):
             #remove the extension here
@@ -1119,6 +1121,7 @@ def forceRescan(ComicID, archive=None, module=None, recheck=False):
             while True:
                 try:
                     reiss = reissues[n]
+                    int_iss = None
                 except IndexError:
                     break
                 int_iss = helpers.issuedigits(reiss['Issue_Number'])
