@@ -6,6 +6,7 @@ import os
 import glob
 import codecs
 import shutil
+import threading
 import re
 import ConfigParser
 import mylar
@@ -146,6 +147,7 @@ _CONFIG_DEFINITIONS = OrderedDict({
     'DUPECONSTRAINT': (str, 'Duplicates', None),
     'DDUMP': (bool, 'Duplicates', False),
     'DUPLICATE_DUMP': (str, 'Duplicates', None),
+    'DUPLICATE_DATED_FOLDERS': (bool, 'Duplicates', False),
 
     'PROWL_ENABLED': (bool, 'Prowl', False),
     'PROWL_PRIORITY': (int, 'Prowl', 0),
@@ -287,6 +289,7 @@ _CONFIG_DEFINITIONS = OrderedDict({
     'ENABLE_DDL': (bool, 'DDL', False),
     'ALLOW_PACKS': (bool, 'DDL', False),
     'DDL_LOCATION': (str, 'DDL', None),
+    'DDL_AUTORESUME': (bool, 'DDL', True),
 
     'AUTO_SNATCH': (bool, 'AutoSnatch', False),
     'AUTO_SNATCH_SCRIPT': (str, 'AutoSnatch', None),
@@ -382,7 +385,7 @@ class Config(object):
                 count = sum(1 for line in open(self._config_file))
             else:
                 count = 0
-            self.newconfig = 8
+            self.newconfig = 9
             if count == 0:
                 CONFIG_VERSION = 0
                 MINIMALINI = False
@@ -502,13 +505,12 @@ class Config(object):
                 shutil.move(self._config_file, os.path.join(mylar.DATA_DIR, 'config.ini.backup'))
             except:
                 print('Unable to make proper backup of config file in %s' % os.path.join(mylar.DATA_DIR, 'config.ini.backup'))
-            if self.newconfig == 8:
+            if self.CONFIG_VERSION < 9:
                 print('Attempting to update configuration..')
                 #torznab multiple entries merged into extra_torznabs value
                 self.config_update()
             setattr(self, 'CONFIG_VERSION', str(self.newconfig))
             config.set('General', 'CONFIG_VERSION', str(self.newconfig))
-            print('Updating config to newest version : %s' % self.newconfig)
             self.writeconfig()
         else:
             self.provider_sequence()
@@ -533,12 +535,12 @@ class Config(object):
                     print('Logging level over-ridden by startup value. Changing from %s to %s' % (self.LOG_LEVEL, mylar.LOG_LEVEL))
                 logger.mylar_log.initLogger(loglevel=mylar.LOG_LEVEL, log_dir=self.LOG_DIR, max_logsize=self.MAX_LOGSIZE, max_logfiles=self.MAX_LOGFILES)
 
-        self.configure()
+        self.configure(startup=startup)
         return self
 
     def config_update(self):
-        if self.newconfig == 8:
-            print('Updating Configuration from %s to %s' % (self.CONFIG_VERSION, self.newconfig))
+        print('Updating Configuration from %s to %s' % (self.CONFIG_VERSION, self.newconfig))
+        if self.CONFIG_VERSION < 8:
             print('Checking for existing torznab configuration...')
             if not any([self.TORZNAB_NAME is None, self.TORZNAB_HOST is None, self.TORZNAB_APIKEY is None, self.TORZNAB_CATEGORY is None]):
                 torznabs =[(self.TORZNAB_NAME, self.TORZNAB_HOST, self.TORZNAB_APIKEY, self.TORZNAB_CATEGORY, str(int(self.ENABLE_TORZNAB)))]
@@ -552,7 +554,17 @@ class Config(object):
             config.remove_option('Torznab', 'torznab_apikey')
             config.remove_option('Torznab', 'torznab_category')
             config.remove_option('Torznab', 'torznab_verify')
-            print('Successfully removed old entries.')
+            print('Successfully removed outdated config entries.')
+        if self.newconfig == 9:
+            #rejig rtorrent settings due to change.
+            try:
+                if all([self.RTORRENT_SSL is True, not self.RTORRENT_HOST.startswith('http')]):
+                    self.RTORRENT_HOST = 'https://' + self.RTORRENT_HOST
+                    config.set('Rtorrent', 'rtorrent_host', self.RTORRENT_HOST)
+            except:
+                pass
+            config.remove_option('Rtorrent', 'rtorrent_ssl')
+            print('Successfully removed oudated config entries.')
         print('Configuration upgraded to version %s' % self.newconfig)
 
     def check_section(self, section, key):
@@ -729,7 +741,12 @@ class Config(object):
         except IOError as e:
             logger.warn("Error writing configuration file: %s", e)
 
-    def configure(self, update=False):
+    def configure(self, update=False, startup=False):
+
+        #force alt_pull = 2 on restarts regardless of settings
+        if self.ALT_PULL != 2:
+            self.ALT_PULL = 2
+            config.set('Weekly', 'alt_pull', str(self.ALT_PULL))
 
         try:
             if not any([self.SAB_HOST is None, self.SAB_HOST == '', 'http://' in self.SAB_HOST[:7], 'https://' in self.SAB_HOST[:8]]):
@@ -884,6 +901,18 @@ class Config(object):
                         logger.error('Unable to create setting directory for ComicTagger. This WILL cause problems when tagging.')
                 else:
                     logger.fdebug('Successfully created ComicTagger Settings location.')
+
+        #make sure queues are running here...
+        if startup is False:
+            if self.POST_PROCESSING is True and ( all([self.NZB_DOWNLOADER == 0, self.SAB_CLIENT_POST_PROCESSING is True]) or all([self.NZB_DOWNLOADER == 1, self.NZBGET_CLIENT_POST_PROCESSING is True]) ):
+                mylar.queue_schedule('nzb_queue', 'start')
+            elif self.POST_PROCESSING is True and ( all([self.NZB_DOWNLOADER == 0, self.SAB_CLIENT_POST_PROCESSING is False]) or all([self.NZB_DOWNLOADER == 1, self.NZBGET_CLIENT_POST_PROCESSING is False]) ):
+                mylar.queue_schedule('nzb_queue', 'stop')
+
+            if self.ENABLE_DDL is True:
+                mylar.queue_schedule('ddl_queue', 'start')
+            elif self.ENABLE_DDL is False:
+                mylar.queue_schedule('ddl_queue', 'stop')
 
         if not self.DDL_LOCATION:
             self.DDL_LOCATION = self.CACHE_DIR

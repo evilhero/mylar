@@ -291,6 +291,15 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     else:
         aliases = aliases
 
+    logger.fdebug('comicIssues: %s' % comicIssues)
+    logger.fdebug('seriesyear: %s / currentyear: %s' % (SeriesYear, helpers.today()[:4]))
+    logger.fdebug('comicType: %s' % comic['Type'])
+    if all([int(comicIssues) == 1, SeriesYear < helpers.today()[:4], comic['Type'] != 'One-Shot', comic['Type'] != 'TPB']):
+        logger.info('Determined to be a one-shot issue. Forcing Edition to One-Shot')
+        booktype = 'One-Shot'
+    else:
+        booktype = comic['Type']
+
     controlValueDict = {"ComicID":        comicid}
     newValueDict = {"ComicName":          comic['ComicName'],
                     "ComicSortName":      sortname,
@@ -309,7 +318,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
                     "AlternateSearch":    aliases,
 #                    "ComicPublished":    gcdinfo['resultPublished'],
                     "ComicPublished":     "Unknown",
-                    "Type":               comic['Type'],
+                    "Type":               booktype,
                     "Corrected_Type":     comic['Corrected_Type'],
                     "Collects":           issue_list,
                     "DateAdded":          helpers.today(),
@@ -1118,6 +1127,8 @@ def updateissuedata(comicid, comicname=None, issued=None, comicIssues=None, call
                     int_issnum = (int(issnum[:-4]) * 1000) + ord('n') + ord('o') + ord('w')
                 elif 'mu' in issnum.lower():
                     int_issnum = (int(issnum[:-3]) * 1000) + ord('m') + ord('u')
+                elif 'hu' in issnum.lower():
+                    int_issnum = (int(issnum[:-3]) * 1000) + ord('h') + ord('u')
                 elif u'\xbd' in issnum:
                     int_issnum = .5 * 1000
                     logger.fdebug('1/2 issue detected :' + issnum + ' === ' + str(int_issnum))

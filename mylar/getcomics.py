@@ -116,6 +116,9 @@ class GC(object):
                 title = re.sub(issues, '', title).strip()
                 if title.endswith('#'):
                     title = title[:-1].strip()
+            else:
+                if any(['Marvel Week+' in title, 'INDIE Week+' in title, 'Image Week' in title, 'DC Week+' in title]):
+                    continue
 
             option_find = f.find("p", {"style": "text-align: center;"})
             i = 0
@@ -137,7 +140,7 @@ class GC(object):
                             nwsize = size.find('//')
                             size = re.sub('\[', '', size[:nwsize]).strip()
                     else:
-                        size = '0 M'
+                        size = '0M'
                 i+=1
             dateline = f.find('time')
             datefull = dateline['datetime']
@@ -156,20 +159,23 @@ class GC(object):
             logger.fdebug('%s [%s]' % (title, size))
 
         results['entries'] = resultlist
-
         return results
 
     def parse_downloadresults(self, id, mainlink):
         myDB = db.DBConnection()
+        series = None
+        year = None
+        size = None
         title = os.path.join(mylar.CONFIG.CACHE_DIR, 'getcomics-' + id)
         soup = BeautifulSoup(open(title+'.html'), 'html.parser')
         orig_find = soup.find("p", {"style": "text-align: center;"})
         i = 0
         option_find = orig_find
+        possible_more = None
         while True: #i <= 10:
             prev_option = option_find
             option_find = option_find.findNext(text=True)
-            if i == 0:
+            if i == 0 and series is None:
                 series = option_find
             elif 'Year' in option_find:
                 year = option_find.findNext(text=True)
@@ -187,28 +193,52 @@ class GC(object):
         for f in soup.findAll("div", {"class": "aio-pulse"}):
             lk = f.find('a')
             if lk['title'] == 'Download Now':
-                link = lk['href']
-                site = lk['title']
-                break #get the first link just to test
+                link = {"series":  series,
+                         "site":   lk['title'],
+                         "year":   year,
+                         "issues": None,
+                         "size":   size,
+                         "link":   lk['href']}
 
-        if link is None:
-            logger.warn('Unable to retrieve any valid immediate download links. They might not exist.')
-            return
+                break #get the first link just to test
 
         links = []
 
-        if possible_more.name == 'ul':
-            bb = possible_more.findAll('li')
-            for x in bb:
-                volume = x.findNext(text=True)
-                if u'\u2013' in volume:
-                    volume = re.sub(u'\u2013', '-', volume)
-                linkline = x.find('a')
-                link = linkline['href']
-                site = linkline.findNext(text=True)
-                links.append({"volume": volume,
-                              "site": site,
-                              "link": link})
+        if link is None and possible_more.name == 'ul':
+            try:
+                bb = possible_more.findAll('li')
+            except:
+                pass
+            else:
+                for x in bb:
+                    linkline = x.find('a')
+                    if linkline:
+                        if 'go.php' in linkline['href']:
+                            volume = x.findNext(text=True)
+                            if u'\u2013' in volume:
+                                volume = re.sub(u'\u2013', '-', volume)
+                            #volume label contains series, issue(s), year(s), and size
+                            series_st = volume.find('(')
+                            issues_st = volume.find('#')
+                            series = volume[:series_st]
+                            if any([issues_st == -1, series_st == -1]):
+                                issues = None
+                            else:
+                                series = volume[:issues_st].strip()
+                                issues = volume[issues_st+1:series_st].strip()
+                            year_end = volume.find(')', series_st+1)
+                            year = re.sub('[\(\)]', '', volume[series_st+1: year_end]).strip()
+                            size_end = volume.find(')', year_end+1)
+                            size = re.sub('[\(\)]', '', volume[year_end+1: size_end]).strip()
+                            linked = linkline['href']
+                            site = linkline.findNext(text=True)
+                            if site == 'Main Server':
+                                links.append({"series": series,
+                                              "site":   site,
+                                              "year":   year,
+                                              "issues": issues,
+                                              "size":   size,
+                                              "link":   linked})
         else:
             check_extras = soup.findAll("h3")
             for sb in check_extras:
@@ -222,41 +252,56 @@ class GC(object):
                             if u'\u2013' in volume:
                                 volume = re.sub(u'\u2013', '-', volume)
                             linkline = x.find('a')
-                            link = linkline['href']
+                            linked = linkline['href']
                             site = linkline.findNext(text=True)
                             links.append({"volume": volume,
                                           "site": site,
-                                          "link": link})
+                                          "link": linked})
 
-        if link is None:
+        if all([link is None, len(links) == 0]):
             logger.warn('Unable to retrieve any valid immediate download links. They might not exist.')
             return {'success':  False}
-
+        if all([link is not None, len(links) == 0]):
+            logger.info('only one item discovered, changing queue length to accomodate: %s [%s]' % (link, type(link)))
+            links = [link]
+        elif len(links) > 0:
+            if len(links) > 1:
+                logger.info('[DDL-QUEUER] This pack has been broken up into %s separate packs - queueing each in sequence for your enjoyment.' % len(links))
+        cnt = 1
         for x in links:
-            logger.fdebug('[%s] %s - %s' % (x['site'], x['volume'], x['link']))
+            if len(links) == 1:
+                mod_id = id
+            else:
+                mod_id = id+'-'+str(cnt)
+            #logger.fdebug('[%s] %s (%s) %s [%s][%s]' % (x['site'], x['series'], x['year'], x['issues'], x['size'],  x['link']))
 
-        ctrlval = {'id':   id}
-        vals = {'series':  series,
-                'year':    year,
-                'size':    size,
-                'issueid': self.issueid,
-                'comicid': self.comicid,
-                'link':    link,
-                'status':  'Queued'}
-        myDB.upsert('ddl_info', vals, ctrlval)
+            ctrlval = {'id':        mod_id}
+            vals = {'series':       x['series'],
+                    'year':         x['year'],
+                    'size':         x['size'],
+                    'issues':       x['issues'],
+                    'issueid':      self.issueid,
+                    'comicid':      self.comicid,
+                    'link':         x['link'],
+                    'mainlink':     mainlink,
+                    'updated_date': datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
+                    'status':       'Queued'}
+            myDB.upsert('ddl_info', vals, ctrlval)
 
-        mylar.DDL_QUEUE.put({'link':     link,
-                             'mainlink': mainlink,
-                             'series':   series,
-                             'year':     year,
-                             'size':     size,
-                             'comicid':  self.comicid,
-                             'issueid':  self.issueid,
-                             'id':       id})
+            mylar.DDL_QUEUE.put({'link':     x['link'],
+                                 'mainlink': mainlink,
+                                 'series':   x['series'],
+                                 'year':     x['year'],
+                                 'size':     x['size'],
+                                 'comicid':  self.comicid,
+                                 'issueid':  self.issueid,
+                                 'id':       mod_id,
+                                 'resume':   None})
+            cnt+=1
 
         return {'success': True}
 
-    def downloadit(self, id, link, mainlink):
+    def downloadit(self, id, link, mainlink, resume=None):
         if mylar.DDL_LOCK is True:
             logger.fdebug('[DDL] Another item is currently downloading via DDL. Only one item can be downloaded at a time using DDL. Patience.')
             return
@@ -267,25 +312,50 @@ class GC(object):
         filename = None
         try:
             with cfscrape.create_scraper() as s:
+                if resume is not None:
+                    logger.info('[DDL-RESUME] Attempting to resume from: %s bytes' % resume)
+                    self.headers['Range'] = 'bytes=%d-' % resume
                 cf_cookievalue, cf_user_agent = s.get_tokens(mainlink, headers=self.headers)
                 t = s.get(link, verify=True, cookies=cf_cookievalue, headers=self.headers, stream=True)
 
                 filename = os.path.basename(urllib.unquote(t.url).decode('utf-8'))
+                if 'GetComics.INFO' in filename:
+                    filename = re.sub('GetComics.INFO', '', filename, re.I).strip()
 
-                path = os.path.join(mylar.CONFIG.DDL_LOCATION, filename)
+                try:
+                    remote_filesize = int(t.headers['Content-length'])
+                    logger.fdebug('remote filesize: %s' % remote_filesize)
+                except Exception as e:
+                    logger.warn('[WARNING] Unable to retrieve remote file size - this is usually due to the page being behind a different click-bait/ad page. Error returned as : %s' % e)
+                    logger.warn('[WARNING] Considering this particular download as invalid and will ignore this result.')
+                    remote_filesize = 0
+                    mylar.DDL_LOCK = False
+                    return ({"success":  False,
+                            "filename": filename,
+                            "path":     None})
 
                 #write the filename to the db for tracking purposes...
-                myDB.upsert('ddl_info', {'filename': filename}, {'id': id})
+                myDB.upsert('ddl_info', {'filename': filename, 'remote_filesize': remote_filesize}, {'id': id})
+
+                path = os.path.join(mylar.CONFIG.DDL_LOCATION, filename)
 
                 if t.headers.get('content-encoding') == 'gzip': #.get('Content-Encoding') == 'gzip':
                     buf = StringIO(t.content)
                     f = gzip.GzipFile(fileobj=buf)
 
-                with open(path, 'wb') as f:
-                    for chunk in t.iter_content(chunk_size=1024):
-                        if chunk: # filter out keep-alive new chunks
-                            f.write(chunk)
-                            f.flush()
+                if resume is not None:
+                    with open(path, 'ab') as f:
+                        for chunk in t.iter_content(chunk_size=1024):
+                            if chunk:
+                                f.write(chunk)
+                                f.flush()
+
+                else:
+                    with open(path, 'wb') as f:
+                        for chunk in t.iter_content(chunk_size=1024):
+                            if chunk:
+                                f.write(chunk)
+                                f.flush()
 
         except Exception as e:
             logger.error('[ERROR] %s' % e)

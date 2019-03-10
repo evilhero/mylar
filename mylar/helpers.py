@@ -990,6 +990,12 @@ def issuedigits(issnum):
                     int_issnum = (int(issnum[:-2]) * 1000) + ord('m') + ord('u')
                 else:
                     int_issnum = (int(issnum[:-3]) * 1000) + ord('m') + ord('u')
+            elif 'hu' in issnum.lower():
+                remdec = issnum.find('.')  #find the decimal position.
+                if remdec == -1:
+                    int_issnum = (int(issnum[:-2]) * 1000) + ord('h') + ord('u')
+                else:
+                    int_issnum = (int(issnum[:-3]) * 1000) + ord('h') + ord('u')
 
         except ValueError as e:
             logger.error('[' + issnum + '] Unable to properly determine the issue number. Error: %s', e)
@@ -3038,27 +3044,31 @@ def ddl_downloader(queue):
 
         elif mylar.DDL_LOCK is False and queue.qsize() >= 1:
             item = queue.get(True)
-            logger.info('Now loading request from DDL queue: %s' % item['series'])
             if item == 'exit':
                 logger.info('Cleaning up workers for shutdown')
                 break
+            logger.info('Now loading request from DDL queue: %s' % item['series'])
 
             #write this to the table so we have a record of what's going on.
             ctrlval = {'id':      item['id']}
-            val = {'status':  'Downloading'}
+            val = {'status':       'Downloading',
+                   'updated_date': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
             myDB.upsert('ddl_info', val, ctrlval)
 
             ddz = getcomics.GC()
-            ddzstat = ddz.downloadit(item['id'], item['link'], item['mainlink'])
+            ddzstat = ddz.downloadit(item['id'], item['link'], item['mainlink'], item['resume'])
 
-            nval = {'status':  'Completed'}
-            myDB.upsert('ddl_info', nval, ctrlval)
+            if ddzstat['success'] is True:
+                tdnow = datetime.datetime.now()
+                nval = {'status':  'Completed',
+                        'updated_date': tdnow.strftime('%Y-%m-%d %H:%M')}
+                myDB.upsert('ddl_info', nval, ctrlval)
 
             if all([ddzstat['success'] is True, mylar.CONFIG.POST_PROCESSING is True]):
                 try:
                     if ddzstat['filename'] is None:
                         logger.info('%s successfully downloaded - now initiating post-processing.' % (os.path.basename(ddzstat['path'])))
-                        mylar.PP_QUEUE.put({'nzb_name':     ddzstat['filename'],
+                        mylar.PP_QUEUE.put({'nzb_name':     os.path.basename(ddzstat['path']),
                                             'nzb_folder':   ddzstat['path'],
                                             'failed':       False,
                                             'issueid':      None,
@@ -3076,10 +3086,15 @@ def ddl_downloader(queue):
                                             'ddl':          True})
                 except Exception as e:
                     logger.info('process error: %s [%s]' %(e, ddzstat))
-            elif mylar.CONFIG.POST_PROCESSING is True:
+            elif all([ddzstat['success'] is True, mylar.CONFIG.POST_PROCESSING is False]):
                 logger.info('File successfully downloaded. Post Processing is not enabled - item retained here: %s' % os.path.join(ddzstat['path'],ddzstat['filename']))
             else:
                 logger.info('[Status: %s] Failed to download: %s ' % (ddzstat['success'], ddzstat))
+                nval = {'status':  'Failed',
+                        'updated_date': datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
+                myDB.upsert('ddl_info', nval, ctrlval)
+        else:
+            time.sleep(5)
 
 def postprocess_main(queue):
     while True:
@@ -3115,11 +3130,11 @@ def search_queue(queue):
 
         elif mylar.SEARCHLOCK is False and queue.qsize() >= 1: #len(queue) > 1:
             item = queue.get(True)
-            logger.info('[SEARCH-QUEUE] Now loading item from search queue: %s' % item)
             if item == 'exit':
                 logger.info('[SEARCH-QUEUE] Cleaning up workers for shutdown')
                 break
 
+            logger.info('[SEARCH-QUEUE] Now loading item from search queue: %s' % item)
             if mylar.SEARCHLOCK is False:
                 ss_queue = mylar.search.searchforissue(item['issueid'])
                 time.sleep(5) #arbitrary sleep to let the process attempt to finish pp'ing
@@ -3133,59 +3148,66 @@ def search_queue(queue):
 
 def worker_main(queue):
     while True:
-        item = queue.get(True)
-        logger.info('Now loading from queue: ' + item)
-        if item == 'exit':
-            logger.info('Cleaning up workers for shutdown')
-            break
-        snstat = torrentinfo(torrent_hash=item, download=True)
-        if snstat['snatch_status'] == 'IN PROGRESS':
-            logger.info('Still downloading in client....let us try again momentarily.')
-            time.sleep(30)
-            mylar.SNATCHED_QUEUE.put(item)
-        elif any([snstat['snatch_status'] == 'MONITOR FAIL', snstat['snatch_status'] == 'MONITOR COMPLETE']):
-            logger.info('File copied for post-processing - submitting as a direct pp.')
-            threading.Thread(target=self.checkFolder, args=[os.path.abspath(os.path.join(snstat['copied_filepath'], os.pardir))]).start()
+        if queue.qsize() >= 1:
+            item = queue.get(True)
+            logger.info('Now loading from queue: ' + item)
+            if item == 'exit':
+                logger.info('Cleaning up workers for shutdown')
+                break
+            snstat = torrentinfo(torrent_hash=item, download=True)
+            if snstat['snatch_status'] == 'IN PROGRESS':
+                logger.info('Still downloading in client....let us try again momentarily.')
+                time.sleep(30)
+                mylar.SNATCHED_QUEUE.put(item)
+            elif any([snstat['snatch_status'] == 'MONITOR FAIL', snstat['snatch_status'] == 'MONITOR COMPLETE']):
+                logger.info('File copied for post-processing - submitting as a direct pp.')
+                threading.Thread(target=self.checkFolder, args=[os.path.abspath(os.path.join(snstat['copied_filepath'], os.pardir))]).start()
+        else:
+            time.sleep(15)
 
 def nzb_monitor(queue):
     while True:
-        item = queue.get(True)
-        logger.info('Now loading from queue: %s' % item)
-        if item == 'exit':
-            logger.info('Cleaning up workers for shutdown')
-            break
-        if all([mylar.USE_SABNZBD is True, mylar.CONFIG.SAB_CLIENT_POST_PROCESSING is True]):
-           nz = sabnzbd.SABnzbd(item)
-           nzstat = nz.processor()
-        elif all([mylar.USE_NZBGET is True, mylar.CONFIG.NZBGET_CLIENT_POST_PROCESSING is True]):
-           nz = nzbget.NZBGet()
-           nzstat = nz.processor(item)
-        else:
-           logger.warn('There are no NZB Completed Download handlers enabled. Not sending item to completed download handling...')
-           break
-
-        if nzstat['status'] is False:
-            logger.info('Could not find NZBID %s in the downloader\'s queue. I will requeue this item for post-processing...' % item['NZBID'])
-            time.sleep(5)
-            mylar.NZB_QUEUE.put(item)
-        elif nzstat['status'] is True:
-            if nzstat['failed'] is False:
-                logger.info('File successfully downloaded - now initiating completed downloading handling.')
+        if queue.qsize() >= 1:
+            item = queue.get(True)
+            if item == 'exit':
+                logger.info('Cleaning up workers for shutdown')
+                break
+            logger.info('Now loading from queue: %s' % item)
+            if all([mylar.USE_SABNZBD is True, mylar.CONFIG.SAB_CLIENT_POST_PROCESSING is True]):
+                nz = sabnzbd.SABnzbd(item)
+                nzstat = nz.processor()
+            elif all([mylar.USE_NZBGET is True, mylar.CONFIG.NZBGET_CLIENT_POST_PROCESSING is True]):
+                nz = nzbget.NZBGet()
+                nzstat = nz.processor(item)
             else:
-                logger.info('File failed either due to being corrupt or incomplete - now initiating completed failed downloading handling.')
-            try:
-                mylar.PP_QUEUE.put({'nzb_name':     nzstat['name'],
-                                    'nzb_folder':   nzstat['location'],
-                                    'failed':       nzstat['failed'],
-                                    'issueid':      nzstat['issueid'],
-                                    'comicid':      nzstat['comicid'],
-                                    'apicall':      nzstat['apicall'],
-                                    'ddl':          False})
-                #cc = process.Process(nzstat['name'], nzstat['location'], failed=nzstat['failed'])
-                #nzpp = cc.post_process()
-            except Exception as e:
-                logger.info('process error: %s' % e)
+                logger.warn('There are no NZB Completed Download handlers enabled. Not sending item to completed download handling...')
+                break
 
+            if any([nzstat['status'] == 'file not found', nzstat['status'] == 'double-pp']):
+                logger.warn('Unable to complete post-processing call due to not finding file in the location provided. [%s]' % item)
+            elif nzstat['status'] is False:
+                logger.info('Could not find NZBID %s in the downloader\'s queue. I will requeue this item for post-processing...' % item['NZBID'])
+                time.sleep(5)
+                mylar.NZB_QUEUE.put(item)
+            elif nzstat['status'] is True:
+                if nzstat['failed'] is False:
+                    logger.info('File successfully downloaded - now initiating completed downloading handling.')
+                else:
+                    logger.info('File failed either due to being corrupt or incomplete - now initiating completed failed downloading handling.')
+                try:
+                    mylar.PP_QUEUE.put({'nzb_name':     nzstat['name'],
+                                        'nzb_folder':   nzstat['location'],
+                                        'failed':       nzstat['failed'],
+                                        'issueid':      nzstat['issueid'],
+                                        'comicid':      nzstat['comicid'],
+                                        'apicall':      nzstat['apicall'],
+                                        'ddl':          False})
+                    #cc = process.Process(nzstat['name'], nzstat['location'], failed=nzstat['failed'])
+                    #nzpp = cc.post_process()
+                except Exception as e:
+                    logger.info('process error: %s' % e)
+        else:
+            time.sleep(5)
 
 def script_env(mode, vars):
     #mode = on-snatch, pre-postprocess, post-postprocess
