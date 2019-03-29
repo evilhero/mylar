@@ -58,7 +58,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
     if dbcomic is None:
         newValueDict = {"ComicName":   "Comic ID: %s" % (comicid),
                 "Status":   "Loading"}
-        if all([imported, mylar.CONFIG.IMP_PATHS is True]):
+        if all([imported is not None, mylar.CONFIG.IMP_PATHS is True]):
             comlocation = os.path.dirname(imported['filelisting'][0]['comiclocation'])
         else:
             comlocation = None
@@ -249,7 +249,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
                 covercheck = helpers.getImage(comicid, comic['ComicImageALT'])
 
         #if the comic cover local is checked, save a cover.jpg to the series folder.
-        if all([mylar.CONFIG.COMIC_COVER_LOCAL is True, os.path.isdir(comlocation) is True, os.path.isfile(PRComicImage) is False]):
+        if all([mylar.CONFIG.COMIC_COVER_LOCAL is True, os.path.isdir(comlocation) is True, os.path.isfile(os.path.join(comlocation, 'cover.jpg')) is False]):
             try:
                 comiclocal = os.path.join(comlocation, 'cover.jpg')
                 shutil.copyfile(PRComicImage, comiclocal)
@@ -1130,7 +1130,11 @@ def updateissuedata(comicid, comicname=None, issued=None, comicIssues=None, call
                 elif 'hu' in issnum.lower():
                     int_issnum = (int(issnum[:-3]) * 1000) + ord('h') + ord('u')
                 elif u'\xbd' in issnum:
-                    int_issnum = .5 * 1000
+                    tmpiss = re.sub('[^0-9]', '', issnum).strip()
+                    if len(tmpiss) > 0:
+                        int_issnum = (int(tmpiss) + .5) * 1000
+                    else:
+                        int_issnum = .5 * 1000
                     logger.fdebug('1/2 issue detected :' + issnum + ' === ' + str(int_issnum))
                 elif u'\xbc' in issnum:
                     int_issnum = .25 * 1000
@@ -1599,7 +1603,7 @@ def image_it(comicid, latestissueid, comlocation, ComicImage):
     ComicImage = helpers.replacetheslash(PRComicImage)
 
     #if the comic cover local is checked, save a cover.jpg to the series folder.
-    if all([mylar.CONFIG.COMIC_COVER_LOCAL is True, os.path.isdir(comlocation) is True, os.path.isfile(PRComicImage)]):
+    if all([mylar.CONFIG.COMIC_COVER_LOCAL is True, os.path.isdir(comlocation) is True, os.path.isfile(os.path.join(comlocation, 'cover.jpg'))]):
         try:
             comiclocal = os.path.join(comlocation, 'cover.jpg')
             shutil.copyfile(PRComicImage, comiclocal)

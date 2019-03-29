@@ -34,7 +34,7 @@ from mylar import db
 
 class GC(object):
 
-    def __init__(self, query=None, issueid=None, comicid=None):
+    def __init__(self, query=None, issueid=None, comicid=None, oneoff=False):
 
         self.valreturn = []
 
@@ -46,6 +46,8 @@ class GC(object):
  
         self.issueid = issueid
 
+        self.oneoff = oneoff
+
         self.local_filename = os.path.join(mylar.CONFIG.CACHE_DIR, "getcomics.html")
 
         self.headers = {'Accept-encoding': 'gzip', 'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.1', 'Referer': 'https://getcomics.info/'}
@@ -55,7 +57,7 @@ class GC(object):
         with cfscrape.create_scraper() as s:
             cf_cookievalue, cf_user_agent = s.get_tokens(self.url, headers=self.headers)
 
-            t = s.get(self.url+'/', params={'s': self.query}, verify=True, cookies=cf_cookievalue, headers=self.headers, stream=True)
+            t = s.get(self.url+'/', params={'s': self.query}, verify=True, cookies=cf_cookievalue, headers=self.headers, stream=True, timeout=30)
 
             with open(self.local_filename, 'wb') as f:
                 for chunk in t.iter_content(chunk_size=1024):
@@ -70,7 +72,7 @@ class GC(object):
         with cfscrape.create_scraper() as s:
             self.cf_cookievalue, cf_user_agent = s.get_tokens(link, headers=self.headers)
 
-            t = s.get(link, verify=True, cookies=self.cf_cookievalue, headers=self.headers, stream=True)
+            t = s.get(link, verify=True, cookies=self.cf_cookievalue, headers=self.headers, stream=True, timeout=30)
 
             with open(title+'.html', 'wb') as f:
                 for chunk in t.iter_content(chunk_size=1024):
@@ -251,12 +253,24 @@ class GC(object):
                             volume = x.findNext(text=True)
                             if u'\u2013' in volume:
                                 volume = re.sub(u'\u2013', '-', volume)
+                            series_st = volume.find('(')
+                            issues_st = volume.find('#')
+                            series = volume[:issues_st].strip()
+                            issues = volume[issues_st:series_st].strip()
+                            year_end = volume.find(')', series_st+1)
+                            year = re.sub('[\(\)\|]', '', volume[series_st+1: year_end]).strip()
+                            size_end = volume.find(')', year_end+1)
+                            size = re.sub('[\(\)\|]', '', volume[year_end+1: size_end]).strip()
                             linkline = x.find('a')
                             linked = linkline['href']
                             site = linkline.findNext(text=True)
-                            links.append({"volume": volume,
-                                          "site": site,
-                                          "link": linked})
+                            links.append({"series": series,
+                                          "volume": volume,
+                                          "site":   site,
+                                          "year":   year,
+                                          "issues": issues,
+                                          "size":   size,
+                                          "link":   linked})
 
         if all([link is None, len(links) == 0]):
             logger.warn('Unable to retrieve any valid immediate download links. They might not exist.')
@@ -265,8 +279,11 @@ class GC(object):
             logger.info('only one item discovered, changing queue length to accomodate: %s [%s]' % (link, type(link)))
             links = [link]
         elif len(links) > 0:
+            if link is not None:
+                links.append(link)
+                logger.fdebug('[DDL-QUEUE] Making sure we download the original item in addition to the extra packs.')
             if len(links) > 1:
-                logger.info('[DDL-QUEUER] This pack has been broken up into %s separate packs - queueing each in sequence for your enjoyment.' % len(links))
+                logger.fdebug('[DDL-QUEUER] This pack has been broken up into %s separate packs - queueing each in sequence for your enjoyment.' % len(links))
         cnt = 1
         for x in links:
             if len(links) == 1:
@@ -295,6 +312,7 @@ class GC(object):
                                  'size':     x['size'],
                                  'comicid':  self.comicid,
                                  'issueid':  self.issueid,
+                                 'oneoff':   self.oneoff,
                                  'id':       mod_id,
                                  'resume':   None})
             cnt+=1
@@ -302,6 +320,7 @@ class GC(object):
         return {'success': True}
 
     def downloadit(self, id, link, mainlink, resume=None):
+        #logger.info('[%s] %s -- mainlink: %s' % (id, link, mainlink))
         if mylar.DDL_LOCK is True:
             logger.fdebug('[DDL] Another item is currently downloading via DDL. Only one item can be downloaded at a time using DDL. Patience.')
             return
@@ -315,8 +334,8 @@ class GC(object):
                 if resume is not None:
                     logger.info('[DDL-RESUME] Attempting to resume from: %s bytes' % resume)
                     self.headers['Range'] = 'bytes=%d-' % resume
-                cf_cookievalue, cf_user_agent = s.get_tokens(mainlink, headers=self.headers)
-                t = s.get(link, verify=True, cookies=cf_cookievalue, headers=self.headers, stream=True)
+                cf_cookievalue, cf_user_agent = s.get_tokens(mainlink, headers=self.headers, timeout=30)
+                t = s.get(link, verify=True, cookies=cf_cookievalue, headers=self.headers, stream=True, timeout=30)
 
                 filename = os.path.basename(urllib.unquote(t.url).decode('utf-8'))
                 if 'GetComics.INFO' in filename:
@@ -326,13 +345,32 @@ class GC(object):
                     remote_filesize = int(t.headers['Content-length'])
                     logger.fdebug('remote filesize: %s' % remote_filesize)
                 except Exception as e:
-                    logger.warn('[WARNING] Unable to retrieve remote file size - this is usually due to the page being behind a different click-bait/ad page. Error returned as : %s' % e)
-                    logger.warn('[WARNING] Considering this particular download as invalid and will ignore this result.')
-                    remote_filesize = 0
-                    mylar.DDL_LOCK = False
-                    return ({"success":  False,
-                            "filename": filename,
-                            "path":     None})
+                    if 'go.php-urls' not in link:
+                        link = re.sub('go.php-url=', 'go.php-urls', link)
+                        t = s.get(link, verify=True, cookies=cf_cookievalue, headers=self.headers, stream=True, timeout=30)
+                        filename = os.path.basename(urllib.unquote(t.url).decode('utf-8'))
+                        if 'GetComics.INFO' in filename:
+                            filename = re.sub('GetComics.INFO', '', filename, re.I).strip()
+                        try:
+                            remote_filesize = int(t.headers['Content-length'])
+                            logger.fdebug('remote filesize: %s' % remote_filesize)
+                        except Exception as e:
+                            logger.warn('[WARNING] Unable to retrieve remote file size - this is usually due to the page being behind a different click-bait/ad page. Error returned as : %s' % e)
+                            logger.warn('[WARNING] Considering this particular download as invalid and will ignore this result.')
+                            remote_filesize = 0
+                            mylar.DDL_LOCK = False
+                            return ({"success":  False,
+                                     "filename": filename,
+                                     "path":     None})
+
+                    else:
+                        logger.warn('[WARNING] Unable to retrieve remote file size - this is usually due to the page being behind a different click-bait/ad page. Error returned as : %s' % e)
+                        logger.warn('[WARNING] Considering this particular download as invalid and will ignore this result.')
+                        remote_filesize = 0
+                        mylar.DDL_LOCK = False
+                        return ({"success":  False,
+                                 "filename": filename,
+                                 "path":     None})
 
                 #write the filename to the db for tracking purposes...
                 myDB.upsert('ddl_info', {'filename': filename, 'remote_filesize': remote_filesize}, {'id': id})

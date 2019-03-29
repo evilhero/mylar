@@ -397,6 +397,7 @@ def rename_param(comicid, comicname, issue, ofilename, comicyear=None, issueid=N
                                 'NOW',
                                 'AI',
                                 'MU',
+                                'HU',
                                 'A',
                                 'B',
                                 'C',
@@ -1024,8 +1025,11 @@ def issuedigits(issnum):
         x = [vals[key] for key in vals if key in issnum]
 
         if x:
-            #logger.fdebug('Unicode Issue present - adjusting.')
-            int_issnum = x[0] * 1000
+            chk = re.sub('[^0-9]', '', issnum).strip()
+            if len(chk) == 0:
+                int_issnum = x[0] * 1000
+            else:
+                int_issnum = (int(re.sub('[^0-9]', '', issnum).strip()) + x[0]) * 1000
             #logger.fdebug('int_issnum: ' + str(int_issnum))
         else:
             if any(['.' in issnum, ',' in issnum]):
@@ -1530,7 +1534,7 @@ def IssueDetails(filelocation, IssueID=None, justinfo=False):
                                 cover = "found"
                                 break
 
-                    elif any(['001.jpg' in infile, '001.png' in infile, '001.webp' in infile, '01.jpg' in infile, '01.png' in infile, '01.webp' in infile]) and cover == "notfound":
+                    elif (any(['001.jpg' in infile, '001.png' in infile, '001.webp' in infile, '01.jpg' in infile, '01.png' in infile, '01.webp' in infile]) or all(['0001' in infile, infile.endswith(pic_extensions)]) or all(['01' in infile, infile.endswith(pic_extensions)])) and cover == "notfound":
                         logger.fdebug('Extracting primary image ' + infile + ' as coverfile for display.')
                         local_file = open(os.path.join(mylar.CONFIG.CACHE_DIR, 'temp.jpg'), "wb")
                         local_file.write(inzipfile.read(infile))
@@ -1540,6 +1544,7 @@ def IssueDetails(filelocation, IssueID=None, justinfo=False):
                 if cover != "found":
                     logger.fdebug('Invalid naming sequence for jpgs discovered. Attempting to find the lowest sequence and will use as cover (it might not work). Currently : ' + str(low_infile))
                     local_file = open(os.path.join(mylar.CONFIG.CACHE_DIR, 'temp.jpg'), "wb")
+                    logger.fdebug('infile_name used for displaying: %s' % low_infile_name)
                     local_file.write(inzipfile.read(low_infile_name))
                     local_file.close
                     cover = "found"                
@@ -3657,12 +3662,12 @@ def getImage(comicid, url, issueid=None):
         #let's make the dir.
         try:
             os.makedirs(str(mylar.CONFIG.CACHE_DIR))
-            logger.info('Cache Directory successfully created at: ' + str(mylar.CONFIG.CACHE_DIR))
+            logger.info('Cache Directory successfully created at: %s' % mylar.CONFIG.CACHE_DIR)
 
         except OSError:
-            logger.error('Could not create cache dir. Check permissions of cache dir: ' + str(mylar.CONFIG.CACHE_DIR))
+            logger.error('Could not create cache dir. Check permissions of cache dir: %s' % mylar.CONFIG.CACHE_DIR)
 
-    coverfile = os.path.join(mylar.CONFIG.CACHE_DIR,  str(comicid) + ".jpg")
+    coverfile = os.path.join(mylar.CONFIG.CACHE_DIR,  str(comicid) + '.jpg')
 
     #if cover has '+' in url it's malformed, we need to replace '+' with '%20' to retreive properly.
 
@@ -3675,35 +3680,42 @@ def getImage(comicid, url, issueid=None):
     logger.info('Attempting to retrieve the comic image for series')
     try:
         r = requests.get(url, params=None, stream=True, verify=mylar.CONFIG.CV_VERIFY, headers=mylar.CV_HEADERS)
-    except Exception, e:
-        logger.warn('Unable to download image from CV URL link: ' + url + ' [Status Code returned: ' + str(r.status_code) + ']')
-
-    logger.fdebug('comic image retrieval status code: ' + str(r.status_code))
-
-    if str(r.status_code) != '200':
-        logger.warn('Unable to download image from CV URL link: ' + url + ' [Status Code returned: ' + str(r.status_code) + ']')
+    except Exception as e:
+        logger.warn('[ERROR: %s] Unable to download image from CV URL link: %s' % (e, url))
         coversize = 0
+        statuscode = '400'
     else:
-        if r.headers.get('Content-Encoding') == 'gzip':
-            buf = StringIO(r.content)
-            f = gzip.GzipFile(fileobj=buf)
+        statuscode = str(r.status_code)
+        logger.fdebug('comic image retrieval status code: %s' % statuscode)
 
-        with open(coverfile, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=1024):
-                if chunk: # filter out keep-alive new chunks
-                    f.write(chunk)
-                    f.flush()
-
-
-        statinfo = os.stat(coverfile)
-        coversize = statinfo.st_size
-
-    if int(coversize) < 10000 or str(r.status_code) != '200':
-        if str(r.status_code) != '200':
-            logger.info('Trying to grab an alternate cover due to problems trying to retrieve the main cover image.')
+        if statuscode != '200':
+            logger.warn('Unable to download image from CV URL link: %s [Status Code returned: %s]' % (url, statuscode))
+            coversize = 0
         else:
-            logger.info('Image size invalid [' + str(coversize) + ' bytes] - trying to get alternate cover image.')
-        logger.fdebug('invalid image link is here: ' + url)
+            if r.headers.get('Content-Encoding') == 'gzip':
+                buf = StringIO(r.content)
+                f = gzip.GzipFile(fileobj=buf)
+
+            with open(coverfile, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=1024):
+                    if chunk: # filter out keep-alive new chunks
+                        f.write(chunk)
+                        f.flush()
+
+
+            statinfo = os.stat(coverfile)
+            coversize = statinfo.st_size
+
+    if any([int(coversize) < 10000, statuscode != '200']):
+        try:
+            if statuscode != '200':
+                logger.info('Trying to grab an alternate cover due to problems trying to retrieve the main cover image.')
+            else:
+                logger.info('Image size invalid [%s bytes] - trying to get alternate cover image.' % coversize)
+        except Exception as e:
+            logger.info('Image size invalid [%s bytes] - trying to get alternate cover image.' % coversize)
+
+        logger.fdebug('invalid image link is here: %s' % url)
 
         if os.path.exists(coverfile):
             os.remove(coverfile)
