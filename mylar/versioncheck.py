@@ -192,6 +192,8 @@ def checkGithub(current_version=None):
 
         if mylar.COMMITS_BEHIND >= 1:
             logger.info('New version is available. You are %s commits behind' % mylar.COMMITS_BEHIND)
+            if mylar.CONFIG.AUTO_UPDATE is True:
+                mylar.SIGNAL = 'update'
         elif mylar.COMMITS_BEHIND == 0:
             logger.info('Mylar is up to date')
         elif mylar.COMMITS_BEHIND == -1:
@@ -319,4 +321,4 @@ def versionload():
     if mylar.CONFIG.AUTO_UPDATE:
         if mylar.CURRENT_VERSION != mylar.LATEST_VERSION and mylar.INSTALL_TYPE != 'win' and mylar.COMMITS_BEHIND > 0:
              logger.info('Auto-updating has been enabled. Attempting to auto-update.')
-             #SIGNAL = 'update'
+             mylar.SIGNAL = 'update'
