@@ -2476,7 +2476,8 @@ def issue_find_ids(ComicName, ComicID, pack, IssueNumber):
         tmp_annuals = pack[pack.find('Annual'):]
         tmp_ann = re.sub('[annual/annuals/+]', '', tmp_annuals.lower()).strip()
         tmp_pack = re.sub('[annual/annuals/+]', '', pack.lower()).strip() 
-        pack_issues = range(int(tmp_pack[:tmp_pack.find('-')]),int(tmp_pack[tmp_pack.find('-')+1:])+1)
+        pack_issues_numbers = re.findall(r'\d+', tmp_pack)
+        pack_issues = range(int(pack_issues_numbers[0]),int(pack_issues_numbers[1])+1)
         annualize = True
 
     issues = {}
@@ -2939,6 +2940,14 @@ def weekly_info(week=None, year=None, current=None):
             weeknumber = 51
             year = 2018
 
+        #monkey patch for 2019/2020 - week 52/week 0
+        if all([weeknumber == 52, c_weeknumber == 51, c_weekyear == 2019]):
+            weeknumber = 0
+            year = 2020
+        elif all([weeknumber == 52, c_weeknumber == 0, c_weekyear == 2020]):
+            weeknumber = 51
+            year = 2019
+
         #view specific week (prev_week, next_week)
         startofyear = date(year,1,1)
         week0 = startofyear - timedelta(days=startofyear.isoweekday())
@@ -2958,6 +2967,14 @@ def weekly_info(week=None, year=None, current=None):
         elif all([weeknumber == 52, c_weeknumber == 0, c_weekyear == 2019]):
             weeknumber = 51
             year = 2018
+
+        #monkey patch for 2019/2020 - week 52/week 0
+        if all([weeknumber == 52, c_weeknumber == 51, c_weekyear == 2019]) or all([weeknumber == '52', year == '2019']):
+            weeknumber = 0
+            year = 2020
+        elif all([weeknumber == 52, c_weeknumber == 0, c_weekyear == 2020]):
+            weeknumber = 51
+            year = 2019
 
         stweek = datetime.datetime.strptime(todaydate.strftime('%Y-%m-%d'), '%Y-%m-%d')
         startweek = stweek - timedelta(days = (stweek.weekday() + 1) % 7)
@@ -3110,6 +3127,7 @@ def postprocess_main(queue):
             time.sleep(5)
 
         elif mylar.APILOCK is False and queue.qsize() >= 1: #len(queue) > 1:
+            pp = None
             item = queue.get(True)
             logger.info('Now loading from post-processing queue: %s' % item)
             if item == 'exit':
@@ -3123,6 +3141,11 @@ def postprocess_main(queue):
                     pprocess = process.Process(item['nzb_name'], item['nzb_folder'], item['failed'], item['issueid'], item['comicid'], item['apicall'])
                 pp = pprocess.post_process()
                 time.sleep(5) #arbitrary sleep to let the process attempt to finish pp'ing
+
+            if pp is not None:
+                if pp['mode'] == 'stop':
+                    #reset the lock so any subsequent items can pp and not keep the queue locked up.
+                    mylar.APILOCK = False
 
             if mylar.APILOCK is True:
                 logger.info('Another item is post-processing still...')

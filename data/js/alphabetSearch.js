@@ -55,7 +55,7 @@ $.fn.dataTable.ext.search.push( function ( context, searchData ) {
 	if ( context.alphabetSearch.match('nonalpha') && !(searchData[1].charAt(0).match(/^[a-zA-Z]/)) ) {
                 return true;
         }
-        if ( searchData[1].charAt(0) === context.alphabetSearch ) {
+        if ( searchData[1].charAt(0).toUpperCase() === context.alphabetSearch ) {
 		return true;
 	}
 
@@ -70,7 +70,7 @@ function bin ( data ) {
         bins['nonalpha'] = 0;
         for ( var i=0, ien=data.length ; i<ien ; i++ ) {
                 letter = data[i].charAt(13).toUpperCase();
-		if ( !letter.match(/^[A-Z]/) ) {
+		if ( !letter.match(/^[a-zA-Z]/) ) {
                         bins['nonalpha']++;
                 }
                 else if ( bins[letter] ) {
