@@ -7,7 +7,12 @@ from lib.rarfile import rarfile
 
 import mylar
 
-from PIL import Image
+try:
+    from PIL import Image
+except ImportError:
+    logger.debug("WebReader Requested, but PIL or pillow libraries must be installed. Please execute 'pip install pillow', then restart Mylar.")
+    return serve_template(templatename="index.html", title="Home", comics=comics, alphaindex=mylar.CONFIG.ALPHAINDEX)
+    
 from mylar import logger, db, importer, mb, search, filechecker, helpers, updater, parseit, weeklypull, librarysync, moveit, Failed, readinglist, config
 from mylar.webserve import serve_template
 
