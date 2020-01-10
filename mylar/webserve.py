@@ -4692,13 +4692,17 @@ class WebInterface(object):
                     if len(search_matches) > 1:
                        # if we matched on more than one series above, just save those results instead of the entire search result set.
                         for sres in search_matches:
+                            if type(sres['haveit']) == dict:
+                                imp_cid = sres['haveit']['comicid']
+                            else:
+                                imp_cid = sres['haveit']
                             cVal = {"SRID":        SRID,
                                     "comicid":     sres['comicid']}
                             #should store ogcname in here somewhere to account for naming conversions above.
                             nVal = {"Series":      ComicName,
                                     "results":     len(search_matches),
                                     "publisher":   sres['publisher'],
-                                    "haveit":      sres['haveit'],
+                                    "haveit":      imp_cid,
                                     "name":        sres['name'],
                                     "deck":        sres['deck'],
                                     "url":         sres['url'],
@@ -4707,7 +4711,7 @@ class WebInterface(object):
                                     "issues":      sres['issues'],
                                     "ogcname":     ogcname,
                                     "comicyear":   sres['comicyear']}
-                            logger.fdebug('search_values: [%s]/%s' % (cVal, nVal))
+                            #logger.fdebug('search_values: [%s]/%s' % (cVal, nVal))
                             myDB.upsert("searchresults", nVal, cVal)
                         logger.info('[IMPORT] There is more than one result that might be valid - normally this is due to the filename(s) not having enough information for me to use (ie. no volume label/year). Manual intervention is required.')
                         #force the status here just in case
@@ -4719,13 +4723,17 @@ class WebInterface(object):
                         # store the search results for series that returned more than one result for user to select later / when they want.
                         # should probably assign some random numeric for an id to reference back at some point.
                         for sres in sresults:
+                            if type(sres['haveit']) == dict:
+                                imp_cid = sres['haveit']['comicid']
+                            else:
+                                imp_cid = sres['haveit']
                             cVal = {"SRID":        SRID,
                                     "comicid":     sres['comicid']}
                             #should store ogcname in here somewhere to account for naming conversions above.
                             nVal = {"Series":      ComicName,
                                     "results":     len(sresults),
                                     "publisher":   sres['publisher'],
-                                    "haveit":      sres['haveit'],
+                                    "haveit":      imp_cid,
                                     "name":        sres['name'],
                                     "deck":        sres['deck'],
                                     "url":         sres['url'],
@@ -6435,5 +6443,3 @@ class WebInterface(object):
         #data = wv.read_comic(ish_id)
         return data
     read_comic.exposed = True
-
-    
