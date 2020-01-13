@@ -762,7 +762,7 @@ def NZB_SEARCH(ComicName, IssueNumber, ComicYear, SeriesYear, Publisher, IssueDa
                         break
                     except requests.exceptions.RequestException as e:
                         logger.warn('General Error fetching data from %s: %s' % (nzbprov, e))
-                        if e.r.status_code == 503: 
+                        if str(r.status_code) == '503':
                             #HTTP Error 503
                             logger.warn('Aborting search due to Provider unavailability')
                             foundc['status'] = False
