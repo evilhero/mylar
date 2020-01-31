@@ -340,15 +340,25 @@ class TELEGRAM:
         else:
             self.token = test_token
 
-    def notify(self, message):
-        # Construct message
-        payload = {'chat_id': self.userid, 'text': message}
+    def notify(self, message, imageurl=None):
+        if imageurl:
+            # Construct message
+            payload = {'chat_id': self.userid, 'caption': message, 'photo': imageurl} 
 
-        # Send message to user using Telegram's Bot API
-        try:
-            response = requests.post(self.TELEGRAM_API % (self.token, "sendMessage"), json=payload, verify=True)
-        except Exception, e:
-            logger.info(u'Telegram notify failed: ' + str(e))
+            # Send message to user using Telegram's Bot API
+            try:
+                response = requests.post(self.TELEGRAM_API % (self.token, "sendPhoto"), json=payload, verify=True)
+            except Exception, e:
+                logger.info(u'Telegram notify failed: ' + str(e))
+        else:
+            # Construct message
+            payload = {'chat_id': self.userid, 'text': message}
+
+            # Send message to user using Telegram's Bot API
+            try:
+                response = requests.post(self.TELEGRAM_API % (self.token, "sendMessage"), json=payload, verify=True)
+            except Exception, e:
+                logger.info(u'Telegram notify failed: ' + str(e))
 
         # Error logging
         sent_successfuly = True
