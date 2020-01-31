@@ -176,7 +176,7 @@ def addComictoDB(comicid, mismatch=None, pullupd=None, imported=None, ogcname=No
         logger.info('Corrected year of ' + str(SeriesYear) + ' to corrected year for series that was manually entered previously of ' + str(csyear))
         SeriesYear = csyear
 
-    logger.info('Sucessfully retrieved details for ' + comic['ComicName'])
+    logger.info('Successfully retrieved details for ' + comic['ComicName'])
 
     #since the weekly issue check could return either annuals or issues, let's initialize it here so it carries through properly.
     weeklyissue_check = []
