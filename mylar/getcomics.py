@@ -124,7 +124,7 @@ class GC(object):
 
             option_find = f.find("p", {"style": "text-align: center;"})
             i = 0
-            while i <= 2:
+            while (i <= 2 and option_find is not None):
                 option_find = option_find.findNext(text=True)
                 if 'Year' in option_find:
                     year = option_find.findNext(text=True)
