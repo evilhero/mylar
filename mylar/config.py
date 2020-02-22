@@ -556,7 +556,7 @@ class Config(object):
         if self.CONFIG_VERSION < 8:
             print('Checking for existing torznab configuration...')
             if not any([self.TORZNAB_NAME is None, self.TORZNAB_HOST is None, self.TORZNAB_APIKEY is None, self.TORZNAB_CATEGORY is None]):
-                torznabs =[(self.TORZNAB_NAME, self.TORZNAB_HOST, self.TORZNAB_APIKEY, self.TORZNAB_CATEGORY, str(int(self.ENABLE_TORZNAB)))]
+                torznabs =[(self.TORZNAB_NAME, self.TORZNAB_HOST, self.TORZNAB_VERIFY, self.TORZNAB_APIKEY, self.TORZNAB_CATEGORY, str(int(self.ENABLE_TORZNAB)))]
                 setattr(self, 'EXTRA_TORZNABS', torznabs)
                 config.set('Torznab', 'EXTRA_TORZNABS', str(torznabs))
                 print('Successfully converted existing torznab for multiple configuration allowance. Removing old references.')
@@ -564,9 +564,9 @@ class Config(object):
                 print('No existing torznab configuration found. Just removing config references at this point..')
             config.remove_option('Torznab', 'torznab_name')
             config.remove_option('Torznab', 'torznab_host')
+            config.remove_option('Torznab', 'torznab_verify')
             config.remove_option('Torznab', 'torznab_apikey')
             config.remove_option('Torznab', 'torznab_category')
-            config.remove_option('Torznab', 'torznab_verify')
             print('Successfully removed outdated config entries.')
         if self.newconfig < 9:
             #rejig rtorrent settings due to change.
@@ -1112,7 +1112,7 @@ class Config(object):
         return extra_newznabs
 
     def get_extra_torznabs(self):
-        extra_torznabs = zip(*[iter(self.EXTRA_TORZNABS.split(', '))]*5)
+        extra_torznabs = zip(*[iter(self.EXTRA_TORZNABS.split(', '))]*6)
         return extra_torznabs
 
     def provider_sequence(self):
@@ -1155,7 +1155,7 @@ class Config(object):
 
         if self.ENABLE_TORZNAB:
             for ets in self.EXTRA_TORZNABS:
-                if str(ets[4]) == '1': # if torznabs are enabled
+                if str(ets[5]) == '1': # if torznabs are enabled
                     if ets[0] == "":
                         et_name = ets[1]
                     else:

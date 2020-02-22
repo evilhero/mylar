@@ -5017,7 +5017,7 @@ class WebInterface(object):
                     "dognzb_verify": helpers.checked(mylar.CONFIG.DOGNZB_VERIFY),
                     "experimental": helpers.checked(mylar.CONFIG.EXPERIMENTAL),
                     "enable_torznab": helpers.checked(mylar.CONFIG.ENABLE_TORZNAB),
-                    "extra_torznabs": sorted(mylar.CONFIG.EXTRA_TORZNABS, key=itemgetter(4), reverse=True),
+                    "extra_torznabs": sorted(mylar.CONFIG.EXTRA_TORZNABS, key=itemgetter(5), reverse=True),
                     "newznab": helpers.checked(mylar.CONFIG.NEWZNAB),
                     "extra_newznabs": sorted(mylar.CONFIG.EXTRA_NEWZNABS, key=itemgetter(5), reverse=True),
                     "enable_ddl": helpers.checked(mylar.CONFIG.ENABLE_DDL),
@@ -5323,10 +5323,12 @@ class WebInterface(object):
                     if not checkdirectory:
                         logger.warn('Error trying to validate/create directory. Aborting this process at this time.')
                         updatedir = False
+
         else:
             logger.info('[Create directories False] Not creating physical directory, but updating series location in dB to: %s' % com_location)
         if updatedir is True:
             newValues['ComicLocation'] = com_location
+
             myDB.upsert("comics", newValues, controlValueDict)
             logger.fdebug('Updated Series options!')
         raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % ComicID)
@@ -5447,6 +5449,10 @@ class WebInterface(object):
                     if torznab_name == "":
                         continue
                 torznab_host = helpers.clean_url(kwargs['torznab_host' + torznab_number])
+                try:
+                    torznab_verify = kwargs['torznab_verify' + torznab_number]
+                except:
+                    torznab_verify = 0
                 torznab_api = kwargs['torznab_apikey' + torznab_number]
                 torznab_category = kwargs['torznab_category' + torznab_number]
                 try:
@@ -5456,7 +5462,7 @@ class WebInterface(object):
 
                 del kwargs[kwarg]
 
-                mylar.CONFIG.EXTRA_TORZNABS.append((torznab_name, torznab_host, torznab_api, torznab_category, torznab_enabled))
+                mylar.CONFIG.EXTRA_TORZNABS.append((torznab_name, torznab_host, torznab_verify, torznab_api, torznab_category, torznab_enabled))
 
         mylar.CONFIG.process_kwargs(kwargs)
 
@@ -6027,6 +6033,24 @@ class WebInterface(object):
             return 'Error - failed running test for %s' % name
     testnewznab.exposed = True
 
+    def testtorznab(self, name, host, ssl, apikey):
+        logger.fdebug('ssl/verify: %s' % ssl)
+        if 'ssl' == '0' or ssl == '1':
+            ssl = bool(int(ssl))
+        else:
+            if ssl == 'false':
+                ssl = False
+            else:
+                ssl = True
+        result = helpers.torznab_test(name, host, ssl, apikey)
+        if result is True:
+            logger.info('Successfully tested %s [%s] - valid api response received' % (name, host))
+            return 'Successfully tested %s!' % name
+        else:
+            print result
+            logger.warn('Testing failed to %s [HOST:%s][SSL:%s]' % (name, host, bool(ssl)))
+            return 'Error - failed running test for %s' % name
+    testtorznab.exposed = True
 
     def orderThis(self, **kwargs):
         return
