@@ -11,6 +11,7 @@ import re
 import ConfigParser
 import mylar
 from mylar import logger, helpers, encrypted
+import errno
 
 config = ConfigParser.SafeConfigParser()
 
