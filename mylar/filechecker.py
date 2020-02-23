@@ -272,6 +272,11 @@ class FileChecker(object):
                         logger.fdebug('[SARC] Removed Reading Order sequence from subname. Now set to : %s' % modfilename)
 
             #make sure all the brackets are properly spaced apart
+            if modfilename.find('\s') == -1:
+                #if no spaces exist, assume decimals being used as spacers (ie. nzb name)
+                modspacer = '.'
+            else:
+                modspacer = ' '
             m = re.findall('[^()]+', modfilename)
             cnt = 1
             #2019-12-24----fixed to accomodate naming convention like Amazing Mary Jane (2019) 002.cbr, and to account for brackets properly
@@ -279,10 +284,10 @@ class FileChecker(object):
                 while cnt < len(m):
                     #logger.fdebug('[m=%s] modfilename.find: %s' % (m[cnt], modfilename[modfilename.find('('+m[cnt]+')')+len(m[cnt])+2]))
                     #logger.fdebug('mod_1: %s' % modfilename.find('('+m[cnt]+')'))
-                    if modfilename[modfilename.find('('+m[cnt]+')')-1] != ' ' and modfilename.find('('+m[cnt]+')') != -1:
+                    if modfilename[modfilename.find('('+m[cnt]+')')-1] != modspacer and modfilename.find('('+m[cnt]+')') != -1:
                         #logger.fdebug('before_space: %s' % modfilename[modfilename.find('('+m[cnt]+')')-1])
                         #logger.fdebug('after_space: %s' % modfilename[modfilename.find('('+m[cnt]+')')+len(m[cnt])+2])
-                        modfilename = '%s%s%s' % (modfilename[:modfilename.find('('+m[cnt]+')')], ' ', modfilename[modfilename.find('('+m[cnt]+')'):])
+                        modfilename = '%s%s%s' % (modfilename[:modfilename.find('('+m[cnt]+')')], modspacer, modfilename[modfilename.find('('+m[cnt]+')'):])
                     cnt+=1
             except Exception as e:
                 #logger.warn('[ERROR] %s' % e)
@@ -335,7 +340,7 @@ class FileChecker(object):
                     issueid = modfilename[x+3:y]
                     logger.fdebug('issueid: %s' % issueid)
                     modfilename = '%s %s'.strip() % (modfilename[:x], modfilename[y+3:])
-                    logger.fdebug('issueid %s removed successsfully: %s' % (issueid, modfilename))
+                    logger.fdebug('issueid %s removed successfully: %s' % (issueid, modfilename))
 
             #here we take a snapshot of the current modfilename, the intent is that we will remove characters that match
             #as we discover them - namely volume, issue #, years, etc
@@ -373,13 +378,14 @@ class FileChecker(object):
             ret_sf1 = ' '.join(sf)
 
             #here we should account for some characters that get stripped out due to the regex's
-            #namely, unique characters - known so far: +, &
+            #namely, unique characters - known so far: +, &, @
             #c11 = '\+'
             #f11 = '\&'
             #g11 = '\''
             ret_sf1 = re.sub('\+', 'c11', ret_sf1).strip()
             ret_sf1 = re.sub('\&', 'f11', ret_sf1).strip()
             ret_sf1 = re.sub('\'', 'g11', ret_sf1).strip()
+            ret_sf1 = re.sub('\@', 'h11', ret_sf1).strip()
 
             #split_file = re.findall('(?imu)\([\w\s-]+\)|[-+]?\d*\.\d+|\d+[\s]COVERS+|\d{4}-\d{2}-\d{2}|\d+[(th|nd|rd|st)]+|\d+|[\w-]+|#?\d\.\d+|#[\.-]\w+|#[\d*\.\d+|\w+\d+]+|#(?<![\w\d])XCV(?![\w\d])+|#[\w+]|\)', ret_sf1, re.UNICODE)
             split_file = re.findall('(?imu)\([\w\s-]+\)|[-+]?\d*\.\d+|\d+[\s]COVERS+|\d{4}-\d{2}-\d{2}|\d+[(th|nd|rd|st)]+|[\(^\)+]|\d+|[\w-]+|#?\d\.\d+|#[\.-]\w+|#[\d*\.\d+|\w+\d+]+|#(?<![\w\d])XCV(?![\w\d])+|#[\w+]|\)', ret_sf1, re.UNICODE)
@@ -1131,16 +1137,19 @@ class FileChecker(object):
                     if alt_series is not None:
                         if 'XCV' in alt_series:
                             alt_series = re.sub('XCV', x, alt_series,1)
-                        elif 'XCV' in alt_issue:
+                    if alt_issue is not None:
+                        if 'XCV' in alt_issue:
                             alt_issue = re.sub('XCV', x, alt_issue,1)
 
             series_name = re.sub('c11', '+', series_name)
             series_name = re.sub('f11', '&', series_name)
             series_name = re.sub('g11', '\'', series_name)
+            series_name = re.sub('h11', '@', series_name)
             if alt_series is not None:
                 alt_series = re.sub('c11', '+', alt_series)
                 alt_series = re.sub('f11', '&', alt_series)
                 alt_series = re.sub('g11', '\'', alt_series)
+                alt_series = re.sub('h11', '@', alt_series)
 
             if series_name.endswith('-'): 
                 series_name = series_name[:-1].strip()

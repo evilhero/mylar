@@ -4692,13 +4692,17 @@ class WebInterface(object):
                     if len(search_matches) > 1:
                        # if we matched on more than one series above, just save those results instead of the entire search result set.
                         for sres in search_matches:
+                            if type(sres['haveit']) == dict:
+                                imp_cid = sres['haveit']['comicid']
+                            else:
+                                imp_cid = sres['haveit']
                             cVal = {"SRID":        SRID,
                                     "comicid":     sres['comicid']}
                             #should store ogcname in here somewhere to account for naming conversions above.
                             nVal = {"Series":      ComicName,
                                     "results":     len(search_matches),
                                     "publisher":   sres['publisher'],
-                                    "haveit":      sres['haveit'],
+                                    "haveit":      imp_cid,
                                     "name":        sres['name'],
                                     "deck":        sres['deck'],
                                     "url":         sres['url'],
@@ -4707,6 +4711,7 @@ class WebInterface(object):
                                     "issues":      sres['issues'],
                                     "ogcname":     ogcname,
                                     "comicyear":   sres['comicyear']}
+                            #logger.fdebug('search_values: [%s]/%s' % (cVal, nVal))
                             myDB.upsert("searchresults", nVal, cVal)
                         logger.info('[IMPORT] There is more than one result that might be valid - normally this is due to the filename(s) not having enough information for me to use (ie. no volume label/year). Manual intervention is required.')
                         #force the status here just in case
@@ -4718,13 +4723,17 @@ class WebInterface(object):
                         # store the search results for series that returned more than one result for user to select later / when they want.
                         # should probably assign some random numeric for an id to reference back at some point.
                         for sres in sresults:
+                            if type(sres['haveit']) == dict:
+                                imp_cid = sres['haveit']['comicid']
+                            else:
+                                imp_cid = sres['haveit']
                             cVal = {"SRID":        SRID,
                                     "comicid":     sres['comicid']}
                             #should store ogcname in here somewhere to account for naming conversions above.
                             nVal = {"Series":      ComicName,
                                     "results":     len(sresults),
                                     "publisher":   sres['publisher'],
-                                    "haveit":      sres['haveit'],
+                                    "haveit":      imp_cid,
                                     "name":        sres['name'],
                                     "deck":        sres['deck'],
                                     "url":         sres['url'],
@@ -5008,7 +5017,7 @@ class WebInterface(object):
                     "dognzb_verify": helpers.checked(mylar.CONFIG.DOGNZB_VERIFY),
                     "experimental": helpers.checked(mylar.CONFIG.EXPERIMENTAL),
                     "enable_torznab": helpers.checked(mylar.CONFIG.ENABLE_TORZNAB),
-                    "extra_torznabs": sorted(mylar.CONFIG.EXTRA_TORZNABS, key=itemgetter(4), reverse=True),
+                    "extra_torznabs": sorted(mylar.CONFIG.EXTRA_TORZNABS, key=itemgetter(5), reverse=True),
                     "newznab": helpers.checked(mylar.CONFIG.NEWZNAB),
                     "extra_newznabs": sorted(mylar.CONFIG.EXTRA_NEWZNABS, key=itemgetter(5), reverse=True),
                     "enable_ddl": helpers.checked(mylar.CONFIG.ENABLE_DDL),
@@ -5140,6 +5149,7 @@ class WebInterface(object):
                     "opds_username": mylar.CONFIG.OPDS_USERNAME,
                     "opds_password": mylar.CONFIG.OPDS_PASSWORD,
                     "opds_metainfo": helpers.checked(mylar.CONFIG.OPDS_METAINFO),
+                    "opds_pagesize": mylar.CONFIG.OPDS_PAGESIZE,
                     "dlstats": dlprovstats,
                     "dltotals": freq_tot,
                     "alphaindex": mylar.CONFIG.ALPHAINDEX
@@ -5286,28 +5296,41 @@ class WebInterface(object):
             newValues['AlternateFileName'] = str(alt_filename)
 
         #force the check/creation of directory com_location here
+        updatedir = True
         if any([mylar.CONFIG.CREATE_FOLDERS is True, os.path.isdir(orig_location)]):
             if os.path.isdir(str(com_location)):
                 logger.info(u"Validating Directory (" + str(com_location) + "). Already exists! Continuing...")
             else:
-                if orig_location != com_location:
+                if orig_location != com_location and os.path.isdir(orig_location) is True:
                     logger.fdebug('Renaming existing location [%s] to new location: %s' % (orig_location, com_location))
                     try:
                         os.rename(orig_location, com_location)
                     except Exception as e:
-                        logger.warn('Unable to rename existing directory: %s' % e)
-                        return
+                        if 'No such file or directory' in e:
+                            checkdirectory = filechecker.validateAndCreateDirectory(com_location, True)
+                            if not checkdirectory:
+                                logger.warn('Error trying to validate/create directory. Aborting this process at this time.')
+                                updatedir = False
+                        else:
+                            logger.warn('Unable to rename existing directory: %s' % e)
+                            updatedir = False
                 else:
-                    logger.fdebug("Updated Directory doesn't exist! - attempting to create now.")
+                    if orig_location != com_location and os.path.isdir(orig_location) is False:
+                        logger.fdebug("Original Directory (%s) doesn't exist! - attempting to create new directory (%s)" % (orig_location, com_location))
+                    else:
+                        logger.fdebug("Updated Directory doesn't exist! - attempting to create now.")
                     checkdirectory = filechecker.validateAndCreateDirectory(com_location, True)
                     if not checkdirectory:
                         logger.warn('Error trying to validate/create directory. Aborting this process at this time.')
-                        return
+                        updatedir = False
 
-        newValues['ComicLocation'] = com_location
+        else:
+            logger.info('[Create directories False] Not creating physical directory, but updating series location in dB to: %s' % com_location)
+        if updatedir is True:
+            newValues['ComicLocation'] = com_location
 
-        myDB.upsert("comics", newValues, controlValueDict)
-        logger.fdebug('Updated Series options!') 
+            myDB.upsert("comics", newValues, controlValueDict)
+            logger.fdebug('Updated Series options!')
         raise cherrypy.HTTPRedirect("comicDetails?ComicID=%s" % ComicID)
     comic_config.exposed = True
 
@@ -5377,7 +5400,7 @@ class WebInterface(object):
                            'lowercase_filenames', 'autowant_upcoming', 'autowant_all', 'comic_cover_local', 'alternate_latest_series_covers', 'cvinfo', 'snatchedtorrent_notify',
                            'prowl_enabled', 'prowl_onsnatch', 'pushover_enabled', 'pushover_onsnatch', 'boxcar_enabled',
                            'boxcar_onsnatch', 'pushbullet_enabled', 'pushbullet_onsnatch', 'telegram_enabled', 'telegram_onsnatch', 'slack_enabled', 'slack_onsnatch',
-                           'email_enabled', 'email_enc', 'email_ongrab', 'email_onpost', 'opds_enable', 'opds_authentication', 'opds_metainfo', 'enable_ddl', 'deluge_pause'] #enable_public
+                           'email_enabled', 'email_enc', 'email_ongrab', 'email_onpost', 'opds_enable', 'opds_authentication', 'opds_metainfo', 'opds_pagesize', 'enable_ddl', 'deluge_pause'] #enable_public
 
         for checked_config in checked_configs:
             if checked_config not in kwargs:
@@ -5426,6 +5449,10 @@ class WebInterface(object):
                     if torznab_name == "":
                         continue
                 torznab_host = helpers.clean_url(kwargs['torznab_host' + torznab_number])
+                try:
+                    torznab_verify = kwargs['torznab_verify' + torznab_number]
+                except:
+                    torznab_verify = 0
                 torznab_api = kwargs['torznab_apikey' + torznab_number]
                 torznab_category = kwargs['torznab_category' + torznab_number]
                 try:
@@ -5435,7 +5462,7 @@ class WebInterface(object):
 
                 del kwargs[kwarg]
 
-                mylar.CONFIG.EXTRA_TORZNABS.append((torznab_name, torznab_host, torznab_api, torznab_category, torznab_enabled))
+                mylar.CONFIG.EXTRA_TORZNABS.append((torznab_name, torznab_host, torznab_verify, torznab_api, torznab_category, torznab_enabled))
 
         mylar.CONFIG.process_kwargs(kwargs)
 
@@ -6006,6 +6033,24 @@ class WebInterface(object):
             return 'Error - failed running test for %s' % name
     testnewznab.exposed = True
 
+    def testtorznab(self, name, host, ssl, apikey):
+        logger.fdebug('ssl/verify: %s' % ssl)
+        if 'ssl' == '0' or ssl == '1':
+            ssl = bool(int(ssl))
+        else:
+            if ssl == 'false':
+                ssl = False
+            else:
+                ssl = True
+        result = helpers.torznab_test(name, host, ssl, apikey)
+        if result is True:
+            logger.info('Successfully tested %s [%s] - valid api response received' % (name, host))
+            return 'Successfully tested %s!' % name
+        else:
+            print result
+            logger.warn('Testing failed to %s [HOST:%s][SSL:%s]' % (name, host, bool(ssl)))
+            return 'Error - failed running test for %s' % name
+    testtorznab.exposed = True
 
     def orderThis(self, **kwargs):
         return
@@ -6425,3 +6470,12 @@ class WebInterface(object):
 
     download_specific_release.exposed = True
 
+    def read_comic(self, ish_id, page_num, size):
+        from mylar.webviewer import WebViewer
+        wv = WebViewer()
+        page_num = int(page_num)
+        #cherrypy.session['ishid'] = ish_id 
+        data = wv.read_comic(ish_id, page_num, size)
+        #data = wv.read_comic(ish_id)
+        return data
+    read_comic.exposed = True
