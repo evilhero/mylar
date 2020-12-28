@@ -1,7 +1,7 @@
 ## ![Mylar Logo](https://github.com/evilhero/mylar/blob/master/data/images/mylarlogo.png) Mylar
 
 ## Note that feature development has stopped as we have moved to [Mylar3](https://github.com/mylar3/mylar3).
-## This means only critical bug errors will get addressed until such time as we decide not to continue supporting this version. EOL is still to be decided.
+## EOL for this project is the end of 2020 and will no longer be supported. This repo will be archived as of Jan-1-2021.
 
 Mylar is an automated Comic Book (cbr/cbz) downloader program for use with NZB and torrents written in python. It supports SABnzbd, NZBGET, and many torrent clients in addition to DDL.
 
